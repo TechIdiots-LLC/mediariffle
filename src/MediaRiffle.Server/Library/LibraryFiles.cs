@@ -1,0 +1,55 @@
+using MediaRiffle.Server.Data;
+using MediaRiffle.Server.Options;
+using Microsoft.Extensions.Options;
+
+namespace MediaRiffle.Server.Library;
+
+/// <summary>A subtitle file beside a video, e.g. <c>Movie.en.srt</c> next to <c>Movie.mkv</c>.</summary>
+public sealed record SidecarSubtitle(int Number, string Path, string Label);
+
+/// <summary>Turns database records back into files on disk, never outside their library's folder.</summary>
+public sealed class LibraryFiles(IOptions<MediaRiffleOptions> options)
+{
+    private static readonly string[] SubtitleExtensions = [".srt", ".vtt", ".ass", ".ssa"];
+
+    public LibraryOptions? Library(string name) =>
+        options.Value.Libraries.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The file's full path, or null if its library is gone or the path would leave the library folder.</summary>
+    public string? FullPath(MediaFile file) => Resolve(file.Library, file.RelativePath);
+
+    public string? Resolve(string library, string relativePath)
+    {
+        var lib = Library(library);
+        if (lib is null) return null;
+        var root = Path.GetFullPath(lib.Path);
+        var full = Path.GetFullPath(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        var rootWithSep = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
+        return full.StartsWith(rootWithSep, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
+            ? full : null;
+    }
+
+    /// <summary>Subtitle files named after the video (<c>Name.srt</c>, <c>Name.en.srt</c>, <c>Name.English.forced.srt</c>).</summary>
+    public static List<SidecarSubtitle> Sidecars(string videoPath)
+    {
+        var dir = Path.GetDirectoryName(videoPath);
+        if (dir is null || !Directory.Exists(dir)) return new();
+        var stem = Path.GetFileNameWithoutExtension(videoPath);
+        var found = new List<SidecarSubtitle>();
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(dir).OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+            {
+                if (!SubtitleExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)) continue;
+                var name = Path.GetFileNameWithoutExtension(path);
+                if (!name.StartsWith(stem, StringComparison.OrdinalIgnoreCase)) continue;
+                var extra = name[stem.Length..].Trim('.', ' ', '_', '-');
+                found.Add(new SidecarSubtitle(found.Count, path,
+                    (extra.Length > 0 ? extra.Replace('.', ' ') : "External") + " · " + Path.GetExtension(path).TrimStart('.')));
+            }
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        return found;
+    }
+}

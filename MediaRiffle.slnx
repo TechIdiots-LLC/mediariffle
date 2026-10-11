@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MediaRiffle.Server/MediaRiffle.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MediaRiffle.Tests/MediaRiffle.Tests.csproj" />
+  </Folder>
+</Solution>

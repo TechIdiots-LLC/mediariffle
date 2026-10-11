@@ -1,0 +1,130 @@
+using System.Text.RegularExpressions;
+
+namespace MediaRiffle.Server.Library;
+
+public sealed record EpisodeInfo(string Show, int Season, int? Episode, string Title);
+
+public sealed record MovieInfo(string Title, int? Year, string GroupKey, int Part);
+
+/// <summary>
+/// Reads shows, seasons, episodes and movies from paths laid out as the original Tongue expected:
+/// <c>Show/Season 01/Show - S01E02 - Title.mkv</c>, and <c>Movie (1998).mkv</c> or <c>Movie/cd1.avi</c>.
+/// </summary>
+public static partial class MediaNameParser
+{
+    public static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".mpg", ".mpeg", ".ts", ".m2ts", ".webm", ".flv", ".ogv", ".vob", ".divx", ".3gp",
+    };
+
+    public static bool IsVideo(string path) => VideoExtensions.Contains(Path.GetExtension(path));
+
+    [GeneratedRegex(@"[Ss](?<s>\d{1,3})[ ._-]*[Ee](?<e>\d{1,4})")]
+    private static partial Regex SxxEyy();
+
+    [GeneratedRegex(@"\b(?<s>\d{1,2})x(?<e>\d{2,3})\b")]
+    private static partial Regex NxNN();
+
+    [GeneratedRegex(@"^(?:season|series|staffel|saison|temporada)?[ ._-]*(?<n>\d{1,3})$", RegexOptions.IgnoreCase)]
+    private static partial Regex SeasonFolder();
+
+    [GeneratedRegex(@"^(?:specials?|extras?)$", RegexOptions.IgnoreCase)]
+    private static partial Regex SpecialsFolder();
+
+    [GeneratedRegex(@"(?:^|[ ._\-\[(])(?:cd|disc|disk|part|pt)[ ._-]*(?<n>\d{1,2})(?=$|[ ._\-\])])", RegexOptions.IgnoreCase)]
+    private static partial Regex PartMarker();
+
+    [GeneratedRegex(@"[\[(]?\b(?<y>(?:19|20)\d{2})\b[\])]?")]
+    private static partial Regex Year();
+
+    [GeneratedRegex(@"\b(?:2160p|1080p|720p|480p|x264|x265|h\.?264|h\.?265|hevc|bluray|blu-ray|brrip|bdrip|webrip|web-dl|hdtv|dvdrip|xvid|divx|remux|proper|repack)\b.*$", RegexOptions.IgnoreCase)]
+    private static partial Regex ReleaseJunk();
+
+    /// <summary>
+    /// An episode at <paramref name="relativePath"/> in a Shows library (<c>Show/[Season]/file</c>), or null for a
+    /// file directly in the library root.
+    /// </summary>
+    public static EpisodeInfo? ParseEpisode(string relativePath)
+    {
+        var parts = relativePath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2) return null;
+        var show = parts[0];
+        var fileName = Path.GetFileNameWithoutExtension(parts[^1]);
+
+        int? season = null;
+        if (parts.Length >= 3)
+        {
+            var folder = parts[^2];
+            var m = SeasonFolder().Match(folder);
+            if (m.Success) season = int.Parse(m.Groups["n"].Value);
+            else if (SpecialsFolder().IsMatch(folder)) season = 0;
+        }
+
+        int? episode = null;
+        string title = fileName;
+        var se = SxxEyy().Match(fileName);
+        if (!se.Success) se = NxNN().Match(fileName);
+        if (se.Success)
+        {
+            season ??= int.Parse(se.Groups["s"].Value);
+            episode = int.Parse(se.Groups["e"].Value);
+            title = CleanTitle(fileName[(se.Index + se.Length)..]);
+            if (title.Length == 0) title = $"Episode {episode}";
+        }
+        else
+        {
+            title = CleanTitle(fileName);
+        }
+        return new EpisodeInfo(show, season ?? 1, episode, title);
+    }
+
+    /// <summary>
+    /// A movie at <paramref name="relativePath"/> in a Movies library. A file in its own folder is named by the
+    /// folder (so <c>Fargo/cd1.avi</c> is "Fargo", part 1); cd/disc/part markers group the parts of one movie.
+    /// </summary>
+    public static MovieInfo ParseMovie(string relativePath)
+    {
+        var parts = relativePath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var fileName = Path.GetFileNameWithoutExtension(parts[^1]);
+        var folder = parts.Length >= 2 ? string.Join('/', parts[..^1]) : string.Empty;
+
+        int part = 1;
+        var pm = PartMarker().Match(fileName);
+        string nameWithoutPart = fileName;
+        if (pm.Success)
+        {
+            part = int.Parse(pm.Groups["n"].Value);
+            nameWithoutPart = fileName.Remove(pm.Index, pm.Length);
+        }
+
+        // In its own folder the folder is the movie; at the library root (or a shared folder like HD/SD) the file is
+        var source = parts.Length >= 2 && (pm.Success || IsGenericName(nameWithoutPart)) ? parts[^2] : nameWithoutPart;
+        int? year = null;
+        // The last year after the start: "2001 A Space Odyssey (1968)" is from 1968
+        var ym = Year().Matches(source).LastOrDefault(m => m.Index > 0);
+        string title = source;
+        if (ym is not null)
+        {
+            year = int.Parse(ym.Groups["y"].Value);
+            title = source[..ym.Index];
+        }
+        title = CleanTitle(title);
+        if (title.Length == 0) title = CleanTitle(source);
+
+        var groupKey = parts.Length >= 2 && (pm.Success || IsGenericName(nameWithoutPart))
+            ? folder
+            : (folder.Length > 0 ? folder + "/" : "") + CleanTitle(nameWithoutPart).ToLowerInvariant();
+        return new MovieInfo(title, year, groupKey, part);
+    }
+
+    private static bool IsGenericName(string name) => CleanTitle(name).Length == 0;
+
+    /// <summary>Dots and underscores to spaces, release tags dropped, separators trimmed.</summary>
+    public static string CleanTitle(string text)
+    {
+        var t = text.Replace('.', ' ').Replace('_', ' ');
+        t = ReleaseJunk().Replace(t, "");
+        t = Regex.Replace(t, @"\s{2,}", " ");
+        return t.Trim(' ', '-', '[', ']', '(', ')');
+    }
+}

@@ -1,0 +1,12 @@
+bin/
+obj/
+publish/
+*.user
+*.suo
+.vs/
+.vscode/
+*.db
+*.db-shm
+*.db-wal
+TestResults/
+appsettings.Local.json

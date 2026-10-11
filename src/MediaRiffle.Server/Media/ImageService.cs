@@ -1,0 +1,82 @@
+using System.Collections.Concurrent;
+using MediaRiffle.Server.Options;
+using Microsoft.Extensions.Options;
+
+namespace MediaRiffle.Server.Media;
+
+/// <summary>
+/// Pictures for the library: art beside the media (poster.jpg, folder.jpg, …) when there is some, otherwise a
+/// frame taken from the video. Frames are made on first request and kept in the image folder.
+/// </summary>
+public sealed class ImageService(IOptions<MediaRiffleOptions> options, Ffmpeg ffmpeg, ILogger<ImageService> log)
+{
+    private static readonly string[] ArtNames = ["poster", "folder", "cover", "show", "movie"];
+    private static readonly string[] ArtExtensions = [".jpg", ".jpeg", ".png", ".webp"];
+    private readonly SemaphoreSlim _ffmpegSlots = new(2, 2);
+    private readonly ConcurrentDictionary<string, Task<string?>> _making = new();
+
+    /// <summary>Art in <paramref name="folder"/> (poster.jpg and the like), or null.</summary>
+    public static string? FolderArt(string? folder)
+    {
+        if (folder is null || !Directory.Exists(folder)) return null;
+        foreach (var name in ArtNames)
+            foreach (var ext in ArtExtensions)
+            {
+                var path = Path.Combine(folder, name + ext);
+                if (File.Exists(path)) return path;
+            }
+        return null;
+    }
+
+    /// <summary>Art named after the video (Movie.jpg / Movie-poster.jpg beside Movie.mkv), or null.</summary>
+    public static string? FileArt(string videoPath)
+    {
+        var dir = Path.GetDirectoryName(videoPath)!;
+        var stem = Path.GetFileNameWithoutExtension(videoPath);
+        foreach (var suffix in new[] { "", "-poster", ".poster", "-thumb" })
+            foreach (var ext in ArtExtensions)
+            {
+                var path = Path.Combine(dir, stem + suffix + ext);
+                if (File.Exists(path)) return path;
+            }
+        return null;
+    }
+
+    /// <summary>A frame from the video, made once and cached; null when ffmpeg can't make one.</summary>
+    public Task<string?> FrameAsync(int fileId, string videoPath, double durationSeconds)
+    {
+        var output = Path.Combine(options.Value.ImageDirectory, $"frame-{fileId}.jpg");
+        if (File.Exists(output)) return Task.FromResult<string?>(output);
+        return _making.GetOrAdd(output, _ => MakeAsync());
+
+        async Task<string?> MakeAsync()
+        {
+            await _ffmpegSlots.WaitAsync();
+            try
+            {
+                // Past the opening titles, but not in the second half where it could spoil something
+                var at = durationSeconds > 600 ? durationSeconds * 0.1 : Math.Min(30, durationSeconds / 3);
+                var temp = output + ".tmp.jpg";
+                await ffmpeg.RunAsync(ffmpeg.FfmpegPath, PlaybackPlanner.ThumbnailArguments(videoPath, at, temp), TimeSpan.FromSeconds(60));
+                File.Move(temp, output, overwrite: true);
+                return output;
+            }
+            catch (Exception ex)
+            {
+                log.LogDebug("No frame for file {Id}: {Error}", fileId, ex.Message);
+                return null;
+            }
+            finally
+            {
+                _ffmpegSlots.Release();
+                _making.TryRemove(output, out _);
+            }
+        }
+    }
+
+    /// <summary>Drops cached frames, e.g. after a file changed.</summary>
+    public void Forget(int fileId)
+    {
+        try { File.Delete(Path.Combine(options.Value.ImageDirectory, $"frame-{fileId}.jpg")); } catch { }
+    }
+}
