@@ -37,6 +37,7 @@ const routes = [
   [/^#\/logout$/, logout],
   [/^#\/library\/(\d+)$/, m => libraryView(+m[1])],
   [/^#\/tag\/(.+)$/, m => tagView(decodeURIComponent(m[1]))],
+  [/^#\/list\/(.+)$/, m => listView(decodeURIComponent(m[1]))],
   [/^#\/show\/(\d+)$/, m => showView(+m[1])],
   [/^#\/movie\/(\d+)$/, m => movieView(+m[1])],
   [/^#\/play\/(\d+)$/, m => playView(+m[1])],
@@ -128,18 +129,67 @@ function movieTiles(movies) {
     h('div', { class: 'sub' }, [i.year, i.parts > 1 ? `${i.parts} parts` : null].filter(Boolean).join(' · '))));
 }
 
+const FAVORITES = 'Favorites';
+const isFavorites = t => t.toLowerCase() === 'favorites' || t.toLowerCase() === 'favourites';
+
+// A show's or movie's place in the user's own lists: a Favorite star, the lists it's in (× takes it out), and a box
+// to add it to a list, existing or new. Only this user sees them.
+function listsControl(kind, id, label = null) {
+  const box = h('div', { class: 'row my-lists' });
+  let tags = [], all = [];
+  const msg = h('span', { class: 'error' });
+  const save = async next => {
+    msg.textContent = '';
+    try { tags = await api(`/api/items/${kind}/${id}/lists`, { method: 'PUT', body: { tags: next } }); draw(); }
+    catch (e) { msg.textContent = e.message; }
+  };
+  const input = h('input', { list: `my-lists-${kind}-${id}`, placeholder: 'Add to a list…', maxlength: 50, size: 18,
+    onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); add(); } } });
+  const add = () => {
+    const t = input.value.trim();
+    input.value = '';
+    if (t && !tags.some(x => x.toLowerCase() === t.toLowerCase())) save([...tags, t]);
+  };
+  const draw = () => {
+    const fav = tags.some(isFavorites);
+    const others = tags.filter(t => !isFavorites(t));
+    mount(box,
+      label ? h('span', { class: 'muted' }, label) : null,
+      h('button', { class: 'secondary fav' + (fav ? ' on' : ''), title: fav ? 'Take out of Favorites' : 'Add to Favorites',
+        onclick: () => save(fav ? tags.filter(t => !isFavorites(t)) : [...tags, FAVORITES]) }, fav ? '★ Favorite' : '☆ Favorite'),
+      others.map(t => h('span', { class: 'chip' },
+        h('a', { href: `#/list/${encodeURIComponent(t)}` }, t),
+        h('button', { class: 'chip-x', title: `Take out of ${t}`, onclick: () => save(tags.filter(x => x !== t)) }, '×'))),
+      input,
+      h('datalist', { id: `my-lists-${kind}-${id}` }, all.filter(t => !isFavorites(t) && !tags.includes(t)).map(t => h('option', { value: t }))),
+      h('button', { class: 'secondary', onclick: add }, 'Add'),
+      msg);
+  };
+  Promise.all([api(`/api/items/${kind}/${id}/lists`), api('/api/lists')])
+    .then(([mine, lists]) => { tags = mine; all = lists.map(l => l.tag); draw(); })
+    .catch(() => box.remove());
+  return box;
+}
+
 function filterBox(onChange) {
   return h('input', { type: 'search', placeholder: 'Filter…', oninput: e => onChange(e.target.value.trim().toLowerCase()) });
 }
 
 async function homeView() {
-  const [libraries, recent, tags] = await Promise.all([api('/api/libraries'), api('/api/continue'), api('/api/tags')]);
+  const [libraries, recent, tags, lists, favorites] = await Promise.all([api('/api/libraries'), api('/api/continue'), api('/api/tags'),
+    api('/api/lists'), api(`/api/lists/${FAVORITES}`)]);
+  const myLists = lists.filter(l => !isFavorites(l.tag));
   mount(view,
     recent.length ? [h('h2', {}, 'Continue watching'), h('div', { class: 'grid' }, recent.map(r =>
       h('a', { class: 'tile', href: `#/play/${r.file.id}` },
         art(r.file.image, r.file.duration ? r.file.position / r.file.duration : 0),
         h('div', { class: 'name' }, r.show ?? r.file.title),
         h('div', { class: 'sub' }, r.show ? r.file.title : `${formatTime(r.file.position)} of ${formatTime(r.file.duration)}`))))] : null,
+    favorites.shows.length || favorites.movies.length
+      ? [h('div', { class: 'row' }, h('h2', {}, '★ Favorites'), h('a', { href: `#/list/${FAVORITES}` }, 'Play or shuffle →')),
+         h('div', { class: 'grid' }, showTiles(favorites.shows), movieTiles(favorites.movies))] : null,
+    myLists.length ? [h('h2', {}, 'My lists'), h('div', { class: 'chips' }, myLists.map(l =>
+      h('a', { class: 'chip', href: `#/list/${encodeURIComponent(l.tag)}` }, l.tag, h('span', { class: 'muted' }, ` ${l.items}`))))] : null,
     tags.length ? [h('h2', {}, 'Categories'), h('div', { class: 'chips' }, tags.map(t =>
       h('a', { class: 'chip', href: `#/tag/${encodeURIComponent(t.tag)}` }, t.tag, h('span', { class: 'muted' }, ` ${t.files}`))))] : null,
     h('h2', {}, 'Libraries'),
@@ -181,6 +231,25 @@ async function tagView(tag) {
     t.movies.length ? [h('h2', {}, 'Movies'), movieGrid] : null);
 }
 
+// One of the user's own lists (Favorites among them): the shows and movies they tagged with it
+async function listView(tag) {
+  const t = await api(`/api/lists/${encodeURIComponent(tag)}`);
+  const showGrid = h('div', { class: 'grid' }), movieGrid = h('div', { class: 'grid' });
+  const draw = q => {
+    const match = i => !q || i.title.toLowerCase().includes(q);
+    mount(showGrid, showTiles(t.shows.filter(match)));
+    mount(movieGrid, movieTiles(t.movies.filter(match)));
+  };
+  draw('');
+  const empty = !t.shows.length && !t.movies.length;
+  mount(view,
+    h('div', { class: 'row' }, h('h1', {}, t.favorites ? '★ Favorites' : t.tag), empty ? null : playButtons({ list: t.tag }, t.tag), empty ? null : filterBox(draw)),
+    h('p', { class: 'muted' }, 'Only you see your lists. Add a show or movie to one from its page.'),
+    t.shows.length ? [h('h2', {}, 'Shows'), showGrid] : null,
+    t.movies.length ? [h('h2', {}, 'Movies'), movieGrid] : null,
+    empty ? h('p', {}, 'Nothing in this list.') : null);
+}
+
 function episodeRow(e) {
   const done = e.finished;
   return h('a', { class: 'episode' + (done ? ' watched' : ''), href: `#/play/${e.id}`, onclick: () => clearQueue() },
@@ -201,7 +270,7 @@ async function showView(id) {
     mount(list, season.episodes.map(episodeRow));
   };
   mount(tabs, show.seasons.map(s => h('button', { 'data-id': s.id, onclick: () => pick(s) }, s.title)));
-  mount(view, h('div', { class: 'row' }, h('h1', {}, show.title), playButtons({ show: id }, show.title)), tabs, list);
+  mount(view, h('div', { class: 'row' }, h('h1', {}, show.title), playButtons({ show: id }, show.title)), listsControl('show', id), tabs, list);
   // Open on the first season with something unwatched
   const first = show.seasons.find(s => s.episodes.some(e => !e.finished)) ?? show.seasons[0];
   if (first) pick(first);
@@ -210,7 +279,7 @@ async function showView(id) {
 async function movieView(id) {
   const movie = await api(`/api/movies/${id}`);
   if (movie.parts.length === 1) { location.replace(`#/play/${movie.parts[0].id}`); return; }
-  mount(view, h('h1', {}, movie.title + (movie.year ? ` (${movie.year})` : '')),
+  mount(view, h('h1', {}, movie.title + (movie.year ? ` (${movie.year})` : '')), listsControl('movie', id),
     h('div', { class: 'episodes' }, movie.parts.map(p => episodeRow({ ...p, title: `Part ${p.partNumber}`, episodeNumber: null }))));
 }
 
@@ -241,7 +310,10 @@ async function playView(fileId) {
       return true;
     };
   }
-  mount(view, h('h1', {}, details.summary.title), queueBar, p.element(),
+  // Favorite or list the movie, or the show an episode is from, from here too
+  const lists = details.movieId ? listsControl('movie', details.movieId)
+    : details.showId ? listsControl('show', details.showId, 'This show:') : null;
+  mount(view, h('h1', {}, details.summary.title), queueBar, p.element(), lists,
     h('p', { class: 'muted' }, [details.videoCodec, details.width ? `${details.width}×${details.height}` : null, details.container].filter(Boolean).join(' · ')));
   try { await p.start(); }
   catch (e) { p.status.textContent = e.message; }

@@ -12,6 +12,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<Movie> Movies => Set<Movie>();
     public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
     public DbSet<PlaybackProgress> Progress => Set<PlaybackProgress>();
+    public DbSet<UserTag> UserTags => Set<UserTag>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -39,5 +40,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
 
         b.Entity<PlaybackProgress>().HasKey(p => new { p.UserId, p.MediaFileId });
         b.Entity<PlaybackProgress>().HasIndex(p => new { p.UserId, p.UpdatedUtc });
+
+        // A user's lists go with the user, and an entry with its show or movie (a rescan keeps those while their files stay)
+        b.Entity<UserTag>().Property(t => t.Tag).HasMaxLength(UserTag.MaxLength).UseCollation("NOCASE");
+        b.Entity<UserTag>().HasIndex(t => new { t.UserId, t.Tag });
+        b.Entity<UserTag>().HasIndex(t => t.ShowId);
+        b.Entity<UserTag>().HasIndex(t => t.MovieId);
+        b.Entity<UserTag>().HasOne<AppUser>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<UserTag>().HasOne<Show>().WithMany().HasForeignKey(t => t.ShowId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<UserTag>().HasOne<Movie>().WithMany().HasForeignKey(t => t.MovieId).OnDelete(DeleteBehavior.Cascade);
     }
 }

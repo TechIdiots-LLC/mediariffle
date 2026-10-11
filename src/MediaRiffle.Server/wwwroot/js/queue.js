@@ -1,7 +1,7 @@
 import { api } from './api.js';
 
-// What's playing in a row: a category, library or show, in order or shuffled. Kept per browser tab
-// (sessionStorage), so a reload carries on and another tab has its own.
+// What's playing in a row: a category, one of the user's lists, a library or a show, in order or shuffled.
+// Kept per browser tab (sessionStorage), so a reload carries on and another tab has its own.
 
 const KEY = 'mediariffle.queue';
 
@@ -15,7 +15,7 @@ function setQueue(q) {
 
 export function clearQueue() { setQueue(null); }
 
-// `what`: { tag } | { library } | { show }
+// `what`: { tag } | { list } | { library } | { show }
 export async function startQueue(what, shuffle, label) {
   const params = new URLSearchParams({ ...what, shuffle: String(!!shuffle) });
   const items = await api(`/api/queue?${params}`);

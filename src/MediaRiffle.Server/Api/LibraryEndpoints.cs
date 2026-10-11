@@ -45,16 +45,24 @@ public static class LibraryEndpoints
             return Results.Ok(new { tag, shows = await ShowsIn(db, ids), movies = await MoviesIn(db, ids) });
         });
 
-        // What to play in a row: a category, a library or a show, in order or shuffled. Episodes in season order,
-        // movies part by part; shuffled, every episode and movie part is mixed together.
-        g.MapGet("/queue", async (string? tag, int? library, int? show, bool? shuffle, LibraryCatalog catalog, AppDbContext db) =>
+        // What to play in a row: a category, one of the user's lists, a library or a show, in order or shuffled.
+        // Episodes in season order, movies part by part; shuffled, every episode and movie part is mixed together.
+        g.MapGet("/queue", async (string? tag, string? list, int? library, int? show, bool? shuffle,
+            ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
         {
             var enabled = catalog.Enabled.Select(l => l.Id).ToHashSet();
             IQueryable<MediaFile> q = db.MediaFiles.Where(f => f.ProbeError == null && f.ProbeJson != "");
             if (show is { } sid) q = q.Where(f => f.ShowId == sid);
             else if (library is { } lid) q = q.Where(f => f.LibraryId == lid);
             else if (!string.IsNullOrWhiteSpace(tag)) { var ids = catalog.WithTag(tag); q = q.Where(f => ids.Contains(f.LibraryId)); }
-            else return Results.BadRequest(new { error = "Say what to play: a tag, a library or a show." });
+            else if (!string.IsNullOrWhiteSpace(list))
+            {
+                var userId = users.GetUserId(me);
+                var name = list.Trim();
+                var mine = db.UserTags.Where(t => t.UserId == userId && t.Tag == name);
+                q = q.Where(f => mine.Any(t => (t.ShowId != null && t.ShowId == f.ShowId) || (t.MovieId != null && t.MovieId == f.MovieId)));
+            }
+            else return Results.BadRequest(new { error = "Say what to play: a tag, a list, a library or a show." });
 
             var rows = await q.Where(f => enabled.Contains(f.LibraryId))
                 .Select(f => new
@@ -124,6 +132,7 @@ public static class LibraryEndpoints
             return Results.Ok(new
             {
                 summary = FileSummary(f, progress),
+                f.ShowId, f.MovieId,
                 f.Container, f.VideoCodec, f.Width, f.Height, f.ProbeError,
                 bitrateKbps = probe.BitRateKbps,
                 // The qualities this user may pick, best first; Original only without a cap
@@ -191,13 +200,21 @@ public static class LibraryEndpoints
         });
     }
 
-    private static async Task<List<object>> ShowsIn(AppDbContext db, ICollection<int> libraries) =>
-        (await db.Shows.Where(s => libraries.Contains(s.LibraryId)).OrderBy(s => s.Title)
+    private static Task<List<object>> ShowsIn(AppDbContext db, ICollection<int> libraries) =>
+        ShowTiles(db, db.Shows.Where(s => libraries.Contains(s.LibraryId)));
+
+    private static Task<List<object>> MoviesIn(AppDbContext db, ICollection<int> libraries) =>
+        MovieTiles(db, db.Movies.Where(m => libraries.Contains(m.LibraryId)));
+
+    /// <summary>Shows as the browsing pages list them, by title.</summary>
+    internal static async Task<List<object>> ShowTiles(AppDbContext db, IQueryable<Show> shows) =>
+        (await shows.OrderBy(s => s.Title)
             .Select(s => new { s.Id, s.Title, episodes = db.MediaFiles.Count(f => f.ShowId == s.Id), image = $"/api/images/show/{s.Id}?v={ImageService.Version}" })
             .ToListAsync()).Cast<object>().ToList();
 
-    private static async Task<List<object>> MoviesIn(AppDbContext db, ICollection<int> libraries) =>
-        (await db.Movies.Where(m => libraries.Contains(m.LibraryId)).OrderBy(m => m.Title)
+    /// <summary>Movies as the browsing pages list them, by title.</summary>
+    internal static async Task<List<object>> MovieTiles(AppDbContext db, IQueryable<Movie> movies) =>
+        (await movies.OrderBy(m => m.Title)
             .Select(m => new { m.Id, m.Title, m.Year, parts = m.Parts.Count, image = $"/api/images/movie/{m.Id}?v={ImageService.Version}" })
             .ToListAsync()).Cast<object>().ToList();
 

@@ -2,7 +2,10 @@
 
 ## master
 ### ✨ Features and improvements
-- _...Add new stuff here..._
+- **Favorites and your own lists**: a ☆ Favorite button and an "Add to a list…" box on a show's or movie's page (and
+  while playing one). Everything you tag the same way is one of your lists, to browse, play through or shuffle like
+  the admins' categories; only you see them. The home page shows your Favorites and your lists. They go with the show
+  or movie when it leaves the library, and with the account.
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._

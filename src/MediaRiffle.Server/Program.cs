@@ -160,6 +160,7 @@ app.UseApiAntiforgery();
 app.MapAuthEndpoints();
 app.MapAdminEndpoints();
 app.MapLibraryEndpoints();
+app.MapListEndpoints();
 app.MapPlaybackEndpoints();
 app.MapStreamEndpoints();
 app.MapFallbackToFile("index.html");

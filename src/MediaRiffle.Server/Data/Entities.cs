@@ -117,6 +117,24 @@ public sealed class MediaFile
     public bool Missing { get; set; }
 }
 
+/// <summary>
+/// A user's own tag on a show or a movie (exactly one of <see cref="ShowId"/> and <see cref="MovieId"/>): everything a
+/// user tagged the same way is one of their lists, as the admins' library tags are everyone's categories. Favorites is
+/// the list named <see cref="Favorites"/>. Goes with the show or movie, and with the user.
+/// </summary>
+public sealed class UserTag
+{
+    public const string Favorites = "Favorites";
+    public const int MaxLength = 50;
+
+    public int Id { get; set; }
+    public string UserId { get; set; } = string.Empty;
+    public string Tag { get; set; } = string.Empty;
+    public int? ShowId { get; set; }
+    public int? MovieId { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
 /// <summary>Where a user stopped in a file.</summary>
 public sealed class PlaybackProgress
 {

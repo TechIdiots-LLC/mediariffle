@@ -138,3 +138,10 @@ button.icon { min-width: 42px; padding: 8px 10px; font-size: 16px; line-height: 
 .tv-help { font-size: 13px; }
 .tv-help ul { margin: 6px 0 0; padding-left: 18px; }
 .tv-what { color: var(--text); }
+
+/* A user's own lists on a show's, movie's or player's page: Favorite star, list chips with ×, add box */
+.my-lists { margin: 8px 0 14px; }
+.my-lists .chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px 4px 12px; }
+button.fav.on { color: #f5b301; border-color: #f5b301; }
+button.chip-x { background: transparent; color: var(--muted); padding: 0 6px; font-size: 16px; line-height: 1; }
+button.chip-x:hover { color: var(--danger); }
