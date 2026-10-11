@@ -78,6 +78,9 @@ builder.Services.ConfigureApplicationCookie(o =>
     o.Events.OnRedirectToLogin = c => { c.Response.StatusCode = StatusCodes.Status401Unauthorized; return Task.CompletedTask; };
     o.Events.OnRedirectToAccessDenied = c => { c.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
 });
+// A sign-in cookie carries the user's roles; it's checked against the database (and its roles refreshed, or the user
+// signed out if removed) every minute instead of every 30, so making someone an admin or a viewer takes effect quickly
+builder.Services.Configure<SecurityStampValidatorOptions>(o => o.ValidationInterval = TimeSpan.FromMinutes(1));
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("Admin", p => p.RequireRole(Roles.Admin));
 

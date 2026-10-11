@@ -12,6 +12,7 @@ namespace MediaRiffle.Server.Api;
 
 public sealed record InviteRequest(bool IsAdmin, int Days);
 public sealed record QualityCapRequest(string? MaxQuality);
+public sealed record RoleRequest(bool IsAdmin);
 public sealed record LibraryRequest(string Name, Options.LibraryKind Kind, string Path, string? Tags, bool Enabled = true);
 public sealed record PathCheckRequest(string Path);
 
@@ -65,6 +66,19 @@ public static class AdminEndpoints
             user.MaxQuality = req.MaxQuality;
             await users.UpdateAsync(user);
             return Results.Ok();
+        });
+
+        // Make a viewer an admin, or an admin a viewer. Not yourself (so the last admin can't lock everyone out of
+        // Admin by accident); the change reaches the user's open sessions within a minute (see Program.cs).
+        g.MapPost("/users/{id}/role", async (string id, RoleRequest req, ClaimsPrincipal me, UserManager<AppUser> users) =>
+        {
+            if (users.GetUserId(me) == id) return Results.BadRequest(new { error = "You can't change your own role; another admin can." });
+            var user = await users.FindByIdAsync(id);
+            if (user is null) return Results.NotFound();
+            var isAdmin = await users.IsInRoleAsync(user, Roles.Admin);
+            if (req.IsAdmin == isAdmin) return Results.Ok();
+            var result = req.IsAdmin ? await users.AddToRoleAsync(user, Roles.Admin) : await users.RemoveFromRoleAsync(user, Roles.Admin);
+            return result.Succeeded ? Results.Ok() : Results.BadRequest(new { error = string.Join(" ", result.Errors.Select(e => e.Description)) });
         });
 
         g.MapGet("/qualities", () => Quality.Ladder.Select(l => new { l.Id, l.Label }));

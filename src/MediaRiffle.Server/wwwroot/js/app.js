@@ -430,7 +430,16 @@ async function adminView() {
     h('table', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Role'), h('th', { title: 'The best quality this user may stream' }, 'Best quality'), h('th', {}, 'Joined'), h('th', {})),
       users.map(u => h('tr', {},
         h('td', {}, u.userName, u.lockedOut ? h('span', { class: 'error' }, ' (locked out)') : null),
-        h('td', {}, u.isAdmin ? 'Admin' : 'Viewer'),
+        // Your own role is fixed here (another admin can change it), so Admin can't be left without anyone
+        h('td', {}, u.userName === state.user.name ? (u.isAdmin ? 'Admin' : 'Viewer') : h('select', { onchange: async e => {
+            const admin = e.target.value === 'admin';
+            if (admin && !confirm(`Make ${u.userName} an admin? Admins can add and remove libraries, users and invites.`)) { e.target.value = 'viewer'; return; }
+            try { await api(`/api/admin/users/${u.id}/role`, { method: 'POST', body: { isAdmin: admin } }); }
+            catch (err) { alert(err.message); }
+            adminView();
+          } },
+          h('option', { value: 'viewer', selected: !u.isAdmin }, 'Viewer'),
+          h('option', { value: 'admin', selected: u.isAdmin }, 'Admin'))),
         h('td', {}, h('select', { onchange: async e => {
             await api(`/api/admin/users/${u.id}/quality`, { method: 'POST', body: { maxQuality: e.target.value || null } });
           } },
