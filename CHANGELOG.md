@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.3.0
+### ✨ Features and improvements
 - **AirPlay** (Safari on Mac, iPhone and iPad): an AirPlay button appears when Safari finds a receiver, such as an
   Apple TV or a TV or Roku with AirPlay 2, which then fetches the stream itself as a Chromecast does. Safari now plays
   HLS with its own player instead of hls.js, which AirPlay needs. An x265 stream sent as it is switches to H.264 when
@@ -14,7 +21,6 @@
 - **Player buttons** in the order play/pause, previous, next, back 10 s, forward 30 s, stop.
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
 
 ## 0.2.0
 ### ✨ Features and improvements
