@@ -1,0 +1,13 @@
+#!/bin/sh
+# Removal keeps the data (database, sign-in keys, pictures) and settings; purge deletes them and the service user.
+set -e
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+fi
+if [ "$1" = "purge" ]; then
+    rm -rf /var/lib/mediariffle /etc/mediariffle
+    if getent passwd mediariffle >/dev/null; then
+        deluser --system mediariffle >/dev/null || true
+    fi
+fi
+exit 0

@@ -32,8 +32,7 @@ LockPersonality=true
 RestrictNamespaces=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 CapabilityBoundingSet=
-# For VA-API / Quick Sync encoding the GPU's render node has to be reachable (user in the 'render' group)
-SupplementaryGroups=render
+# VA-API / Quick Sync encoding needs the GPU's render node: the installer adds the user to the 'render' group
 
 [Install]
 WantedBy=multi-user.target

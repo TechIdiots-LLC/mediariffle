@@ -10,3 +10,6 @@ publish/
 *.db-wal
 TestResults/
 appsettings.Local.json
+ci-files/
+release-files/
+bump_version.txt

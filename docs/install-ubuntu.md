@@ -6,6 +6,34 @@ Apache/nginx), which handles HTTPS. See [reverse-proxy.md](reverse-proxy.md) for
 
 Host names here are placeholders (`media01.example.lan`, `media.example.com`).
 
+## The quick way: the .deb
+
+Download `mediariffle_<version>-1_amd64.deb` (or `_arm64.deb`) from the release, then:
+
+```sh
+sudo apt install ./mediariffle_0.1.0-1_amd64.deb
+```
+
+That installs ffmpeg and the libraries .NET needs, and sets everything up:
+
+- the program in `/opt/mediariffle`
+- the `mediariffle` service user, and `/var/lib/mediariffle` for its data
+- your settings in `/etc/mediariffle/appsettings.json`
+- the hardened `mediariffle` systemd service, enabled and started
+
+Edit the settings (step 4 below explains them), then `sudo systemctl restart mediariffle`.
+
+- **Upgrading** is the same `apt install` with the newer `.deb`: the service is stopped, replaced and started again,
+  and your settings are kept. If both you and the new version changed the settings file, apt asks which to keep.
+- **`sudo apt remove mediariffle`** removes the program but keeps the data and settings.
+- **`sudo apt purge mediariffle`** also deletes the data, the settings and the service user.
+
+For another systemd distribution, use `MediaRiffle-v<version>-linux-x64.tar.gz` instead: unpack it and run
+`sudo sh install.sh`, which does the same (and `sudo sh install.sh --uninstall` to remove it).
+
+To mount a file share for the media, see [file-server.md](file-server.md). The steps below are the same setup done by
+hand.
+
 ## 1. Packages
 
 ```sh

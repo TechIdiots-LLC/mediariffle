@@ -98,3 +98,5 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--bord
 .form-wide label { display: grid; gap: 4px; }
 code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 tr.muted td { color: var(--muted); }
+
+.foot { text-align: center; font-size: 12px; padding: 24px 16px; }

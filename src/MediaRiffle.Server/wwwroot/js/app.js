@@ -12,6 +12,7 @@ async function loadState() {
   state = await api('/api/auth/state');
   await refreshCsrf();   // the token belongs to the signed-in user, so it changes with sign-in
   renderNav();
+  document.getElementById('foot').textContent = `MediaRiffle ${state.version ?? ''}`;
 }
 
 function renderNav() {

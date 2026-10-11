@@ -4,6 +4,13 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- The release version: CI releases it when no release has it yet, and the version bump changes it -->
+    <Version>0.1.0</Version>
+    <Product>MediaRiffle</Product>
+    <Company>TechIdiots LLC</Company>
+    <Copyright>TechIdiots LLC</Copyright>
+    <!-- No "+commit" suffix in the version the app reports -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

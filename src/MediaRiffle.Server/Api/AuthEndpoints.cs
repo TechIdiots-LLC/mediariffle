@@ -25,6 +25,7 @@ public static class AuthEndpoints
 
         g.MapGet("/state", async (ClaimsPrincipal user, UserManager<AppUser> users) => new
         {
+            version = Version,
             setupNeeded = !await users.Users.AnyAsync(),
             user = user.Identity?.IsAuthenticated == true
                 ? new { name = user.Identity.Name, isAdmin = user.IsInRole(Roles.Admin) }
@@ -81,6 +82,11 @@ public static class AuthEndpoints
             return Results.Ok();
         }).RequireRateLimiting("auth");
     }
+
+    /// <summary>The running version, e.g. 0.1.0 (from &lt;Version&gt; in the project file).</summary>
+    public static readonly string Version =
+        typeof(AuthEndpoints).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "dev";
 
     /// <summary>Invite tokens are stored only as their SHA-256, so the database alone can't be used to join.</summary>
     public static string HashToken(string token) =>

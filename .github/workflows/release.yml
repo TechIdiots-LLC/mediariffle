@@ -1,0 +1,94 @@
+name: Build and Release
+
+# On a push to main, releases <Version> (src/MediaRiffle.Server/MediaRiffle.Server.csproj) if there's no GitHub release
+# for it yet, with the matching CHANGELOG.md section as the notes. Same files as the GitLab pipeline (build/Package.ps1).
+# Secrets (optional): SIG_PFX (base64 of a code-signing .pfx) and SIG_PFX_PASS sign the Windows exe and installers.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release-check:
+    name: Check if version is already released
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      published: ${{ steps.check.outputs.published }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          VERSION=$(grep -oP '<Version>\K[^<]+' src/MediaRiffle.Server/MediaRiffle.Server.csproj | head -1)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/v${VERSION}")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "published=$([ "$STATUS" = "200" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$(echo "$VERSION" | grep -q -- '-' && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "Version $VERSION, already released: $STATUS"
+
+  build:
+    name: Build (${{ matrix.rid }})
+    runs-on: windows-latest
+    needs: release-check
+    if: ${{ needs.release-check.outputs.published == 'false' }}
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [win-x64, win-arm64, linux-x64, linux-arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install NSIS
+        if: startsWith(matrix.rid, 'win-')
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis.exe -ErrorAction SilentlyContinue) -and -not (Test-Path 'C:\Program Files (x86)\NSIS\makensis.exe')) {
+            choco install nsis -y --no-progress
+          }
+      - name: Package
+        shell: pwsh
+        env:
+          SIG_PFX_B64: ${{ secrets.SIG_PFX }}
+          SIG_PFX_PASS: ${{ secrets.SIG_PFX_PASS }}
+        run: ./build/Package.ps1 -Rid ${{ matrix.rid }} -OutDir release-files -Version "${{ needs.release-check.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.rid }}
+          path: release-files/
+          retention-days: 7
+
+  release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs: [release-check, build]
+    if: ${{ needs.release-check.outputs.published == 'false' }}
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-files
+          merge-multiple: true
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v ver="## ${{ needs.release-check.outputs.version }}" \
+            'BEGIN{p=0} $0==ver{p=1; next} /^## / && p==1{exit} p==1{print}' CHANGELOG.md > notes.md
+          cat notes.md
+      - uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ needs.release-check.outputs.version }}
+          name: MediaRiffle v${{ needs.release-check.outputs.version }}
+          bodyFile: notes.md
+          artifacts: release-files/*
+          prerelease: ${{ needs.release-check.outputs.prerelease }}
+          allowUpdates: true

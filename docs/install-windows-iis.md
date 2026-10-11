@@ -1,8 +1,40 @@
-# Installing on Windows Server 2025 with IIS
+# Installing on Windows Server 2025
+
+There are two ways: as a **Windows service** with the installer (simplest), or **inside IIS**. Either way a reverse
+proxy (HAProxy, or IIS itself) handles HTTPS. Names are placeholders: `EXAMPLE\gmsa-mediariffle$`, `MEDIA01`,
+`files.example.lan`, `media.example.com`.
+
+## As a Windows service (installer)
+
+1. Install ffmpeg: a Windows build (e.g. from https://www.gyan.dev/ffmpeg/builds/), unpacked so that
+   `C:\Tools\ffmpeg\bin\ffmpeg.exe` exists.
+2. Run `MediaRiffle-v<version>-win-x64-setup.exe`. It needs no .NET runtime (it carries its own), and it:
+   - installs to `C:\Program Files\MediaRiffle`;
+   - creates the **MediaRiffle** service (automatic, delayed start, restarted if it stops) running as its own virtual
+     account, `NT SERVICE\MediaRiffle`, which may change only `C:\ProgramData\MediaRiffle`;
+   - writes `C:\ProgramData\MediaRiffle\appsettings.json` if there isn't one, and starts the service;
+   - optionally opens TCP 5080 in Windows Firewall (off by default; only needed when the proxy is on another
+     machine).
+3. Edit `C:\ProgramData\MediaRiffle\appsettings.json` (the ffmpeg folder, the listening address, the proxy's address;
+   see [configuration.md](configuration.md)), then `Restart-Service MediaRiffle`.
+4. Open `http://localhost:5080/` on the server, or the site through the proxy. The first visit creates the admin
+   account.
+
+**Reading a file share:** on the network the virtual account acts as the computer itself (`EXAMPLE\MEDIA01$`). Add
+the computer account to the `MediaRiffle Readers` group ([file-server.md](file-server.md)), restart the server so
+the new group membership applies, and UNC library paths work with no password to keep. To run the service as a gMSA
+instead: `sc.exe config MediaRiffle obj= "EXAMPLE\gmsa-mediariffle$"` (then grant that account Modify on
+`C:\ProgramData\MediaRiffle`).
+
+**Upgrading:** run the newer installer; it stops the service, replaces the program and starts it again. Settings and
+data are kept. **Uninstalling** (Apps & Features) removes the service and the program; `C:\ProgramData\MediaRiffle`
+stays, for a reinstall.
+
+## Inside IIS
 
 MediaRiffle runs inside IIS through the ASP.NET Core Module, in its own app pool, under an identity that can read the
-media share (see [file-server.md](file-server.md)). Names are placeholders: `EXAMPLE\gmsa-mediariffle$`,
-`files.example.lan`, `media.example.com`.
+media share (see [file-server.md](file-server.md)). Use the release's `MediaRiffle-v<version>-win-x64.zip` instead of
+building it, unpacked to `C:\inetpub\mediariffle`.
 
 ## 1. Prerequisites
 

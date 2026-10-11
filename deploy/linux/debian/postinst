@@ -1,0 +1,25 @@
+#!/bin/sh
+# After install or upgrade: the service user, its data folder, settings readable by it, and the service running.
+set -e
+
+if [ "$1" = "configure" ]; then
+    if ! getent passwd mediariffle >/dev/null; then
+        adduser --system --group --home /var/lib/mediariffle --no-create-home --shell /usr/sbin/nologin mediariffle
+    fi
+    # For VA-API / Quick Sync encoding: the GPU's render node
+    if getent group render >/dev/null; then
+        usermod -aG render mediariffle || true
+    fi
+    install -d -o mediariffle -g mediariffle -m 0750 /var/lib/mediariffle
+    chown root:mediariffle /etc/mediariffle/appsettings.json
+    chmod 0640 /etc/mediariffle/appsettings.json
+
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        systemctl enable mediariffle.service >/dev/null
+        systemctl restart mediariffle.service || true
+    fi
+    echo "MediaRiffle is running on the address in /etc/mediariffle/appsettings.json (http://127.0.0.1:5080 by default)."
+    echo "Open it through your reverse proxy; the first visit creates the admin account."
+fi
+exit 0

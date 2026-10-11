@@ -43,8 +43,8 @@ ffserver was removed from FFmpeg in 2018 and the player used Flash.
 
 | Platform | Guide |
 | --- | --- |
-| Ubuntu 24.04, systemd | [docs/install-ubuntu.md](docs/install-ubuntu.md) |
-| Windows Server 2025, IIS | [docs/install-windows-iis.md](docs/install-windows-iis.md) |
+| Ubuntu 24.04 (.deb) and other systemd Linux | [docs/install-ubuntu.md](docs/install-ubuntu.md) |
+| Windows Server 2025 (service installer or IIS) | [docs/install-windows-iis.md](docs/install-windows-iis.md) |
 | Media on another server (SMB, domain accounts) | [docs/file-server.md](docs/file-server.md) |
 | HAProxy, Apache or nginx in front | [docs/reverse-proxy.md](docs/reverse-proxy.md) |
 
@@ -65,3 +65,21 @@ migrations: `dotnet tool restore`, then `dotnet ef migrations add <Name> -p src/
 
 The web UI is plain JavaScript modules in `src/MediaRiffle.Server/wwwroot` with no build step;
 [hls.js](https://github.com/video-dev/hls.js) (Apache-2.0) is in `wwwroot/lib`.
+
+## Releases
+
+Each release has, for x64 and arm64: a Windows service installer (`-setup.exe`), a portable Windows zip (also for
+IIS), a `.deb` for Ubuntu/Debian, and a `.tar.gz` with `install.sh` for other Linux distributions.
+
+The version is `<Version>` in `src/MediaRiffle.Server/MediaRiffle.Server.csproj`. When a push to `main` carries a
+version with no release yet, the pipeline builds every package (`build/Package.ps1`) and publishes the release with
+that version's `CHANGELOG.md` section as the notes. To make one:
+
+- **GitLab:** Build → Pipelines → New pipeline on `main`, with `BUMP_VERSION` set (`patch`, `minor`, …). It opens a
+  `release-v<version>` merge request; merging it releases.
+- **GitHub:** Actions → *Create bump version PR* → Run workflow; merging the pull request releases.
+
+New changes go under `## master` in `CHANGELOG.md`; the bump moves them into the new version.
+
+Packages can also be built by hand: `./build/Package.ps1 -Rid win-x64` (needs NSIS for the installer) or
+`-Rid linux-x64` (needs only the .NET SDK).
