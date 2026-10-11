@@ -68,7 +68,7 @@ public class PlaybackPlannerTests
         // Tongue built a shell command and escaped by hand; here the path is a single argv entry, whatever it holds
         var evil = "/media/Show/Season 01/it's a \"test\" & $(rm -rf ~) ; `id`.mkv";
         var plan = PlaybackPlanner.Decide(Probe("matroska,webm", V("hevc", pix: "yuv420p10le", profile: "Main 10"), A(1, "dts", 6)), ".mkv", null, null);
-        var args = PlaybackPlanner.HlsArguments(plan, evil, 120, "/tmp/out", new TranscodingOptions());
+        var args = PlaybackPlanner.HlsArguments(plan, evil, 120, new TranscodingOptions());
         Assert.Equal(evil, args[args.IndexOf("-i") + 1]);
         Assert.Contains("120", args);
         Assert.Contains("libx264", args);
@@ -80,7 +80,7 @@ public class PlaybackPlannerTests
     public void RemuxCopiesVideoAndCompatibleAudio()
     {
         var plan = PlaybackPlanner.Decide(Probe("matroska,webm", V("h264"), A(1, "aac")), ".mkv", null, null);
-        var args = PlaybackPlanner.HlsArguments(plan, "/m/a.mkv", 0, "/tmp/out", new TranscodingOptions());
+        var args = PlaybackPlanner.HlsArguments(plan, "/m/a.mkv", 0, new TranscodingOptions());
         Assert.Equal("copy", args[args.IndexOf("-c:v") + 1]);
         Assert.Equal("copy", args[args.IndexOf("-c:a") + 1]);
         Assert.DoesNotContain("-ss", args);
@@ -90,7 +90,7 @@ public class PlaybackPlannerTests
     public void TranscodeScalesDownTallVideo()
     {
         var plan = PlaybackPlanner.Decide(Probe("matroska,webm", V("hevc", 2160, "yuv420p10le", "Main 10")), ".mkv", null, null);
-        var args = PlaybackPlanner.HlsArguments(plan, "/m/a.mkv", 0, "/tmp/out", new TranscodingOptions { MaxHeight = 1080 });
+        var args = PlaybackPlanner.HlsArguments(plan, "/m/a.mkv", 0, new TranscodingOptions { MaxHeight = 1080 });
         Assert.Contains(args, a => a.Contains("scale=-2:1080"));
     }
 }

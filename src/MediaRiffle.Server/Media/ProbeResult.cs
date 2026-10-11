@@ -34,6 +34,8 @@ public sealed class ProbeResult
 {
     public string FormatName { get; init; } = string.Empty;
     public double DurationSeconds { get; init; }
+    /// <summary>The whole file's average bitrate (video and all audio), in kbit/s; 0 if unknown.</summary>
+    public int BitRateKbps { get; init; }
     public List<ProbeStream> Streams { get; init; } = new();
 
     public ProbeStream? Video => Streams.FirstOrDefault(s => s.Type == StreamType.Video);
@@ -76,6 +78,7 @@ public sealed class ProbeResult
         {
             FormatName = Str(format, "format_name") ?? string.Empty,
             DurationSeconds = double.TryParse(Str(format, "duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out var dur) ? dur : 0,
+            BitRateKbps = long.TryParse(Str(format, "bit_rate"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var br) ? (int)(br / 1000) : 0,
             Streams = streams,
         };
     }

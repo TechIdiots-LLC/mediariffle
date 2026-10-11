@@ -18,7 +18,8 @@ public sealed class Ffmpeg(IOptions<MediaRiffleOptions> options, ILogger<Ffmpeg>
     {
         var exe = OperatingSystem.IsWindows() ? name + ".exe" : name;
         var folder = options.Value.Transcoding.FfmpegFolder;
-        return string.IsNullOrWhiteSpace(folder) ? exe : Path.Combine(folder, exe);
+        // Absolute, as ffmpeg runs in each session's folder
+        return string.IsNullOrWhiteSpace(folder) ? exe : Path.GetFullPath(Path.Combine(folder, exe));
     }
 
     public ProcessStartInfo StartInfo(string tool, IEnumerable<string> args)

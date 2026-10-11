@@ -55,6 +55,23 @@ Put your settings in file 2. A complete example:
 | `Transcoding.IdleTimeoutSeconds` | A stream nobody fetches from for this long is stopped and its files deleted. |
 | `Kestrel:Endpoints` | Where MediaRiffle listens. `127.0.0.1` when the proxy is on the same machine; the machine's LAN address when it isn't (then firewall the port to the proxy only). Not used under IIS. |
 
+## Quality
+
+The player has a quality menu: **Auto**, **Original**, and 1080p (8 Mbit/s), 720p (4), 480p (1.5), 360p (0.8).
+Only one stream runs per viewer; changing quality restarts it at the same point in the video.
+
+- **Original** sends the file's own video when the device can decode it: H.264 everywhere, and HEVC (x265) on
+  devices that report it (Safari; Chrome/Edge with a hardware HEVC decoder; Chrome on Android). Copied HEVC goes out
+  as fMP4 segments. Anything the device can't decode is transcoded to H.264 at the server's maximum
+  (`MaxHeight`/`MaxVideoKbps`).
+- **A level** transcodes to that height and bitrate, unless the file already fits in it (then it's sent as it is).
+- **Auto** starts at the best level the measured connection carries with room to spare, steps down after repeated
+  stalls or when downloads fall behind, and steps back up after a minute with plenty of headroom.
+- Casting always uses H.264, as most Chromecasts can't decode HEVC.
+
+Admins can cap a user's quality (**Admin → Users → Best quality**), e.g. 720p for someone streaming over a slow
+connection, so one viewer can't use all of the server's upload. A capped user doesn't get Original.
+
 ## Library layout
 
 ```

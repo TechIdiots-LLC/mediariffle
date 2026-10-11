@@ -40,14 +40,14 @@ export function onCastChange(callback) {
   return () => ctx.removeEventListener(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, handler);
 }
 
-export function castMedia({ url, contentType, hls, title, currentTime, subtitleUrl }) {
+export function castMedia({ url, contentType, hls, fmp4 = false, title, currentTime, subtitleUrl }) {
   const session = cast.framework.CastContext.getInstance().getCurrentSession();
   if (!session) return;
   const info = new chrome.cast.media.MediaInfo(url, contentType);
   info.streamType = chrome.cast.media.StreamType.BUFFERED;
   if (hls) {
-    info.hlsSegmentFormat = chrome.cast.media.HlsSegmentFormat.TS;
-    info.hlsVideoSegmentFormat = chrome.cast.media.HlsVideoSegmentFormat.MPEG2_TS;
+    info.hlsSegmentFormat = fmp4 ? chrome.cast.media.HlsSegmentFormat.FMP4 : chrome.cast.media.HlsSegmentFormat.TS;
+    info.hlsVideoSegmentFormat = fmp4 ? chrome.cast.media.HlsVideoSegmentFormat.FMP4 : chrome.cast.media.HlsVideoSegmentFormat.MPEG2_TS;
   }
   info.metadata = new chrome.cast.media.GenericMediaMetadata();
   info.metadata.title = title;

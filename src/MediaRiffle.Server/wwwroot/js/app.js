@@ -188,8 +188,8 @@ async function playView(fileId) {
 
 async function adminView() {
   if (!state.user?.isAdmin) { location.hash = '#/'; return; }
-  const [users, invites, scan, sessions] = await Promise.all([
-    api('/api/admin/users'), api('/api/admin/invites'), api('/api/admin/scan'), api('/api/admin/sessions')]);
+  const [users, invites, scan, sessions, qualities] = await Promise.all([
+    api('/api/admin/users'), api('/api/admin/invites'), api('/api/admin/scan'), api('/api/admin/sessions'), api('/api/admin/qualities')]);
 
   const link = h('input', { readonly: true, size: 60 });
   const asAdmin = h('input', { type: 'checkbox' });
@@ -211,10 +211,15 @@ async function adminView() {
       h('p', {}, link),
       h('p', { class: 'muted' }, 'The link works once. Only this page shows it; it isn\'t stored.')),
     h('h2', {}, 'Users'),
-    h('table', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Role'), h('th', {}, 'Joined'), h('th', {})),
+    h('table', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Role'), h('th', { title: 'The best quality this user may stream' }, 'Best quality'), h('th', {}, 'Joined'), h('th', {})),
       users.map(u => h('tr', {},
         h('td', {}, u.userName, u.lockedOut ? h('span', { class: 'error' }, ' (locked out)') : null),
         h('td', {}, u.isAdmin ? 'Admin' : 'Viewer'),
+        h('td', {}, h('select', { onchange: async e => {
+            await api(`/api/admin/users/${u.id}/quality`, { method: 'POST', body: { maxQuality: e.target.value || null } });
+          } },
+          h('option', { value: '', selected: !u.maxQuality }, 'No limit'),
+          qualities.map(q => h('option', { value: q.id, selected: u.maxQuality === q.id }, q.label)))),
         h('td', {}, new Date(u.createdUtc).toLocaleDateString()),
         h('td', { class: 'row' },
           u.lockedOut ? h('button', { class: 'secondary', onclick: async () => { await api(`/api/admin/users/${u.id}/unlock`, { method: 'POST' }); adminView(); } }, 'Unlock') : null,

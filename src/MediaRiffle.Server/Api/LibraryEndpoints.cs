@@ -72,10 +72,16 @@ public static class LibraryEndpoints
             var progress = await ProgressFor(db, users.GetUserId(me)!, [id]);
             var probe = string.IsNullOrEmpty(f.ProbeJson) ? new ProbeResult() : ProbeResult.Parse(f.ProbeJson);
             var path = files.FullPath(f);
+            var cap = Quality.Level((await users.GetUserAsync(me))?.MaxQuality);
             return Results.Ok(new
             {
                 summary = FileSummary(f, progress),
                 f.Container, f.VideoCodec, f.Width, f.Height, f.ProbeError,
+                bitrateKbps = probe.BitRateKbps,
+                // The qualities this user may pick, best first; Original only without a cap
+                qualities = (cap is null ? new[] { new { id = Quality.Original, label = "Original", kbps = probe.BitRateKbps } } : [])
+                    .Concat(Quality.Ladder.Where(l => cap is null || l.Height <= cap.Height)
+                        .Select(l => new { id = l.Id, label = $"{l.Label} ({l.TotalKbps / 1000.0:0.#} Mbit/s)", kbps = l.TotalKbps })),
                 audio = probe.Audio.Select(a => new { a.Index, a.Label, a.IsDefault }),
                 subtitles = probe.Subtitles.Select(s => new { id = $"s{s.Index}", s.Label, text = s.IsTextSubtitle })
                     .Concat((path is null ? new() : LibraryFiles.Sidecars(path)).Select(x => new { id = $"x{x.Number}", x.Label, text = true })),

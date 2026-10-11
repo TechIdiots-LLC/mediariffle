@@ -86,8 +86,10 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
             if (plan.Mode != PlaybackMode.Direct)
             {
                 System.IO.Directory.CreateDirectory(dir);
-                var args = PlaybackPlanner.HlsArguments(plan, fullPath, startSeconds, dir, T);
-                var p = new Process { StartInfo = ffmpeg.StartInfo(ffmpeg.FfmpegPath, args), EnableRaisingEvents = true };
+                var args = PlaybackPlanner.HlsArguments(plan, fullPath, startSeconds, T);
+                var psi = ffmpeg.StartInfo(ffmpeg.FfmpegPath, args);
+                psi.WorkingDirectory = dir;   // the playlist and segments are written here, by relative name
+                var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
                 p.ErrorDataReceived += (_, e) => { if (e.Data is { Length: > 0 } line) session.AddError(line); };
                 p.Exited += (_, _) =>
                 {

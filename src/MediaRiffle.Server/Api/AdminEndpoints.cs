@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using MediaRiffle.Server.Data;
 using MediaRiffle.Server.Library;
+using MediaRiffle.Server.Media;
 using MediaRiffle.Server.Security;
 using MediaRiffle.Server.Streaming;
 using Microsoft.AspNetCore.Identity;
@@ -10,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 namespace MediaRiffle.Server.Api;
 
 public sealed record InviteRequest(bool IsAdmin, int Days);
+public sealed record QualityCapRequest(string? MaxQuality);
 
 /// <summary>Admin only: invites, users, library scans and the streams running now.</summary>
 public static class AdminEndpoints
@@ -48,8 +50,22 @@ public static class AdminEndpoints
         {
             var admins = (await users.GetUsersInRoleAsync(Roles.Admin)).Select(u => u.Id).ToHashSet();
             return (await users.Users.OrderBy(u => u.UserName).ToListAsync())
-                .Select(u => new { u.Id, u.UserName, u.CreatedUtc, isAdmin = admins.Contains(u.Id), lockedOut = u.LockoutEnd > DateTimeOffset.UtcNow });
+                .Select(u => new { u.Id, u.UserName, u.CreatedUtc, isAdmin = admins.Contains(u.Id), lockedOut = u.LockoutEnd > DateTimeOffset.UtcNow, u.MaxQuality });
         });
+
+        // The best quality a user may stream (e.g. "720" for someone on a slow connection), or none for no limit
+        g.MapPost("/users/{id}/quality", async (string id, QualityCapRequest req, UserManager<AppUser> users) =>
+        {
+            var user = await users.FindByIdAsync(id);
+            if (user is null) return Results.NotFound();
+            if (req.MaxQuality is not null && Quality.Level(req.MaxQuality) is null)
+                return Results.BadRequest(new { error = "Unknown quality." });
+            user.MaxQuality = req.MaxQuality;
+            await users.UpdateAsync(user);
+            return Results.Ok();
+        });
+
+        g.MapGet("/qualities", () => Quality.Ladder.Select(l => new { l.Id, l.Label }));
 
         g.MapDelete("/users/{id}", async (string id, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
         {

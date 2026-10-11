@@ -5,6 +5,8 @@ namespace MediaRiffle.Server.Data;
 public sealed class AppUser : IdentityUser
 {
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    /// <summary>The best quality this user may stream (a Quality.Ladder id), or null for no limit.</summary>
+    public string? MaxQuality { get; set; }
 }
 
 /// <summary>A one-time invitation to create an account. Only the token's SHA-256 is stored.</summary>

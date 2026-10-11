@@ -4,7 +4,9 @@ using System.Text.RegularExpressions;
 using MediaRiffle.Server.Data;
 using MediaRiffle.Server.Library;
 using MediaRiffle.Server.Media;
+using MediaRiffle.Server.Options;
 using MediaRiffle.Server.Streaming;
+using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,14 +15,20 @@ namespace MediaRiffle.Server.Api;
 /// <param name="Subtitle">"s{stream}" for one in the file, "x{n}" for a side-car file, or null.</param>
 /// <param name="Burn">Burn an image subtitle (PGS/DVD) into the video, which means transcoding.</param>
 /// <param name="Start">Where to start, in seconds; null to resume where the user stopped.</param>
-public sealed record PlayRequest(int FileId, int? Audio, string? Subtitle, bool Burn, double? Start);
+/// <param name="Quality">"original" or a Quality.Ladder id ("1080", "720", …); the player's Auto picks one.</param>
+/// <param name="Hevc">The browser decodes HEVC Main (8-bit); <paramref name="Hevc10"/> Main 10.</param>
+public sealed record PlayRequest(int FileId, int? Audio, string? Subtitle, bool Burn, double? Start,
+    string? Quality = null, bool Hevc = false, bool Hevc10 = false);
 
 public sealed record ProgressRequest(int FileId, double Position, bool? Finished);
 
 public static partial class PlaybackEndpoints
 {
-    [GeneratedRegex(@"^seg\d{5}\.ts$")]
+    [GeneratedRegex(@"^(?:seg\d{5}\.(?:ts|m4s)|init\.mp4)$")]
     private static partial Regex SegmentName();
+
+    // Random, so no proxy or link can compress it: the speed test measures the real connection
+    private static readonly byte[] SpeedTestBytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(1_000_000);
 
     [GeneratedRegex(@"^(?<kind>[sx])(?<n>\d{1,4})$")]
     private static partial Regex SubtitleId();
@@ -33,7 +41,8 @@ public static partial class PlaybackEndpoints
         var g = app.MapGroup("/api").RequireAuthorization();
 
         g.MapPost("/play", async (PlayRequest req, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db,
-                                   LibraryFiles files, StreamSessionManager sessions, Ffmpeg ffmpeg, CancellationToken ct) =>
+                                   LibraryFiles files, StreamSessionManager sessions, Ffmpeg ffmpeg,
+                                   IOptions<MediaRiffleOptions> options, CancellationToken ct) =>
         {
             var userId = users.GetUserId(me)!;
             var file = await db.MediaFiles.FirstOrDefaultAsync(f => f.Id == req.FileId, ct);
@@ -48,7 +57,10 @@ public static partial class PlaybackEndpoints
             int? burn = null;
             if (req.Burn && req.Subtitle is { } sid && SubtitleId().Match(sid) is { Success: true } m && m.Groups["kind"].Value == "s")
                 burn = int.Parse(m.Groups["n"].Value);
-            var plan = PlaybackPlanner.Decide(probe, Path.GetExtension(path), req.Audio, burn);
+            var account = await users.FindByIdAsync(userId);
+            var quality = Media.Quality.Clamp(req.Quality, account?.MaxQuality);
+            var plan = PlaybackPlanner.Decide(probe, Path.GetExtension(path), req.Audio, burn,
+                quality, new ClientCaps(req.Hevc, req.Hevc10), options.Value.Transcoding);
 
             var start = req.Start;
             if (start is null)
@@ -82,6 +94,11 @@ public static partial class PlaybackEndpoints
                 sessionId = session.Id,
                 mode = plan.Mode.ToString(),
                 reason = plan.Reason,
+                quality = plan.Quality,
+                streamKbps = plan.StreamKbps,
+                segments = plan.Segments.ToString(),
+                // What the stream's video is: the file's own when it isn't transcoded (Cast needs to know)
+                videoCodec = plan.Mode == PlaybackMode.Transcode ? "h264" : plan.Video?.Codec,
                 url = plan.Mode == PlaybackMode.Direct ? $"{baseUrl}/file" : $"{baseUrl}/index.m3u8",
                 contentType = plan.Mode == PlaybackMode.Direct ? ContentType(path) : "application/vnd.apple.mpegurl",
                 startSeconds = session.StartSeconds,
@@ -92,6 +109,13 @@ public static partial class PlaybackEndpoints
                 burnedSubtitle = plan.BurnSubtitle is { } b ? $"s{b.Index}" : null,
                 subtitles = textSubs,
             });
+        }).RequireRateLimiting("play");
+
+        // 1 MB the player times to choose Auto's starting quality
+        g.MapGet("/speedtest", (HttpContext ctx) =>
+        {
+            ctx.Response.Headers.CacheControl = "no-store";
+            return Results.Bytes(SpeedTestBytes, "application/octet-stream");
         }).RequireRateLimiting("play");
 
         g.MapDelete("/play/{sessionId}", (string sessionId, ClaimsPrincipal me, UserManager<AppUser> users, StreamSessionManager sessions) =>
@@ -138,9 +162,11 @@ public static partial class PlaybackEndpoints
         {
             if (!SegmentName().IsMatch(segment)) return Results.NotFound();
             if (sessions.Get(sessionId) is not { } s || s.Plan.Mode == PlaybackMode.Direct) return Results.NotFound();
-            if (!await sessions.WaitForSegmentAsync(s, segment, ct)) return Results.NotFound();
+            if (!await sessions.WaitForSegmentAsync(s, segment, ct) || !File.Exists(Path.Combine(s.Directory, segment)))
+                return Results.NotFound();
             ctx.Response.Headers.CacheControl = "private, max-age=3600";
-            return Results.File(Path.Combine(s.Directory, segment), "video/mp2t");
+            var type = segment.EndsWith(".ts") ? "video/mp2t" : "video/mp4";
+            return Results.File(Path.Combine(s.Directory, segment), type);
         });
 
         g.MapGet("/file", (string sessionId, StreamSessionManager sessions) =>
