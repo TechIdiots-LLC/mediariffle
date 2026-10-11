@@ -7,10 +7,36 @@
 ### 🐞 Bug fixes
 - _...Add new stuff here..._
 
+## 0.2.0
+### ✨ Features and improvements
+- **Standard player controls**: previous, back 10 s, play/pause, forward 30 s, stop and next, plus volume and mute
+  (remembered). Previous and next follow the play queue when one is playing, otherwise the show's episode order or a
+  movie's parts; previous goes back to the start first when more than a few seconds in. Stop ends the stream (freeing
+  the server) and Play picks up where it stopped. Clicking the video plays or pauses, double-clicking goes full screen.
+- **Keyboard and media keys**: space or K play/pause, ← → seek 10 s, ↑ ↓ volume, M mute, F full screen, N / P next and
+  previous; the keyboard's media keys and the system's media panel work too.
+- **Admin → Libraries updates by itself**: file counts, each library's scan status (done, files it couldn't read,
+  folder not available) and the scan's progress ("Movies: 340 of 1601 files read") refresh every few seconds while the
+  page is open. Scan now sits beside the libraries.
+- **Install-Ffmpeg.ps1** (in the program folder and the Windows zip): downloads ffmpeg from gyan.dev, checks it
+  against the published SHA-256, installs it to C:\Tools\ffmpeg, points the settings at it and restarts the service.
+
+### 🐞 Bug fixes
+- **Full screen** takes the controls along and centres the video, letterboxed, both ways: the video used to sit at the
+  top of the screen, so a TV that overscans cut off the top, and there were no controls.
+- **Pictures** are taken from a few minutes in, through ffmpeg's thumbnail filter, instead of an early frame that was
+  often black (or the very first frame, for files whose length wasn't known). Pictures made before are replaced.
+- **A file that couldn't be read** at the last scan (e.g. because ffmpeg wasn't installed yet) is read again when it's
+  opened, instead of waiting for the next scan, and "ffprobe isn't installed" is said as such.
+
 ## 0.1.1
 ### ✨ Features and improvements
 
 ### 🐞 Bug fixes
+- **The installed Windows service works over plain HTTP**: cookies were HTTPS-only outside development, so
+  http://localhost:5080 couldn't start a session. They're now secure whenever the request is HTTPS, including behind a
+  trusted proxy that says so.
+- **Windows event log**: the installer registers the MediaRiffle event source, which the service's own account can't.
 
 ## 0.1.0
 ### ✨ Features and improvements
