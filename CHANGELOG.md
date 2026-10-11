@@ -7,6 +7,11 @@
 ### 🐞 Bug fixes
 - _...Add new stuff here..._
 
+## 0.1.1
+### ✨ Features and improvements
+
+### 🐞 Bug fixes
+
 ## 0.1.0
 ### ✨ Features and improvements
 - **First release.** Streams a video library to browsers and Chromecasts, the successor of the 2014 Tongue project.
@@ -27,4 +32,3 @@
   .tar.gz with install.sh for other distributions (x64, arm64).
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
