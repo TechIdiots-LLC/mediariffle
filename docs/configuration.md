@@ -43,7 +43,7 @@ Put your settings in file 2. A complete example:
 | `ScanIntervalMinutes` | How often the libraries are rescanned; 0 for only at start and on Admin → Scan now. |
 | `TrustedProxies` | IP addresses of the reverse proxies in front (HAProxy, Apache, nginx). Only these may set `X-Forwarded-For`/`-Proto`. |
 | `ForwardLimit` | How many proxies are in the chain: 1 for HAProxy alone, 2 for HAProxy → Apache. |
-| `Libraries[].Name` | Shown in the UI; unique. |
+| `Libraries` | Only used on the **first start**, to add the first libraries. After that they're managed under **Admin → Libraries** (see below), and this setting is ignored. |
 | `Libraries[].Kind` | `Shows` (`Show/Season 01/Show - S01E01 - Title.mkv`) or `Movies` (`Movie (1999).mkv`, `Movie/cd1.avi`). |
 | `Libraries[].Path` | The folder: a local path, a mount point (`/mnt/media/Shows`), or on Windows a UNC path (`\\files.example.lan\Media\Shows`). Only files under it are read. |
 | `Transcoding.FfmpegFolder` | Folder holding `ffmpeg` and `ffprobe`; empty to use `PATH`. |
@@ -54,6 +54,21 @@ Put your settings in file 2. A complete example:
 | `Transcoding.MaxSessionsPerUser` | A user starting more stops their oldest. |
 | `Transcoding.IdleTimeoutSeconds` | A stream nobody fetches from for this long is stopped and its files deleted. |
 | `Kestrel:Endpoints` | Where MediaRiffle listens. `127.0.0.1` when the proxy is on the same machine; the machine's LAN address when it isn't (then firewall the port to the proxy only). Not used under IIS. |
+
+## Libraries and categories
+
+Admins add, edit and remove libraries under **Admin → Libraries**: a name, whether it holds shows or movies, its folder,
+and tags. **Check folder** shows whether this server's account can read the folder and a few of the videos it found,
+before anything is saved. A new library, or a changed folder, is scanned straight away.
+
+Tags work as in Media Library Manager: a comma-separated list on each library (`Cartoons, Kids`), applying to
+everything in it. Every tag becomes a **category** on the home page, gathering the shows and movies of all the
+libraries carrying it, with **Play all** (show by show, in season and episode order) and **Shuffle** (every episode and
+movie mixed together). Libraries and shows have the same two buttons. A playing queue moves on to the next item by
+itself, with a few seconds to cancel.
+
+Disabling a library hides it without forgetting it; removing it forgets what was scanned (the files themselves are
+never touched) and everyone's place in it.
 
 ## Quality
 

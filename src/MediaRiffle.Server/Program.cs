@@ -110,13 +110,17 @@ builder.Services.AddCors(o => o.AddPolicy("stream", p =>
     // origin) can fetch them; nothing else is shared
     p.AllowAnyOrigin().WithMethods("GET", "HEAD").WithHeaders("Range").WithExposedHeaders("Content-Range", "Accept-Ranges", "Content-Length")));
 
+// Enums by name in the API ("Shows", not 0)
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
+
 builder.Services.AddSingleton<Ffmpeg>();
 builder.Services.AddSingleton<LibraryScanner>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<LibraryScanner>());
 builder.Services.AddSingleton<StreamSessionManager>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<StreamSessionManager>());
 builder.Services.AddSingleton<ImageService>();
-builder.Services.AddScoped<LibraryFiles>();
+builder.Services.AddSingleton<LibraryCatalog>();
+builder.Services.AddSingleton<LibraryFiles>();
 
 var app = builder.Build();
 
@@ -126,6 +130,7 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
     var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     if (!await roles.RoleExistsAsync(Roles.Admin)) await roles.CreateAsync(new IdentityRole(Roles.Admin));
+    await scope.ServiceProvider.GetRequiredService<LibraryCatalog>().InitializeAsync();
 }
 
 app.UseForwardedHeaders();

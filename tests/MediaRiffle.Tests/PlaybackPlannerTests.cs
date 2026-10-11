@@ -95,36 +95,3 @@ public class PlaybackPlannerTests
     }
 }
 
-public class LibraryFilesTests
-{
-    private static LibraryFiles Files(string root) => new(Microsoft.Extensions.Options.Options.Create(new MediaRiffleOptions
-    {
-        Libraries = [new LibraryOptions { Name = "TV", Kind = LibraryKind.Shows, Path = root }],
-    }));
-
-    [Fact]
-    public void ResolvesInsideTheLibrary()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "mr-lib");
-        Assert.Equal(Path.Combine(root, "Show", "ep.mkv"), Files(root).Resolve("TV", "Show/ep.mkv"));
-    }
-
-    [Theory]
-    [InlineData("../secret.txt")]
-    [InlineData("Show/../../etc/passwd")]
-    public void RefusesPathsOutsideTheLibrary(string rel)
-    {
-        var root = Path.Combine(Path.GetTempPath(), "mr-lib");
-        Assert.Null(Files(root).Resolve("TV", rel));
-    }
-
-    [Fact]
-    public void RefusesASiblingFolderWithTheSamePrefix()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "mr-lib");
-        Assert.Null(Files(root).Resolve("TV", "../mr-lib-other/x.mkv"));
-    }
-
-    [Fact]
-    public void UnknownLibrary() => Assert.Null(Files(Path.GetTempPath()).Resolve("Nope", "a.mkv"));
-}

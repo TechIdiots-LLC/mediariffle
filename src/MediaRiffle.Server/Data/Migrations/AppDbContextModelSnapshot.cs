@@ -140,9 +140,8 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.Property<int>("Kind")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("Library")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("Missing")
                         .HasColumnType("INTEGER");
@@ -198,10 +197,44 @@ namespace MediaRiffle.Server.Data.Migrations
 
                     b.HasIndex("ShowId");
 
-                    b.HasIndex("Library", "RelativePath")
+                    b.HasIndex("LibraryId", "RelativePath")
                         .IsUnique();
 
                     b.ToTable("MediaFiles");
+                });
+
+            modelBuilder.Entity("MediaRiffle.Server.Data.MediaLibrary", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Tags")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Libraries");
                 });
 
             modelBuilder.Entity("MediaRiffle.Server.Data.Movie", b =>
@@ -214,9 +247,8 @@ namespace MediaRiffle.Server.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Library")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -227,7 +259,7 @@ namespace MediaRiffle.Server.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Library", "GroupKey")
+                    b.HasIndex("LibraryId", "GroupKey")
                         .IsUnique();
 
                     b.ToTable("Movies");
@@ -291,9 +323,8 @@ namespace MediaRiffle.Server.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Library")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -301,7 +332,7 @@ namespace MediaRiffle.Server.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Library", "Folder")
+                    b.HasIndex("LibraryId", "Folder")
                         .IsUnique();
 
                     b.ToTable("Shows");
@@ -437,6 +468,12 @@ namespace MediaRiffle.Server.Data.Migrations
 
             modelBuilder.Entity("MediaRiffle.Server.Data.MediaFile", b =>
                 {
+                    b.HasOne("MediaRiffle.Server.Data.MediaLibrary", null)
+                        .WithMany()
+                        .HasForeignKey("LibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("MediaRiffle.Server.Data.Movie", null)
                         .WithMany("Parts")
                         .HasForeignKey("MovieId")
@@ -453,6 +490,15 @@ namespace MediaRiffle.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade);
                 });
 
+            modelBuilder.Entity("MediaRiffle.Server.Data.Movie", b =>
+                {
+                    b.HasOne("MediaRiffle.Server.Data.MediaLibrary", null)
+                        .WithMany()
+                        .HasForeignKey("LibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MediaRiffle.Server.Data.Season", b =>
                 {
                     b.HasOne("MediaRiffle.Server.Data.Show", "Show")
@@ -462,6 +508,15 @@ namespace MediaRiffle.Server.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Show");
+                });
+
+            modelBuilder.Entity("MediaRiffle.Server.Data.Show", b =>
+                {
+                    b.HasOne("MediaRiffle.Server.Data.MediaLibrary", null)
+                        .WithMany()
+                        .HasForeignKey("LibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>

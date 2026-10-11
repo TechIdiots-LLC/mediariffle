@@ -12,6 +12,8 @@ namespace MediaRiffle.Server.Api;
 
 public sealed record InviteRequest(bool IsAdmin, int Days);
 public sealed record QualityCapRequest(string? MaxQuality);
+public sealed record LibraryRequest(string Name, Options.LibraryKind Kind, string Path, string? Tags, bool Enabled = true);
+public sealed record PathCheckRequest(string Path);
 
 /// <summary>Admin only: invites, users, library scans and the streams running now.</summary>
 public static class AdminEndpoints
@@ -86,6 +88,87 @@ public static class AdminEndpoints
             return Results.Ok();
         });
 
+        // ── Libraries ──
+        g.MapGet("/libraries", async (AppDbContext db) =>
+        {
+            var counts = await db.MediaFiles.GroupBy(f => f.LibraryId).Select(x => new { x.Key, n = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.n);
+            return (await db.Libraries.OrderBy(l => l.Name).ToListAsync())
+                .Select(l => new { l.Id, l.Name, kind = l.Kind.ToString(), l.Path, l.Tags, l.Enabled, files = counts.GetValueOrDefault(l.Id) });
+        });
+
+        g.MapPost("/libraries", async (LibraryRequest req, AppDbContext db, LibraryCatalog catalog) =>
+        {
+            if (await Validate(req, db, null) is { } problem) return problem;
+            db.Libraries.Add(new MediaLibrary
+            {
+                Name = req.Name.Trim(), Kind = req.Kind, Path = req.Path.Trim(),
+                Tags = MediaLibrary.NormalizeTags(req.Tags), Enabled = req.Enabled,
+            });
+            await db.SaveChangesAsync();
+            await catalog.ReloadAsync();   // and the scanner picks it up
+            return Results.Ok();
+        });
+
+        g.MapPut("/libraries/{id:int}", async (int id, LibraryRequest req, AppDbContext db, LibraryCatalog catalog) =>
+        {
+            var lib = await db.Libraries.FirstOrDefaultAsync(l => l.Id == id);
+            if (lib is null) return Results.NotFound();
+            if (await Validate(req, db, id) is { } problem) return problem;
+            // A new folder or kind means what was scanned from the old one no longer applies
+            if (!string.Equals(lib.Path, req.Path.Trim(), StringComparison.Ordinal) || lib.Kind != req.Kind)
+                await ForgetContents(db, id);
+            lib.Name = req.Name.Trim();
+            lib.Kind = req.Kind;
+            lib.Path = req.Path.Trim();
+            lib.Tags = MediaLibrary.NormalizeTags(req.Tags);
+            lib.Enabled = req.Enabled;
+            await db.SaveChangesAsync();
+            await catalog.ReloadAsync();
+            return Results.Ok();
+        });
+
+        g.MapDelete("/libraries/{id:int}", async (int id, AppDbContext db, LibraryCatalog catalog) =>
+        {
+            await ForgetContents(db, id);
+            await db.Libraries.Where(l => l.Id == id).ExecuteDeleteAsync();
+            await catalog.ReloadAsync();
+            return Results.Ok();
+        });
+
+        // Before saving: can the service account see the folder, and are there videos in it?
+        g.MapPost("/libraries/check", async (PathCheckRequest req) =>
+        {
+            var path = req.Path?.Trim() ?? "";
+            if (!System.IO.Path.IsPathFullyQualified(path))
+                return Results.Ok(new { ok = false, message = "Give a full path, e.g. /mnt/media/Shows or \\\\server\\share\\Shows." });
+            // A file server that's down can make this hang; give up after 15 s
+            var check = Task.Run(() =>
+            {
+                if (!Directory.Exists(path)) return (false, "The folder doesn't exist, or this server's account can't see it.", 0, new List<string>());
+                var sample = new List<string>();
+                int count = 0;
+                var opts = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
+                foreach (var f in Directory.EnumerateFiles(path, "*", opts))
+                {
+                    if (!MediaNameParser.IsVideo(f)) continue;
+                    if (sample.Count < 5) sample.Add(System.IO.Path.GetRelativePath(path, f).Replace('\\', '/'));
+                    if (++count >= 1000) break;
+                }
+                return (true, count == 0 ? "The folder is readable but has no video files." : $"Readable: {(count >= 1000 ? "1000+" : count)} video files.", count, sample);
+            });
+            if (await Task.WhenAny(check, Task.Delay(TimeSpan.FromSeconds(15))) != check)
+                return Results.Ok(new { ok = false, message = "No answer within 15 s: is the file server reachable?" });
+            try
+            {
+                var (ok, message, count, sample) = await check;
+                return Results.Ok(new { ok, message, count, sample });
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                return Results.Ok(new { ok = false, message = "Can't read the folder: " + ex.Message });
+            }
+        });
+
         g.MapPost("/scan", (LibraryScanner scanner) => { scanner.RequestScan(); return Results.Accepted(); });
         g.MapGet("/scan", (LibraryScanner scanner) => new { scanner.IsScanning, scanner.LastScanUtc, scanner.LastResult });
 
@@ -98,5 +181,28 @@ public static class AdminEndpoints
                 s.StartSeconds, s.CreatedUtc, s.LastAccessUtc,
             });
         });
+    }
+
+    private static async Task<IResult?> Validate(LibraryRequest req, AppDbContext db, int? id)
+    {
+        var name = req.Name?.Trim() ?? "";
+        if (name.Length is 0 or > 100) return Results.BadRequest(new { error = "Give the library a name (up to 100 characters)." });
+        if (await db.Libraries.AnyAsync(l => l.Name == name && l.Id != id))
+            return Results.BadRequest(new { error = $"There's already a library called {name}." });
+        if (!System.IO.Path.IsPathFullyQualified(req.Path?.Trim() ?? ""))
+            return Results.BadRequest(new { error = "The folder must be a full path, e.g. /mnt/media/Shows or \\\\server\\share\\Shows." });
+        if (!Enum.IsDefined(req.Kind)) return Results.BadRequest(new { error = "Unknown library kind." });
+        return null;
+    }
+
+    /// <summary>Removes what was scanned from a library, and everyone's positions in it.</summary>
+    private static async Task ForgetContents(AppDbContext db, int libraryId)
+    {
+        var files = db.MediaFiles.Where(f => f.LibraryId == libraryId).Select(f => f.Id);
+        await db.Progress.Where(p => files.Contains(p.MediaFileId)).ExecuteDeleteAsync();
+        await db.MediaFiles.Where(f => f.LibraryId == libraryId).ExecuteDeleteAsync();
+        await db.Seasons.Where(s => db.Shows.Any(sh => sh.Id == s.ShowId && sh.LibraryId == libraryId)).ExecuteDeleteAsync();
+        await db.Shows.Where(s => s.LibraryId == libraryId).ExecuteDeleteAsync();
+        await db.Movies.Where(m => m.LibraryId == libraryId).ExecuteDeleteAsync();
     }
 }

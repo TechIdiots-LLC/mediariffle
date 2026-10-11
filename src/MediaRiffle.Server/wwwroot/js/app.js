@@ -1,6 +1,7 @@
 import { api, refreshCsrf } from './api.js';
 import { h, mount, art, formatTime } from './dom.js';
 import { Player } from './player.js';
+import { startQueue, positionOf, clearQueue } from './queue.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
@@ -32,7 +33,8 @@ const routes = [
   [/^#\/setup$/, setupView],
   [/^#\/join\/([\w-]+)$/, joinView],
   [/^#\/logout$/, logout],
-  [/^#\/library\/(.+)$/, m => libraryView(decodeURIComponent(m[1]))],
+  [/^#\/library\/(\d+)$/, m => libraryView(+m[1])],
+  [/^#\/tag\/(.+)$/, m => tagView(decodeURIComponent(m[1]))],
   [/^#\/show\/(\d+)$/, m => showView(+m[1])],
   [/^#\/movie\/(\d+)$/, m => movieView(+m[1])],
   [/^#\/play\/(\d+)$/, m => playView(+m[1])],
@@ -105,45 +107,80 @@ async function logout() {
 
 // ── Browsing ─────────────────────────────────────────────────────────────────
 
+function playButtons(what, label) {
+  const go = shuffle => startQueue(what, shuffle, label).catch(e => alert(e.message));
+  return h('span', { class: 'row' },
+    h('button', { onclick: () => go(false) }, '▶ Play all'),
+    h('button', { class: 'secondary', onclick: () => go(true) }, '🔀 Shuffle'));
+}
+
+function showTiles(shows) {
+  return shows.map(i => h('a', { class: 'tile', href: `#/show/${i.id}` },
+    art(i.image), h('div', { class: 'name' }, i.title), h('div', { class: 'sub' }, `${i.episodes} episodes`)));
+}
+
+function movieTiles(movies) {
+  return movies.map(i => h('a', { class: 'tile', href: `#/movie/${i.id}` },
+    art(i.image), h('div', { class: 'name' }, i.title),
+    h('div', { class: 'sub' }, [i.year, i.parts > 1 ? `${i.parts} parts` : null].filter(Boolean).join(' · '))));
+}
+
+function filterBox(onChange) {
+  return h('input', { type: 'search', placeholder: 'Filter…', oninput: e => onChange(e.target.value.trim().toLowerCase()) });
+}
+
 async function homeView() {
-  const [libraries, recent] = await Promise.all([api('/api/libraries'), api('/api/continue')]);
+  const [libraries, recent, tags] = await Promise.all([api('/api/libraries'), api('/api/continue'), api('/api/tags')]);
   mount(view,
     recent.length ? [h('h2', {}, 'Continue watching'), h('div', { class: 'grid' }, recent.map(r =>
       h('a', { class: 'tile', href: `#/play/${r.file.id}` },
         art(r.file.image, r.file.duration ? r.file.position / r.file.duration : 0),
         h('div', { class: 'name' }, r.show ?? r.file.title),
         h('div', { class: 'sub' }, r.show ? r.file.title : `${formatTime(r.file.position)} of ${formatTime(r.file.duration)}`))))] : null,
+    tags.length ? [h('h2', {}, 'Categories'), h('div', { class: 'chips' }, tags.map(t =>
+      h('a', { class: 'chip', href: `#/tag/${encodeURIComponent(t.tag)}` }, t.tag, h('span', { class: 'muted' }, ` ${t.files}`))))] : null,
     h('h2', {}, 'Libraries'),
     libraries.length
       ? h('div', { class: 'grid' }, libraries.map(l =>
-          h('a', { class: 'tile card', href: `#/library/${encodeURIComponent(l.name)}` },
-            h('div', { class: 'name' }, l.name), h('div', { class: 'sub' }, `${l.kind} · ${l.files} files`))))
-      : h('p', { class: 'muted' }, 'No libraries are set up yet; add them to appsettings.json.'));
+          h('a', { class: 'tile card', href: `#/library/${l.id}` },
+            h('div', { class: 'name' }, l.name), h('div', { class: 'sub' }, `${l.kind} · ${l.files} files`),
+            l.tags.length ? h('div', { class: 'sub' }, l.tags.join(', ')) : null)))
+      : h('p', { class: 'muted' }, state.user.isAdmin ? 'No libraries yet: add them under Admin.' : 'No libraries yet.'));
 }
 
-async function libraryView(name) {
-  const libraries = await api('/api/libraries');
-  const lib = libraries.find(l => l.name === name);
-  if (!lib) throw new Error('No such library.');
-  const items = await api(`/api/libraries/${encodeURIComponent(name)}/${lib.kind === 'Shows' ? 'shows' : 'movies'}`);
-  const filter = h('input', { type: 'search', placeholder: 'Filter…', oninput: () => draw() });
+async function libraryView(id) {
+  const lib = await api(`/api/libraries/${id}`);
+  const shows = lib.kind === 'Shows';
+  const items = await api(`/api/libraries/${id}/${shows ? 'shows' : 'movies'}`);
   const grid = h('div', { class: 'grid' });
-  const draw = () => {
-    const q = filter.value.trim().toLowerCase();
-    mount(grid, items.filter(i => !q || i.title.toLowerCase().includes(q)).map(i =>
-      h('a', { class: 'tile', href: lib.kind === 'Shows' ? `#/show/${i.id}` : `#/movie/${i.id}` },
-        art(i.image),
-        h('div', { class: 'name' }, i.title),
-        h('div', { class: 'sub' }, lib.kind === 'Shows' ? `${i.episodes} episodes` : [i.year, i.parts > 1 ? `${i.parts} parts` : null].filter(Boolean).join(' · ')))));
-  };
-  draw();
-  mount(view, h('div', { class: 'row' }, h('h1', {}, name), filter), grid,
+  const draw = q => mount(grid, (shows ? showTiles : movieTiles)(items.filter(i => !q || i.title.toLowerCase().includes(q))));
+  draw('');
+  mount(view,
+    h('div', { class: 'row' }, h('h1', {}, lib.name), playButtons({ library: id }, lib.name), filterBox(draw)),
+    lib.tags.length ? h('p', { class: 'muted' }, 'Categories: ', lib.tags.map((t, i) => [i ? ', ' : '', h('a', { href: `#/tag/${encodeURIComponent(t)}` }, t)])) : null,
+    grid,
     items.length ? null : h('p', { class: 'muted' }, 'Nothing here yet. An admin can rescan under Admin.'));
+}
+
+// A category: every show and movie in the libraries carrying this tag, to browse or play through
+async function tagView(tag) {
+  const t = await api(`/api/tags/${encodeURIComponent(tag)}`);
+  const showGrid = h('div', { class: 'grid' }), movieGrid = h('div', { class: 'grid' });
+  const draw = q => {
+    const match = i => !q || i.title.toLowerCase().includes(q);
+    mount(showGrid, showTiles(t.shows.filter(match)));
+    mount(movieGrid, movieTiles(t.movies.filter(match)));
+  };
+  draw('');
+  mount(view,
+    h('div', { class: 'row' }, h('h1', {}, t.tag), playButtons({ tag: t.tag }, t.tag), filterBox(draw)),
+    t.shows.length ? [h('h2', {}, 'Shows'), showGrid] : null,
+    t.movies.length ? [h('h2', {}, 'Movies'), movieGrid] : null);
 }
 
 function episodeRow(e) {
   const done = e.finished;
-  return h('a', { class: 'episode' + (done ? ' watched' : ''), href: `#/play/${e.id}` },
+  return h('a', { class: 'episode' + (done ? ' watched' : ''), href: `#/play/${e.id}`, onclick: () => clearQueue() },
     art(e.image, e.duration && !done ? e.position / e.duration : 0),
     h('div', {},
       h('div', { class: 'name' }, (e.episodeNumber ? `${e.episodeNumber}. ` : '') + e.title),
@@ -161,7 +198,7 @@ async function showView(id) {
     mount(list, season.episodes.map(episodeRow));
   };
   mount(tabs, show.seasons.map(s => h('button', { 'data-id': s.id, onclick: () => pick(s) }, s.title)));
-  mount(view, h('h1', {}, show.title), tabs, list);
+  mount(view, h('div', { class: 'row' }, h('h1', {}, show.title), playButtons({ show: id }, show.title)), tabs, list);
   // Open on the first season with something unwatched
   const first = show.seasons.find(s => s.episodes.some(e => !e.finished)) ?? show.seasons[0];
   if (first) pick(first);
@@ -178,7 +215,29 @@ async function playView(fileId) {
   const details = await api(`/api/files/${fileId}`);
   const p = new Player(details);
   player = p;
-  mount(view, h('h1', {}, details.summary.title), p.element(),
+  const place = positionOf(fileId);
+  let queueBar = null;
+  if (place) {
+    const nextLink = place.next ? h('a', { href: `#/play/${place.next.id}` }, `Next: ${place.next.title} →`) : null;
+    queueBar = h('div', { class: 'row queue' },
+      h('strong', {}, place.label), h('span', { class: 'muted' }, `${place.index + 1} of ${place.count}`), nextLink,
+      h('button', { class: 'secondary', onclick: () => { clearQueue(); queueBar.remove(); } }, 'Stop after this'));
+    // At the end, on to the next one after a moment (Cancel stays on this one)
+    p.onFinished = () => {
+      if (!place.next || !document.body.contains(queueBar)) return false;
+      let left = 5;
+      const msg = h('span', {}, `Next in ${left}…`);
+      const cancel = h('button', { class: 'secondary', onclick: () => { clearInterval(timer); msg.textContent = 'Stopped.'; cancel.remove(); } }, 'Cancel');
+      queueBar.append(msg, cancel);
+      const timer = setInterval(() => {
+        if (--left > 0) { msg.textContent = `Next in ${left}…`; return; }
+        clearInterval(timer);
+        location.hash = `#/play/${place.next.id}`;
+      }, 1000);
+      return true;
+    };
+  }
+  mount(view, h('h1', {}, details.summary.title), queueBar, p.element(),
     h('p', { class: 'muted' }, [details.videoCodec, details.width ? `${details.width}×${details.height}` : null, details.container].filter(Boolean).join(' · ')));
   try { await p.start(); }
   catch (e) { p.status.textContent = e.message; }
@@ -186,10 +245,48 @@ async function playView(fileId) {
 
 // ── Admin ────────────────────────────────────────────────────────────────────
 
+// Add or edit a library, in place of the "Add a library" button
+function libraryForm(lib) {
+  const name = h('input', { value: lib?.name ?? '', maxlength: 100, required: true });
+  const kind = h('select', {}, ['Shows', 'Movies'].map(k => h('option', { value: k, selected: (lib?.kind ?? 'Shows') === k }, k)));
+  const path = h('input', { value: lib?.path ?? '', size: 50, placeholder: '/mnt/media/Shows or \\\\files.example.lan\\Media\\Shows', required: true });
+  const tags = h('input', { value: lib?.tags ?? '', size: 40, placeholder: 'e.g. Cartoons, Kids' });
+  const enabled = h('input', { type: 'checkbox', checked: lib?.enabled ?? true });
+  const msg = h('p', { class: 'muted' });
+  const check = async () => {
+    msg.className = 'muted'; msg.textContent = 'Checking…';
+    const r = await api('/api/admin/libraries/check', { method: 'POST', body: { path: path.value } });
+    msg.className = r.ok ? 'ok' : 'error';
+    mount(msg, r.message, r.sample?.length ? h('br') : null, (r.sample ?? []).map(s => [h('br'), h('code', {}, s)]));
+  };
+  const save = async e => {
+    e.preventDefault();
+    try {
+      const body = { name: name.value, kind: kind.value, path: path.value, tags: tags.value, enabled: enabled.checked };
+      if (lib) await api(`/api/admin/libraries/${lib.id}`, { method: 'PUT', body });
+      else await api('/api/admin/libraries', { method: 'POST', body });
+      adminView();
+    } catch (err) { msg.className = 'error'; msg.textContent = err.message; }
+  };
+  mount(document.getElementById('library-form'), h('form', { class: 'card form-wide', onsubmit: save },
+    h('h2', {}, lib ? `Edit ${lib.name}` : 'Add a library'),
+    h('label', {}, 'Name', name),
+    h('label', {}, 'Kind', kind),
+    h('label', {}, 'Folder', h('span', { class: 'row' }, path, h('button', { type: 'button', class: 'secondary', onclick: check }, 'Check folder'))),
+    h('label', {}, 'Tags', tags),
+    h('label', { class: 'row' }, enabled, 'Enabled'),
+    lib && lib.path ? h('p', { class: 'muted' }, 'Changing the folder or kind rescans it from scratch.') : null,
+    msg,
+    h('div', { class: 'row' }, h('button', { type: 'submit' }, lib ? 'Save' : 'Add and scan'),
+      h('button', { type: 'button', class: 'secondary', onclick: () => adminView() }, 'Cancel'))));
+  name.focus();
+}
+
 async function adminView() {
   if (!state.user?.isAdmin) { location.hash = '#/'; return; }
-  const [users, invites, scan, sessions, qualities] = await Promise.all([
-    api('/api/admin/users'), api('/api/admin/invites'), api('/api/admin/scan'), api('/api/admin/sessions'), api('/api/admin/qualities')]);
+  const [users, invites, scan, sessions, qualities, libraries] = await Promise.all([
+    api('/api/admin/users'), api('/api/admin/invites'), api('/api/admin/scan'), api('/api/admin/sessions'), api('/api/admin/qualities'),
+    api('/api/admin/libraries')]);
 
   const link = h('input', { readonly: true, size: 60 });
   const asAdmin = h('input', { type: 'checkbox' });
@@ -204,6 +301,21 @@ async function adminView() {
 
   mount(view,
     h('h1', {}, 'Admin'),
+    h('h2', {}, 'Libraries'),
+    h('p', { class: 'muted' }, 'Folders of shows or movies, on this server or a file share. Tags (comma-separated, as in Media Library Manager) are the categories everyone can browse and shuffle.'),
+    libraries.length ? h('table', {},
+      h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Kind'), h('th', {}, 'Folder'), h('th', {}, 'Tags'), h('th', {}, 'Files'), h('th', {})),
+      libraries.map(l => h('tr', { class: l.enabled ? '' : 'muted' },
+        h('td', {}, l.name, l.enabled ? null : ' (disabled)'), h('td', {}, l.kind), h('td', {}, h('code', {}, l.path)),
+        h('td', {}, l.tags ?? ''), h('td', {}, l.files),
+        h('td', { class: 'row' },
+          h('button', { class: 'secondary', onclick: () => libraryForm(l) }, 'Edit'),
+          h('button', { class: 'danger', onclick: async () => {
+            if (!confirm(`Remove ${l.name}? Its files stay where they are; only MediaRiffle's list of them (and everyone's place in them) goes.`)) return;
+            await api(`/api/admin/libraries/${l.id}`, { method: 'DELETE' }); adminView();
+          } }, 'Remove')))))
+      : h('p', {}, 'No libraries yet.'),
+    h('div', { id: 'library-form' }, h('button', { onclick: () => libraryForm(null) }, 'Add a library')),
     h('h2', {}, 'Invite someone'),
     h('div', { class: 'card' },
       h('div', { class: 'row' }, h('label', { class: 'row' }, asAdmin, 'Admin'), h('label', { class: 'row' }, 'Valid for', days, 'days'),

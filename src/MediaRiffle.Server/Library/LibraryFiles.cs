@@ -1,6 +1,4 @@
 using MediaRiffle.Server.Data;
-using MediaRiffle.Server.Options;
-using Microsoft.Extensions.Options;
 
 namespace MediaRiffle.Server.Library;
 
@@ -8,21 +6,23 @@ namespace MediaRiffle.Server.Library;
 public sealed record SidecarSubtitle(int Number, string Path, string Label);
 
 /// <summary>Turns database records back into files on disk, never outside their library's folder.</summary>
-public sealed class LibraryFiles(IOptions<MediaRiffleOptions> options)
+public sealed class LibraryFiles(LibraryCatalog catalog)
 {
     private static readonly string[] SubtitleExtensions = [".srt", ".vtt", ".ass", ".ssa"];
 
-    public LibraryOptions? Library(string name) =>
-        options.Value.Libraries.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase));
+    /// <summary>The file's full path, or null if its library is gone or disabled, or the path would leave the library folder.</summary>
+    public string? FullPath(MediaFile file) => Resolve(file.LibraryId, file.RelativePath);
 
-    /// <summary>The file's full path, or null if its library is gone or the path would leave the library folder.</summary>
-    public string? FullPath(MediaFile file) => Resolve(file.Library, file.RelativePath);
-
-    public string? Resolve(string library, string relativePath)
+    public string? Resolve(int libraryId, string relativePath)
     {
-        var lib = Library(library);
-        if (lib is null) return null;
-        var root = Path.GetFullPath(lib.Path);
+        var lib = catalog.Get(libraryId);
+        return lib is { Enabled: true } ? Resolve(lib.Path, relativePath) : null;
+    }
+
+    /// <summary><paramref name="relativePath"/> under <paramref name="root"/>, or null if it would leave it (../, a sibling folder).</summary>
+    public static string? Resolve(string root, string relativePath)
+    {
+        root = Path.GetFullPath(root);
         var full = Path.GetFullPath(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
         var rootWithSep = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
         return full.StartsWith(rootWithSep, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)

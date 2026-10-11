@@ -16,21 +16,68 @@ public static class LibraryEndpoints
     {
         var g = app.MapGroup("/api").RequireAuthorization();
 
-        g.MapGet("/libraries", async (IOptions<MediaRiffleOptions> o, AppDbContext db) =>
+        g.MapGet("/libraries", async (LibraryCatalog catalog, AppDbContext db) =>
         {
-            var counts = await db.MediaFiles.GroupBy(f => f.Library).Select(x => new { x.Key, n = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.n);
-            return o.Value.Libraries.Select(l => new { l.Name, kind = l.Kind.ToString(), files = counts.GetValueOrDefault(l.Name) });
+            var counts = await db.MediaFiles.GroupBy(f => f.LibraryId).Select(x => new { x.Key, n = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.n);
+            return catalog.Enabled.Select(l => new { l.Id, l.Name, kind = l.Kind.ToString(), l.Tags, files = counts.GetValueOrDefault(l.Id) });
         });
 
-        g.MapGet("/libraries/{name}/shows", async (string name, AppDbContext db) =>
-            await db.Shows.Where(s => s.Library == name).OrderBy(s => s.Title)
-                .Select(s => new { s.Id, s.Title, episodes = db.MediaFiles.Count(f => f.ShowId == s.Id), image = $"/api/images/show/{s.Id}" })
-                .ToListAsync());
+        g.MapGet("/libraries/{id:int}", (int id, LibraryCatalog catalog) =>
+            catalog.Get(id) is { Enabled: true } l ? Results.Ok(new { l.Id, l.Name, kind = l.Kind.ToString(), l.Tags }) : Results.NotFound());
 
-        g.MapGet("/libraries/{name}/movies", async (string name, AppDbContext db) =>
-            await db.Movies.Where(m => m.Library == name).OrderBy(m => m.Title)
-                .Select(m => new { m.Id, m.Title, m.Year, parts = m.Parts.Count, image = $"/api/images/movie/{m.Id}" })
-                .ToListAsync());
+        g.MapGet("/libraries/{id:int}/shows", async (int id, LibraryCatalog catalog, AppDbContext db) =>
+            catalog.Get(id) is not { Enabled: true } ? Results.NotFound() : Results.Ok(await ShowsIn(db, [id])));
+
+        g.MapGet("/libraries/{id:int}/movies", async (int id, LibraryCatalog catalog, AppDbContext db) =>
+            catalog.Get(id) is not { Enabled: true } ? Results.NotFound() : Results.Ok(await MoviesIn(db, [id])));
+
+        // Categories: the tags on the libraries (as in MediaLibraryManager), each with what's in it
+        g.MapGet("/tags", async (LibraryCatalog catalog, AppDbContext db) =>
+        {
+            var counts = await db.MediaFiles.GroupBy(f => f.LibraryId).Select(x => new { x.Key, n = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.n);
+            return catalog.Tags.Select(t => new { tag = t, files = catalog.WithTag(t).Sum(id => counts.GetValueOrDefault(id)) });
+        });
+
+        g.MapGet("/tags/{tag}", async (string tag, LibraryCatalog catalog, AppDbContext db) =>
+        {
+            var ids = catalog.WithTag(tag);
+            if (ids.Count == 0) return Results.NotFound();
+            return Results.Ok(new { tag, shows = await ShowsIn(db, ids), movies = await MoviesIn(db, ids) });
+        });
+
+        // What to play in a row: a category, a library or a show, in order or shuffled. Episodes in season order,
+        // movies part by part; shuffled, every episode and movie part is mixed together.
+        g.MapGet("/queue", async (string? tag, int? library, int? show, bool? shuffle, LibraryCatalog catalog, AppDbContext db) =>
+        {
+            var enabled = catalog.Enabled.Select(l => l.Id).ToHashSet();
+            IQueryable<MediaFile> q = db.MediaFiles.Where(f => f.ProbeError == null && f.ProbeJson != "");
+            if (show is { } sid) q = q.Where(f => f.ShowId == sid);
+            else if (library is { } lid) q = q.Where(f => f.LibraryId == lid);
+            else if (!string.IsNullOrWhiteSpace(tag)) { var ids = catalog.WithTag(tag); q = q.Where(f => ids.Contains(f.LibraryId)); }
+            else return Results.BadRequest(new { error = "Say what to play: a tag, a library or a show." });
+
+            var rows = await q.Where(f => enabled.Contains(f.LibraryId))
+                .Select(f => new
+                {
+                    f.Id, f.Title, f.EpisodeNumber, f.PartNumber, f.RelativePath,
+                    Show = db.Shows.Where(s => s.Id == f.ShowId).Select(s => s.Title).FirstOrDefault(),
+                    Season = db.Seasons.Where(s => s.Id == f.SeasonId).Select(s => (int?)s.Number).FirstOrDefault(),
+                    Movie = db.Movies.Where(m => m.Id == f.MovieId).Select(m => m.Title).FirstOrDefault(),
+                })
+                .ToListAsync();
+            var ordered = shuffle == true
+                ? rows.OrderBy(_ => Random.Shared.Next()).ToList()
+                : rows.OrderBy(r => r.Show ?? r.Movie ?? r.Title, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(r => r.Season ?? 0).ThenBy(r => r.EpisodeNumber ?? int.MaxValue).ThenBy(r => r.PartNumber)
+                    .ThenBy(r => r.RelativePath, StringComparer.OrdinalIgnoreCase).ToList();
+            return Results.Ok(ordered.Take(2000).Select(r => new
+            {
+                id = r.Id,
+                title = r.Show is not null
+                    ? $"{r.Show} · {(r.Season is { } s ? $"S{s:00}" : "")}{(r.EpisodeNumber is { } e ? $"E{e:00}" : "")} {r.Title}".Replace("·  ", "· ")
+                    : r.Movie is not null && r.PartNumber > 1 ? $"{r.Movie} (part {r.PartNumber})" : r.Movie ?? r.Title,
+            }));
+        });
 
         g.MapGet("/shows/{id:int}", async (int id, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
         {
@@ -122,7 +169,7 @@ public static class LibraryEndpoints
         {
             var show = await db.Shows.FirstOrDefaultAsync(s => s.Id == id);
             if (show is null) return Results.NotFound();
-            var art = ImageService.FolderArt(files.Resolve(show.Library, show.Folder));
+            var art = ImageService.FolderArt(files.Resolve(show.LibraryId, show.Folder));
             if (art is not null) return Image(ctx, art);
             var first = await db.MediaFiles.Where(f => f.ShowId == id).OrderBy(f => f.SeasonId).ThenBy(f => f.EpisodeNumber).FirstOrDefaultAsync();
             var path = first is null ? null : files.FullPath(first);
@@ -136,11 +183,21 @@ public static class LibraryEndpoints
             if (path is null) return Results.NotFound();
             // A movie in its own folder can have folder art; one beside others only art named after it
             var inOwnFolder = first!.RelativePath.Contains('/') && !await db.MediaFiles.AnyAsync(f =>
-                f.Library == first.Library && f.MovieId != id && f.RelativePath.StartsWith(first.RelativePath.Substring(0, first.RelativePath.LastIndexOf('/') + 1)));
+                f.LibraryId == first.LibraryId && f.MovieId != id && f.RelativePath.StartsWith(first.RelativePath.Substring(0, first.RelativePath.LastIndexOf('/') + 1)));
             var art = ImageService.FileArt(path) ?? (inOwnFolder ? ImageService.FolderArt(Path.GetDirectoryName(path)) : null);
             return Image(ctx, art ?? await images.FrameAsync(first.Id, path, first.DurationSeconds));
         });
     }
+
+    private static async Task<List<object>> ShowsIn(AppDbContext db, ICollection<int> libraries) =>
+        (await db.Shows.Where(s => libraries.Contains(s.LibraryId)).OrderBy(s => s.Title)
+            .Select(s => new { s.Id, s.Title, episodes = db.MediaFiles.Count(f => f.ShowId == s.Id), image = $"/api/images/show/{s.Id}" })
+            .ToListAsync()).Cast<object>().ToList();
+
+    private static async Task<List<object>> MoviesIn(AppDbContext db, ICollection<int> libraries) =>
+        (await db.Movies.Where(m => libraries.Contains(m.LibraryId)).OrderBy(m => m.Title)
+            .Select(m => new { m.Id, m.Title, m.Year, parts = m.Parts.Count, image = $"/api/images/movie/{m.Id}" })
+            .ToListAsync()).Cast<object>().ToList();
 
     private static IResult Image(HttpContext ctx, string? path)
     {

@@ -126,7 +126,9 @@ moving parts, but no password on disk.
 
 ## 3b. Windows / IIS: use UNC paths
 
-Services can't see mapped drive letters, so the libraries point at the share directly:
+Services can't see mapped drive letters, so the libraries point at the share directly. Enter
+`\\files.example.lan\Media\Shows` as the folder under **Admin → Libraries** (and use **Check folder** to confirm the
+app pool identity can read it), or seed the first libraries in the settings file:
 
 ```json
 "Libraries": [

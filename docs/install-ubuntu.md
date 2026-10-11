@@ -74,6 +74,8 @@ sudo chmod 0640 /etc/mediariffle/appsettings.json
 }
 ```
 
+- `Libraries` here only adds the first libraries on the first start; you can also leave it out and add them in the
+  browser under **Admin → Libraries**, which is where they're managed from then on.
 - `10.0.0.5` is HAProxy's address and `10.0.0.20` this server's. If the proxy runs on this machine, use `127.0.0.1` for
   both.
 - Every setting is described in [configuration.md](configuration.md).

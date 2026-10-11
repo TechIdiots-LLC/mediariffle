@@ -18,7 +18,11 @@ ffserver was removed from FFmpeg in 2018 and the player used Flash.
 
 ## Features
 
-- TV show (Show / Season NN / episode) and movie libraries, including movies split into cd1/cd2 parts
+- TV show (Show / Season NN / episode) and movie libraries, including movies split into cd1/cd2 parts, managed by
+  admins in the browser (local folders, mounts or file shares)
+- Tags per library, as in Media Library Manager, which become categories to browse, play through or shuffle
+- Quality: Auto (follows the connection), Original, 1080p, 720p, 480p, 360p; x265 sent as it is to devices that decode
+  HEVC; per-user quality caps
 - Audio track choice; subtitles from the file or side-car `.srt`/`.vtt`/`.ass` files, shown as WebVTT
 - Pictures: `poster.jpg`/`folder.jpg` beside the media when present, otherwise a frame from the video
 - Continue watching, next episode

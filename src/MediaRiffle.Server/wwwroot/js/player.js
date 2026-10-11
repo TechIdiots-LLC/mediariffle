@@ -298,6 +298,7 @@ export class Player {
   onEnded() {
     // An HLS stream also ends at its last segment when the file does
     this.saveProgress(false, true);
+    if (this.onFinished?.()) return;   // a play queue moves on by itself
     if (this.details.next) {
       this.next.replaceChildren(h('a', { href: `#/play/${this.details.next}` }, 'Next episode →'));
     }

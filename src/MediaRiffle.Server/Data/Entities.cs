@@ -20,10 +20,41 @@ public sealed class Invite
     public DateTime? UsedUtc { get; set; }
 }
 
+/// <summary>
+/// A folder of media, added and changed by admins (Admin → Libraries). Like MediaLibraryManager's monitored folders:
+/// a comma-separated list of tags applies to everything in it, and the tags are the categories viewers browse and
+/// shuffle by.
+/// </summary>
+public sealed class MediaLibrary
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public Options.LibraryKind Kind { get; set; }
+    /// <summary>Absolute folder: a local path, a mount point, or a UNC path on Windows.</summary>
+    public string Path { get; set; } = string.Empty;
+    /// <summary>Comma-separated, e.g. "Cartoons, Kids". See <see cref="TagList"/>.</summary>
+    public string? Tags { get; set; }
+    public bool Enabled { get; set; } = true;
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+
+    public IReadOnlyList<string> TagList => ParseTags(Tags);
+
+    public static IReadOnlyList<string> ParseTags(string? raw) =>
+        raw is null ? [] : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+    /// <summary>Trimmed, without duplicates (ignoring case), joined with ", "; null when there are none.</summary>
+    public static string? NormalizeTags(string? raw)
+    {
+        var tags = ParseTags(raw);
+        return tags.Count == 0 ? null : string.Join(", ", tags);
+    }
+}
+
 public sealed class Show
 {
     public int Id { get; set; }
-    public string Library { get; set; } = string.Empty;
+    public int LibraryId { get; set; }
     public string Title { get; set; } = string.Empty;
     /// <summary>The show's folder, relative to the library.</summary>
     public string Folder { get; set; } = string.Empty;
@@ -43,7 +74,7 @@ public sealed class Season
 public sealed class Movie
 {
     public int Id { get; set; }
-    public string Library { get; set; } = string.Empty;
+    public int LibraryId { get; set; }
     public string Title { get; set; } = string.Empty;
     public int? Year { get; set; }
     /// <summary>A key that groups the parts of one movie (cd1, cd2, …): its folder, or its file name without the part.</summary>
@@ -57,7 +88,7 @@ public enum MediaKind { Episode, Movie }
 public sealed class MediaFile
 {
     public int Id { get; set; }
-    public string Library { get; set; } = string.Empty;
+    public int LibraryId { get; set; }
     /// <summary>Path relative to the library folder, with '/' separators.</summary>
     public string RelativePath { get; set; } = string.Empty;
     public MediaKind Kind { get; set; }

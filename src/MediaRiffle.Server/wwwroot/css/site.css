@@ -88,3 +88,13 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--bord
   .episode { grid-template-columns: 110px 1fr; }
   .episode .play { display: none; }
 }
+
+/* Categories, play queue, library form */
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; color: var(--text); }
+.chip:hover { border-color: var(--accent); text-decoration: none; }
+.queue { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 10px; }
+.form-wide { display: grid; gap: 10px; max-width: 720px; margin-top: 10px; }
+.form-wide label { display: grid; gap: 4px; }
+code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+tr.muted td { color: var(--muted); }

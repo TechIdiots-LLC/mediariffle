@@ -77,6 +77,8 @@ The media share's permissions were set on the file server (`MediaRiffle Readers`
 }
 ```
 
+- `Libraries` only adds the first libraries on the first start; afterwards add and change them under
+  **Admin → Libraries** (UNC paths work there too).
 - `TrustedProxies` lists HAProxy's address, if HAProxy is in front of IIS. Remove it if browsers connect to IIS
   directly.
 - `Nvenc` (NVIDIA) and `Qsv` (Intel) encoders work on Windows; `Vaapi` is Linux only.

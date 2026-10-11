@@ -13,11 +13,25 @@ namespace MediaRiffle.Server.Library;
 /// filed under their show/season or movie, files that are gone are dropped. Runs at start, every
 /// ScanIntervalMinutes, and when an admin asks. Replaces TongueD's prep_sql_shows/prep_sql_movies.
 /// </summary>
-public sealed class LibraryScanner(
-    IServiceScopeFactory scopes, IOptions<MediaRiffleOptions> options, Ffmpeg ffmpeg, ILogger<LibraryScanner> log)
-    : BackgroundService
+public sealed class LibraryScanner : BackgroundService
 {
+    private readonly IServiceScopeFactory scopes;
+    private readonly IOptions<MediaRiffleOptions> options;
+    private readonly Ffmpeg ffmpeg;
+    private readonly LibraryCatalog catalog;
+    private readonly ILogger<LibraryScanner> log;
     private readonly Channel<bool> _requests = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
+
+    public LibraryScanner(IServiceScopeFactory scopes, IOptions<MediaRiffleOptions> options, Ffmpeg ffmpeg, LibraryCatalog catalog, ILogger<LibraryScanner> log)
+    {
+        this.scopes = scopes;
+        this.options = options;
+        this.ffmpeg = ffmpeg;
+        this.catalog = catalog;
+        this.log = log;
+        // A library added, re-pathed or enabled is scanned straight away
+        catalog.Changed += (_, _) => RequestScan();
+    }
 
     public bool IsScanning { get; private set; }
     public DateTime? LastScanUtc { get; private set; }
@@ -59,7 +73,7 @@ public sealed class LibraryScanner(
     private async Task<string> ScanAllAsync(CancellationToken ct)
     {
         var summary = new StringBuilder();
-        foreach (var lib in options.Value.Libraries)
+        foreach (var lib in catalog.Enabled)
         {
             if (!Directory.Exists(lib.Path))
             {
@@ -75,7 +89,7 @@ public sealed class LibraryScanner(
         return summary.Length == 0 ? "No libraries configured" : summary.ToString().Trim();
     }
 
-    private async Task<(int Added, int Updated, int Removed, int Failed)> ScanLibraryAsync(LibraryOptions lib, CancellationToken ct)
+    private async Task<(int Added, int Updated, int Removed, int Failed)> ScanLibraryAsync(LibraryInfo lib, CancellationToken ct)
     {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -92,7 +106,7 @@ public sealed class LibraryScanner(
             onDisk[Path.GetRelativePath(root, path).Replace('\\', '/')] = info;
         }
 
-        var known = await db.MediaFiles.Where(f => f.Library == lib.Name).ToDictionaryAsync(f => f.RelativePath, StringComparer.Ordinal, ct);
+        var known = await db.MediaFiles.Where(f => f.LibraryId == lib.Id).ToDictionaryAsync(f => f.RelativePath, StringComparer.Ordinal, ct);
         var toProbe = onDisk.Where(kv => !known.TryGetValue(kv.Key, out var f) ||
                                          f.Size != kv.Value.Length || f.ModifiedUtc != kv.Value.LastWriteTimeUtc || f.ProbeError is not null)
                             .ToList();
@@ -121,7 +135,7 @@ public sealed class LibraryScanner(
         {
             var (json, error) = probes[rel];
             var isNew = !known.TryGetValue(rel, out var file);
-            file ??= new MediaFile { Library = lib.Name, RelativePath = rel };
+            file ??= new MediaFile { LibraryId = lib.Id, RelativePath = rel };
             file.Size = info.Length;
             file.ModifiedUtc = info.LastWriteTimeUtc;
             file.ScannedUtc = DateTime.UtcNow;
@@ -151,13 +165,13 @@ public sealed class LibraryScanner(
         await db.SaveChangesAsync(ct);
 
         // Shows, seasons and movies left without any file
-        await db.Seasons.Where(s => s.Show!.Library == lib.Name && !db.MediaFiles.Any(f => f.SeasonId == s.Id)).ExecuteDeleteAsync(ct);
-        await db.Shows.Where(s => s.Library == lib.Name && !db.MediaFiles.Any(f => f.ShowId == s.Id)).ExecuteDeleteAsync(ct);
-        await db.Movies.Where(m => m.Library == lib.Name && !db.MediaFiles.Any(f => f.MovieId == m.Id)).ExecuteDeleteAsync(ct);
+        await db.Seasons.Where(s => s.Show!.LibraryId == lib.Id && !db.MediaFiles.Any(f => f.SeasonId == s.Id)).ExecuteDeleteAsync(ct);
+        await db.Shows.Where(s => s.LibraryId == lib.Id && !db.MediaFiles.Any(f => f.ShowId == s.Id)).ExecuteDeleteAsync(ct);
+        await db.Movies.Where(m => m.LibraryId == lib.Id && !db.MediaFiles.Any(f => f.MovieId == m.Id)).ExecuteDeleteAsync(ct);
         return (added, updated, gone.Count, failed);
     }
 
-    private static async Task FileEpisodeAsync(AppDbContext db, LibraryOptions lib, MediaFile file, CancellationToken ct)
+    private static async Task FileEpisodeAsync(AppDbContext db, LibraryInfo lib, MediaFile file, CancellationToken ct)
     {
         file.Kind = MediaKind.Episode;
         var ep = MediaNameParser.ParseEpisode(file.RelativePath);
@@ -168,10 +182,10 @@ public sealed class LibraryScanner(
                 MediaNameParser.CleanTitle(Path.GetFileNameWithoutExtension(file.RelativePath)));
         }
         var folder = file.RelativePath.Split('/')[0];
-        var show = await db.Shows.FirstOrDefaultAsync(s => s.Library == lib.Name && s.Folder == folder, ct);
+        var show = await db.Shows.FirstOrDefaultAsync(s => s.LibraryId == lib.Id && s.Folder == folder, ct);
         if (show is null)
         {
-            show = new Show { Library = lib.Name, Folder = folder, Title = MediaNameParser.CleanTitle(ep.Show) };
+            show = new Show { LibraryId = lib.Id, Folder = folder, Title = MediaNameParser.CleanTitle(ep.Show) };
             db.Shows.Add(show);
             await db.SaveChangesAsync(ct);
         }
@@ -189,14 +203,14 @@ public sealed class LibraryScanner(
         file.MovieId = null;
     }
 
-    private static async Task FileMovieAsync(AppDbContext db, LibraryOptions lib, MediaFile file, CancellationToken ct)
+    private static async Task FileMovieAsync(AppDbContext db, LibraryInfo lib, MediaFile file, CancellationToken ct)
     {
         file.Kind = MediaKind.Movie;
         var mv = MediaNameParser.ParseMovie(file.RelativePath);
-        var movie = await db.Movies.FirstOrDefaultAsync(m => m.Library == lib.Name && m.GroupKey == mv.GroupKey, ct);
+        var movie = await db.Movies.FirstOrDefaultAsync(m => m.LibraryId == lib.Id && m.GroupKey == mv.GroupKey, ct);
         if (movie is null)
         {
-            movie = new Movie { Library = lib.Name, GroupKey = mv.GroupKey, Title = mv.Title, Year = mv.Year };
+            movie = new Movie { LibraryId = lib.Id, GroupKey = mv.GroupKey, Title = mv.Title, Year = mv.Year };
             db.Movies.Add(movie);
             await db.SaveChangesAsync(ct);
         }
