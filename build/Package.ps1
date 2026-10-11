@@ -33,6 +33,8 @@ if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed (exit $LASTEXITCODE)" }
 Remove-Item "$publish/appsettings.Development.json" -ErrorAction SilentlyContinue
 
 if ($Rid -like 'win-*') {
+    # Shipped beside the program: downloads and installs ffmpeg for it
+    Copy-Item deploy/windows/Install-Ffmpeg.ps1 $publish
     ./build/Sign-Files.ps1 -Path "$publish/MediaRiffle.Server.exe"
     Compress-Archive -Path "$publish/*" -DestinationPath "$out/MediaRiffle-$Label-$Rid.zip" -Force
     $setup = "$out/MediaRiffle-$Label-$Rid-setup.exe"
