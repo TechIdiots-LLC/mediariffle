@@ -47,7 +47,27 @@ export class Player {
 
     this.video = h('video', { playsinline: true, preload: 'auto' });
     this.status = h('div', { class: 'spinner' }, 'Starting…');
-    this.playBtn = h('button', { onclick: () => this.togglePlay() }, 'Play');
+    // Previous/next: the play queue's, or the show's episode order (setNavigation); stop ends the stream
+    this.nav = { previous: details.previous ?? null, next: details.next ?? null };
+    const btn = (label, title, onclick) => h('button', { class: 'secondary icon', title, 'aria-label': title, onclick }, label);
+    this.prevBtn = btn('⏮', 'Previous (P)', () => this.previous());
+    this.backBtn = btn('↺10', 'Back 10 seconds (←)', () => this.seekBy(-10));
+    this.playBtn = h('button', { class: 'icon', title: 'Play / pause (space)', onclick: () => this.togglePlay() }, '▶');
+    this.fwdBtn = btn('30↻', 'Forward 30 seconds (→)', () => this.seekBy(30));
+    this.stopBtn = btn('⏹', 'Stop', () => this.stop());
+    this.nextBtn = btn('⏭', 'Next (N)', () => this.goNext());
+    this.muteBtn = btn('🔊', 'Mute (M)', () => { this.video.muted = !this.video.muted; });
+    this.volume = h('input', { type: 'range', class: 'volume', min: 0, max: 1, step: 0.05, title: 'Volume (↑ ↓)',
+      oninput: () => { this.video.volume = +this.volume.value; this.video.muted = false; } });
+    this.setNavigation(this.nav);
+    const savedVolume = +recall('mediariffle.volume');
+    this.video.volume = recall('mediariffle.volume') !== null && savedVolume >= 0 && savedVolume <= 1 ? savedVolume : 1;
+    this.volume.value = String(this.video.volume);
+    this.video.addEventListener('volumechange', () => {
+      this.volume.value = String(this.video.muted ? 0 : this.video.volume);
+      this.muteBtn.textContent = this.video.muted || this.video.volume === 0 ? '🔇' : '🔊';
+      remember('mediariffle.volume', String(this.video.volume));
+    });
     this.time = h('span', { class: 'time' }, '0:00 / ' + formatTime(details.summary.duration));
     this.seekBar = h('input', { type: 'range', class: 'seek', min: 0, max: Math.max(1, Math.floor(details.summary.duration)), step: 1, value: 0,
       oninput: () => { this.dragging = true; this.showTime(+this.seekBar.value); },
@@ -66,8 +86,8 @@ export class Player {
     this.next = h('span');
 
     this.video.addEventListener('timeupdate', () => this.onTime());
-    this.video.addEventListener('play', () => { this.playBtn.textContent = 'Pause'; });
-    this.video.addEventListener('pause', () => { this.playBtn.textContent = 'Play'; this.saveProgress(); });
+    this.video.addEventListener('play', () => { this.playBtn.textContent = '⏸'; this.mediaState('playing'); });
+    this.video.addEventListener('pause', () => { this.playBtn.textContent = '▶'; this.mediaState('paused'); this.saveProgress(); });
     this.video.addEventListener('waiting', () => {
       this.status.textContent = 'Loading…';
       // A stall while playing (not right after starting or seeking) is what Auto steps down for
@@ -79,6 +99,9 @@ export class Player {
 
     this.onPageHide = () => this.saveProgress(true);
     addEventListener('pagehide', this.onPageHide);
+    this.onKey = e => this.key(e);
+    addEventListener('keydown', this.onKey);
+    this.setupMediaSession();
     this.monitor = setInterval(() => this.checkQuality(), 2000);
 
     castAvailable().then(ok => {
@@ -89,13 +112,16 @@ export class Player {
     });
   }
 
+  // Full screen takes the video and the controls together (the controls stay usable), see .player-wrap in site.css
   element() {
-    return h('div', {},
-      h('div', { class: 'player' }, this.video, this.status),
+    return this.root = h('div', { class: 'player-wrap' },
+      h('div', { class: 'player', onclick: () => this.togglePlay(), ondblclick: () => this.fullscreen() }, this.video, this.status),
       h('div', { class: 'controls' },
         this.seekBar,
         h('div', { class: 'row' },
-          this.playBtn, this.time,
+          h('span', { class: 'row transport' }, this.prevBtn, this.backBtn, this.playBtn, this.fwdBtn, this.stopBtn, this.nextBtn),
+          this.time,
+          h('span', { class: 'row' }, this.muteBtn, this.volume),
           this.qualitySelect,
           this.details.audio.length > 1 ? this.audioSelect : null,
           this.details.subtitles.length > 0 ? this.subSelect : null,
@@ -270,12 +296,99 @@ export class Player {
     catch (e) { this.status.textContent = e.message; }
   }
 
-  togglePlay() { this.video.paused ? this.video.play() : this.video.pause(); }
+  togglePlay() {
+    if (!this.session) { this.resume(); return; }   // after Stop: start again where it stopped
+    this.video.paused ? this.video.play() : this.video.pause();
+  }
+
+  // ── Transport ──────────────────────────────────────────────────────────────
+
+  // Where previous/next go: the play queue's neighbours when it's playing one, else the show's episode order
+  setNavigation({ previous, next }) {
+    this.nav = { previous: previous ?? null, next: next ?? null };
+    this.prevBtn.disabled = false;   // Previous also means "back to the start" of this one
+    this.nextBtn.disabled = !this.nav.next;
+  }
+
+  seekBy(seconds) {
+    if (!this.session) return;
+    const t = Math.min(Math.max(0, this.position() + seconds), Math.max(0, this.details.summary.duration - 1));
+    this.seek(t);
+  }
+
+  // As on most players: back to the start if more than a few seconds in, else the one before
+  previous() {
+    if (this.session && this.position() > 5) this.seek(0);
+    else if (this.nav.previous) location.hash = `#/play/${this.nav.previous}`;
+    else if (this.session) this.seek(0);
+  }
+
+  goNext() { if (this.nav.next) location.hash = `#/play/${this.nav.next}`; }
+
+  // Stop: the stream ends (freeing the server), the place is kept, and Play picks up from it
+  stop() {
+    if (!this.session) return;
+    this.stoppedAt = this.position();
+    this.saveProgress();
+    const id = this.session.sessionId;
+    this.session = null;
+    this.detach();
+    api(`/api/play/${id}`, { method: 'DELETE' }).catch(() => {});
+    this.status.textContent = 'Stopped';
+    this.playBtn.textContent = '▶';
+    this.mediaState('none');
+  }
+
+  async resume() {
+    try { await this.start(this.stoppedAt ?? null); }
+    catch (e) { this.status.textContent = e.message; }
+  }
+
+  key(e) {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.target instanceof HTMLElement && e.target.closest('input, select, textarea, button')) {
+      if (e.key !== ' ' || e.target.closest('input[type=range]') === null) return;   // space on the seek bar still plays
+    }
+    const actions = {
+      ' ': () => this.togglePlay(), k: () => this.togglePlay(),
+      ArrowLeft: () => this.seekBy(-10), ArrowRight: () => this.seekBy(10),
+      ArrowUp: () => { this.video.volume = Math.min(1, this.video.volume + 0.1); this.video.muted = false; },
+      ArrowDown: () => { this.video.volume = Math.max(0, this.video.volume - 0.1); },
+      m: () => { this.video.muted = !this.video.muted; },
+      f: () => this.fullscreen(),
+      n: () => this.goNext(), N: () => this.goNext(),
+      p: () => this.previous(), P: () => this.previous(),
+    };
+    const act = actions[e.key];
+    if (!act) return;
+    e.preventDefault();
+    act();
+  }
+
+  // The keyboard's media keys and the OS media panel (Windows, Android, macOS) drive the player too
+  setupMediaSession() {
+    const ms = navigator.mediaSession;
+    if (!ms) return;
+    try {
+      ms.metadata = new MediaMetadata({ title: this.details.summary.title, artwork: [{ src: this.details.summary.image }] });
+      const set = (action, fn) => { try { ms.setActionHandler(action, fn); } catch { /* not supported here */ } };
+      set('play', () => this.togglePlay());
+      set('pause', () => this.video.pause());
+      set('stop', () => this.stop());
+      set('seekbackward', d => this.seekBy(-(d.seekOffset || 10)));
+      set('seekforward', d => this.seekBy(d.seekOffset || 30));
+      set('previoustrack', () => this.previous());
+      set('nexttrack', () => this.goNext());
+    } catch { /* no media session */ }
+  }
+
+  mediaState(state) {
+    try { if (navigator.mediaSession) navigator.mediaSession.playbackState = state; } catch { }
+  }
 
   fullscreen() {
-    const el = this.video.parentElement;
     if (document.fullscreenElement) document.exitFullscreen();
-    else el.requestFullscreen?.();
+    else (this.root.requestFullscreen ?? this.root.webkitRequestFullscreen)?.call(this.root);
   }
 
   onTime() {
@@ -330,6 +443,9 @@ export class Player {
     this.saveProgress(true);
     clearInterval(this.monitor);
     removeEventListener('pagehide', this.onPageHide);
+    removeEventListener('keydown', this.onKey);
+    for (const a of ['play', 'pause', 'stop', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack'])
+      try { navigator.mediaSession?.setActionHandler(a, null); } catch { }
     this.offCast?.();
     const id = this.session?.sessionId;
     this.detach();

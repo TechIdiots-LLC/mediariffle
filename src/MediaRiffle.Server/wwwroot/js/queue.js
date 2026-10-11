@@ -32,5 +32,5 @@ export function positionOf(fileId) {
   if (i < 0) return null;
   q.index = i;
   setQueue(q);
-  return { label: q.label, index: i, count: q.items.length, next: q.items[i + 1] ?? null };
+  return { label: q.label, index: i, count: q.items.length, next: q.items[i + 1] ?? null, previous: q.items[i - 1] ?? null };
 }

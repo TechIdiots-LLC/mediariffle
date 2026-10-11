@@ -7,6 +7,7 @@ const view = document.getElementById('view');
 const nav = document.getElementById('nav');
 let state = { setupNeeded: false, user: null };
 let player = null;
+let pageTimer = null;   // a page's auto-refresh, stopped when leaving it
 
 async function loadState() {
   state = await api('/api/auth/state');
@@ -45,6 +46,7 @@ const routes = [
 
 async function route() {
   if (player) { player.destroy(); player = null; }
+  if (pageTimer) { clearInterval(pageTimer); pageTimer = null; }
   const hash = location.hash || '#/';
   const open = /^#\/(login|setup|join\/)/.test(hash);
   if (state.setupNeeded && !hash.startsWith('#/setup')) { location.hash = '#/setup'; return; }
@@ -219,6 +221,7 @@ async function playView(fileId) {
   const place = positionOf(fileId);
   let queueBar = null;
   if (place) {
+    p.setNavigation({ previous: place.previous?.id, next: place.next?.id });
     const nextLink = place.next ? h('a', { href: `#/play/${place.next.id}` }, `Next: ${place.next.title} →`) : null;
     queueBar = h('div', { class: 'row queue' },
       h('strong', {}, place.label), h('span', { class: 'muted' }, `${place.index + 1} of ${place.count}`), nextLink,
@@ -298,17 +301,44 @@ async function adminView() {
     link.select();
   };
 
-  const scanMsg = h('span', { class: 'muted' }, scan.isScanning ? 'Scanning…' : `${scan.lastResult}${scan.lastScanUtc ? ' (' + new Date(scan.lastScanUtc).toLocaleString() + ')' : ''}`);
+  const scanText = s => s.isScanning ? `Scanning: ${s.progress ?? '…'}`
+    : `${s.lastResult}${s.lastScanUtc ? ' (' + new Date(s.lastScanUtc).toLocaleString() + ')' : ''}`;
+  const scanMsg = h('span', { class: 'muted' }, scanText(scan));
+
+  // File counts and scan status, refreshed every 3 s while this page is open (in place, so an open form isn't lost)
+  const cells = new Map();
+  const statusText = l => !l.enabled ? 'Disabled'
+    : l.status ? `${{ ok: '✓', warning: '⚠', scanning: '…', unavailable: '✗', error: '✗' }[l.status.state] ?? ''} ${l.status.message}`
+    : 'Waiting for the first scan';
+  const fillRow = l => {
+    const c = cells.get(l.id);
+    if (!c) return;
+    c.files.textContent = l.unreadable ? `${l.files} (${l.unreadable} unreadable)` : String(l.files);
+    c.status.textContent = statusText(l);
+    c.status.className = l.status?.state === 'unavailable' || l.status?.state === 'error' ? 'error' : l.status?.state === 'warning' ? '' : 'muted';
+  };
+  pageTimer = setInterval(async () => {
+    try {
+      const [s, libs] = await Promise.all([api('/api/admin/scan'), api('/api/admin/libraries')]);
+      scanMsg.textContent = scanText(s);
+      libs.forEach(fillRow);
+    } catch { /* signed out or offline: the next tick tries again */ }
+  }, 3000);
 
   mount(view,
     h('h1', {}, 'Admin'),
     h('h2', {}, 'Libraries'),
     h('p', { class: 'muted' }, 'Folders of shows or movies, on this server or a file share. Tags (comma-separated, as in Media Library Manager) are the categories everyone can browse and shuffle.'),
     libraries.length ? h('table', {},
-      h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Kind'), h('th', {}, 'Folder'), h('th', {}, 'Tags'), h('th', {}, 'Files'), h('th', {})),
-      libraries.map(l => h('tr', { class: l.enabled ? '' : 'muted' },
+      h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Kind'), h('th', {}, 'Folder'), h('th', {}, 'Tags'), h('th', {}, 'Files'), h('th', {}, 'Status'), h('th', {})),
+      libraries.map(l => {
+        const files = h('td', {}), status = h('td', {});
+        cells.set(l.id, { files, status });
+        fillRow(l);
+        return [l, files, status];
+      }).map(([l, files, status]) => h('tr', { class: l.enabled ? '' : 'muted' },
         h('td', {}, l.name, l.enabled ? null : ' (disabled)'), h('td', {}, l.kind), h('td', {}, h('code', {}, l.path)),
-        h('td', {}, l.tags ?? ''), h('td', {}, l.files),
+        h('td', {}, l.tags ?? ''), files, status,
         h('td', { class: 'row' },
           h('button', { class: 'secondary', onclick: () => libraryForm(l) }, 'Edit'),
           h('button', { class: 'danger', onclick: async () => {
@@ -316,6 +346,7 @@ async function adminView() {
             await api(`/api/admin/libraries/${l.id}`, { method: 'DELETE' }); adminView();
           } }, 'Remove')))))
       : h('p', {}, 'No libraries yet.'),
+    h('div', { class: 'row' }, h('button', { class: 'secondary', onclick: async () => { await api('/api/admin/scan', { method: 'POST' }); scanMsg.textContent = 'Scan requested…'; } }, 'Scan now'), scanMsg),
     h('div', { id: 'library-form' }, h('button', { onclick: () => libraryForm(null) }, 'Add a library')),
     h('h2', {}, 'Invite someone'),
     h('div', { class: 'card' },
@@ -347,8 +378,6 @@ async function adminView() {
         h('td', {}, i.usedUtc ? new Date(i.usedUtc).toLocaleString() : '—'),
         h('td', {}, i.usedUtc ? null : h('button', { class: 'secondary', onclick: async () => { await api(`/api/admin/invites/${i.id}`, { method: 'DELETE' }); adminView(); } }, 'Revoke')))))
       : h('p', { class: 'muted' }, 'None yet.'),
-    h('h2', {}, 'Library'),
-    h('div', { class: 'row' }, h('button', { onclick: async () => { await api('/api/admin/scan', { method: 'POST' }); scanMsg.textContent = 'Scan requested…'; } }, 'Scan now'), scanMsg),
     h('h2', {}, 'Playing now'),
     sessions.length ? h('table', {}, h('tr', {}, h('th', {}, 'User'), h('th', {}, 'File'), h('th', {}, 'Mode'), h('th', {}, 'Started')),
       sessions.map(s => h('tr', {}, h('td', {}, s.user), h('td', {}, h('a', { href: `#/play/${s.fileId}` }, `#${s.fileId}`)),
