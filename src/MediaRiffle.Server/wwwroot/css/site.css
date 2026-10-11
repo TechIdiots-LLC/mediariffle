@@ -84,6 +84,14 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--bord
 .controls .time { font-variant-numeric: tabular-nums; min-width: 110px; }
 .controls select { max-width: 260px; }
 .cast-btn[hidden] { display: none; }
+/* The Cast SDK's launcher has no size of its own (it fills whatever it's in) and draws in black; sized and coloured
+   here like the other secondary buttons */
+.cast-btn { display: inline-flex; }
+google-cast-launcher {
+  display: inline-block; box-sizing: border-box; width: 46px; height: 38px; padding: 8px 11px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 8px;
+  --disconnected-color: var(--accent); --connected-color: var(--accent);
+}
 @media (max-width: 640px) {
   .episode { grid-template-columns: 110px 1fr; }
   .episode .play { display: none; }

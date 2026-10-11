@@ -5,7 +5,8 @@
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- **The Cast button** is the size of the other buttons and drawn in their colour, instead of a huge black icon that
+  filled the space it was given.
 
 ## 0.3.0
 ### ✨ Features and improvements
