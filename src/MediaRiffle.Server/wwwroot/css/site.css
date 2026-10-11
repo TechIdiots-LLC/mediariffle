@@ -119,3 +119,7 @@ tr.muted td { color: var(--muted); }
 button.icon { min-width: 42px; padding: 8px 10px; font-size: 16px; line-height: 1; }
 .volume { width: 90px; accent-color: var(--accent); }
 .controls .seek { accent-color: var(--accent); }
+
+.tv-help { font-size: 13px; }
+.tv-help ul { margin: 6px 0 0; padding-left: 18px; }
+.tv-what { color: var(--text); }

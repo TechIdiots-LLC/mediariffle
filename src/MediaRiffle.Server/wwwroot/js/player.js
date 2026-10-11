@@ -20,6 +20,26 @@ function decoderCaps() {
   return { hevc: ok('hvc1.1.6.L120.90'), hevc10: ok('hvc1.2.4.L120.90') };
 }
 
+// Ways to get the picture onto a TV, the ones that fit this device first. Casting and AirPlay hand the TV the stream
+// (best quality, the phone or laptop is free); mirroring sends the screen (works with more TVs, at lower quality).
+function tvHelp() {
+  const ua = navigator.userAgent;
+  const apple = /Macintosh|iPhone|iPad/.test(ua) && !!window.WebKitPlaybackTargetAvailabilityEvent;
+  const windows = /Windows/.test(ua), android = /Android/.test(ua);
+  const chromium = !!window.chrome;
+  const tips = [
+    chromium && ['Chromecast or Google TV', 'the Cast button above (Chrome or Edge, on an HTTPS address)'],
+    apple && ['Apple TV, or a TV or Roku with AirPlay 2', 'the AirPlay button above (appears when Safari finds one)'],
+    windows && ['A TV or Roku that accepts screen mirroring (Miracast)', 'press Win+K and pick it. On a Roku, allow it under Settings → System → Screen mirroring'],
+    android && ['A TV or Roku that accepts screen mirroring', 'Quick settings → Screen cast / Smart View / Cast'],
+    apple && ['Any TV with an HDMI input', 'an HDMI adapter for the phone or Mac'],
+    ['Then', 'press Full screen (or F): the video is centred, with a margin for TVs that cut off the edges'],
+  ].filter(Boolean);
+  return h('div', { class: 'tv-help muted', hidden: true },
+    h('strong', {}, 'Watching on a TV'),
+    h('ul', {}, tips.map(([what, how]) => h('li', {}, h('span', { class: 'tv-what' }, what), ': ', how))));
+}
+
 function remember(key, value) { try { localStorage.setItem(key, value); } catch { } }
 function recall(key) { try { return localStorage.getItem(key); } catch { return null; } }
 
@@ -104,6 +124,19 @@ export class Player {
     this.setupMediaSession();
     this.monitor = setInterval(() => this.checkQuality(), 2000);
 
+    // AirPlay (Safari on Mac, iPhone, iPad): to an Apple TV, or a TV or Roku with AirPlay 2. The button shows only when
+    // Safari sees a receiver; while the video plays there, it's H.264 (not every receiver decodes HEVC)
+    this.airplayCapable = !!window.WebKitPlaybackTargetAvailabilityEvent;
+    this.airplayBtn = h('button', { class: 'secondary', hidden: true, title: 'AirPlay to a TV',
+      onclick: () => this.video.webkitShowPlaybackTargetPicker?.() }, 'AirPlay');
+    if (this.airplayCapable) {
+      this.video.setAttribute('x-webkit-airplay', 'allow');
+      this.video.addEventListener('webkitplaybacktargetavailabilitychanged', e => {
+        this.airplayBtn.hidden = e.availability !== 'available';
+      });
+      this.video.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', () => this.airplayChanged());
+    }
+
     castAvailable().then(ok => {
       if (!ok) return;
       this.castSlot.hidden = false;
@@ -126,9 +159,12 @@ export class Player {
           this.details.audio.length > 1 ? this.audioSelect : null,
           this.details.subtitles.length > 0 ? this.subSelect : null,
           this.castSlot,
+          this.airplayBtn,
           h('button', { class: 'secondary', onclick: () => this.fullscreen() }, 'Full screen'),
+          h('button', { class: 'secondary', title: 'Ways to watch on a TV', onclick: () => this.tvHelp.toggleAttribute('hidden') }, 'On a TV…'),
           this.info,
-          this.next)));
+          this.next),
+        this.tvHelp = tvHelp()));
   }
 
   // Where in the file we are
@@ -237,6 +273,10 @@ export class Player {
     if (s.mode === 'Direct') {
       this.video.src = s.url;
       if (s.seekTo > 0) this.video.addEventListener('loadedmetadata', () => { this.video.currentTime = s.seekTo; }, { once: true });
+    } else if (this.airplayCapable && this.video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari: its own HLS player, not hls.js. AirPlay can only hand a TV a real stream URL (which it then fetches
+      // itself, as a Chromecast does), not media fed through Media Source Extensions
+      this.video.src = s.url;
     } else if (window.Hls?.isSupported()) {
       this.hls = new window.Hls({ startPosition: 0, maxBufferLength: 60, backBufferLength: 90 });
       this.hls.on(window.Hls.Events.ERROR, (_, data) => {
@@ -414,6 +454,20 @@ export class Player {
     if (this.onFinished?.()) return;   // a play queue moves on by itself
     if (this.details.next) {
       this.next.replaceChildren(h('a', { href: `#/play/${this.details.next}` }, 'Next episode →'));
+    }
+  }
+
+  // Playing on (or back from) an AirPlay receiver. The receiver fetches the stream itself; a copied HEVC stream is
+  // restarted as H.264 at the same spot, as for a Chromecast, and Auto quality rests while the TV plays
+  async airplayChanged() {
+    const wireless = !!this.video.webkitCurrentPlaybackTargetIsWireless;
+    this.status.textContent = wireless ? 'Playing on the AirPlay device' : '';
+    if (wireless && !this.forCast) {
+      this.forCast = true;
+      if (this.session && this.session.videoCodec !== 'h264' && this.session.mode !== 'Direct')
+        await this.restart(this.position(), { keepPaused: true });
+    } else if (!wireless && !isCasting()) {
+      this.forCast = false;
     }
   }
 

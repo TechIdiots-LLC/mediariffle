@@ -2,7 +2,12 @@
 
 ## master
 ### ✨ Features and improvements
-- _...Add new stuff here..._
+- **AirPlay** (Safari on Mac, iPhone and iPad): an AirPlay button appears when Safari finds a receiver, such as an
+  Apple TV or a TV or Roku with AirPlay 2, which then fetches the stream itself as a Chromecast does. Safari now plays
+  HLS with its own player instead of hls.js, which AirPlay needs. An x265 stream sent as it is switches to H.264 when
+  AirPlay starts, since not every receiver decodes HEVC.
+- **On a TV…** in the player: the ways to get the picture onto a TV from this device, Cast, AirPlay, screen mirroring
+  (Win+K on Windows, Screen cast on Android, a Roku's screen mirroring) or HDMI, with the ones that fit it first.
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._
