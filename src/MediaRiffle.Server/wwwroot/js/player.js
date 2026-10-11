@@ -106,8 +106,8 @@ export class Player {
     this.next = h('span');
 
     this.video.addEventListener('timeupdate', () => this.onTime());
-    this.video.addEventListener('play', () => { this.playBtn.textContent = '⏸'; this.mediaState('playing'); });
-    this.video.addEventListener('pause', () => { this.playBtn.textContent = '▶'; this.mediaState('paused'); this.saveProgress(); });
+    this.video.addEventListener('play', () => { this.playBtn.textContent = '⏸'; this.mediaState('playing'); this.wake(); });
+    this.video.addEventListener('pause', () => { this.playBtn.textContent = '▶'; this.mediaState('paused'); this.saveProgress(); this.wake(); });
     this.video.addEventListener('waiting', () => {
       this.status.textContent = 'Loading…';
       // A stall while playing (not right after starting or seeking) is what Auto steps down for
@@ -145,14 +145,15 @@ export class Player {
     });
   }
 
-  // Full screen takes the video and the controls together (the controls stay usable), see .player-wrap in site.css
+  // Full screen takes the video and the controls together, see .player-wrap in site.css. There the controls lie over
+  // the video and fade out when the mouse is still for a few seconds and not over them, while playing.
   element() {
-    return this.root = h('div', { class: 'player-wrap' },
+    this.root = h('div', { class: 'player-wrap', onpointermove: () => this.wake(), onpointerdown: () => this.wake() },
       h('div', { class: 'player', onclick: () => this.togglePlay(), ondblclick: () => this.fullscreen() }, this.video, this.status),
-      h('div', { class: 'controls' },
+      this.controls = h('div', { class: 'controls' },
         this.seekBar,
         h('div', { class: 'row' },
-          h('span', { class: 'row transport' }, this.prevBtn, this.backBtn, this.playBtn, this.fwdBtn, this.stopBtn, this.nextBtn),
+          h('span', { class: 'row transport' }, this.playBtn, this.prevBtn, this.nextBtn, this.backBtn, this.fwdBtn, this.stopBtn),
           this.time,
           h('span', { class: 'row' }, this.muteBtn, this.volume),
           this.qualitySelect,
@@ -165,6 +166,19 @@ export class Player {
           this.info,
           this.next),
         this.tvHelp = tvHelp()));
+    return this.root;
+  }
+
+  // Shows the controls, and hides them again after 3 s unless paused, not full screen, or the mouse is over them
+  wake() {
+    if (!this.root) return;
+    this.root.classList.remove('idle');
+    clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      const full = (document.fullscreenElement ?? document.webkitFullscreenElement) === this.root;
+      if (!full || this.video.paused || this.controls.matches(':hover')) return;
+      this.root.classList.add('idle');
+    }, 3000);
   }
 
   // Where in the file we are
@@ -403,6 +417,7 @@ export class Player {
     if (!act) return;
     e.preventDefault();
     act();
+    this.wake();
   }
 
   // The keyboard's media keys and the OS media panel (Windows, Android, macOS) drive the player too
@@ -496,6 +511,7 @@ export class Player {
   destroy() {
     this.saveProgress(true);
     clearInterval(this.monitor);
+    clearTimeout(this.idleTimer);
     removeEventListener('pagehide', this.onPageHide);
     removeEventListener('keydown', this.onKey);
     for (const a of ['play', 'pause', 'stop', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack'])

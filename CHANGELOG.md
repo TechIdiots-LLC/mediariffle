@@ -8,6 +8,10 @@
   AirPlay starts, since not every receiver decodes HEVC.
 - **On a TV…** in the player: the ways to get the picture onto a TV from this device, Cast, AirPlay, screen mirroring
   (Win+K on Windows, Screen cast on Android, a Roku's screen mirroring) or HDMI, with the ones that fit it first.
+- **Full screen** uses the whole screen for the video: the controls lie over its bottom and fade out, with the mouse
+  pointer, after 3 seconds without moving the mouse (unless paused or the mouse is over them). Moving the mouse,
+  tapping or a key brings them back.
+- **Player buttons** in the order play/pause, previous, next, back 10 s, forward 30 s, stop.
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._
