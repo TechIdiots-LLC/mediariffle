@@ -1,0 +1,39 @@
+[Unit]
+Description=MediaRiffle media streaming server
+After=network-online.target remote-fs.target
+Wants=network-online.target
+# The media share (see docs/file-server.md); MediaRiffle skips a library whose folder isn't there
+RequiresMountsFor=/mnt/media
+
+[Service]
+Type=notify
+User=mediariffle
+Group=mediariffle
+WorkingDirectory=/opt/mediariffle
+ExecStart=/opt/mediariffle/MediaRiffle.Server
+Restart=on-failure
+RestartSec=5
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+# Where it listens is set in /etc/mediariffle/appsettings.json (Kestrel:Endpoints)
+
+# Hardening: read-only everywhere except its data folder, no privilege changes, no home directories
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/mediariffle
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+CapabilityBoundingSet=
+# For VA-API / Quick Sync encoding the GPU's render node has to be reachable (user in the 'render' group)
+SupplementaryGroups=render
+
+[Install]
+WantedBy=multi-user.target
