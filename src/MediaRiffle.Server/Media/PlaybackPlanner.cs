@@ -130,14 +130,13 @@ public static class PlaybackPlanner
         };
     }
 
-    /// <summary>ffmpeg arguments that write one subtitle stream (or a side-car file) as WebVTT to standard output.</summary>
-    public static List<string> WebVttArguments(string input, int? streamIndex, double startSeconds)
-    {
-        var a = new List<string> { "-hide_banner", "-loglevel", "error" };
-        if (startSeconds > 0) a.AddRange(["-ss", Seconds(startSeconds)]);
-        a.AddRange(["-i", input, "-map", streamIndex is { } i ? $"0:{i}" : "0:s:0", "-c:s", "webvtt", "-f", "webvtt", "pipe:1"]);
-        return a;
-    }
+    /// <summary>
+    /// ffmpeg arguments that write one subtitle stream (or a side-car file) as WebVTT to standard output, on the
+    /// file's own clock (-copyts: never moved to start at zero). <see cref="WebVtt.Shift"/> fits it to a stream.
+    /// </summary>
+    public static List<string> WebVttArguments(string input, int? streamIndex) =>
+        ["-hide_banner", "-loglevel", "error", "-copyts", "-i", input,
+         "-map", streamIndex is { } i ? $"0:{i}" : "0:s:0", "-c:s", "webvtt", "-f", "webvtt", "pipe:1"];
 
     /// <summary>ffmpeg arguments for a 480 px wide JPEG of the frame at <paramref name="atSeconds"/>.</summary>
     public static List<string> ThumbnailArguments(string input, double atSeconds, string output) =>

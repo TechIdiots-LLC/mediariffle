@@ -60,6 +60,35 @@ public sealed class Ffmpeg(IOptions<MediaRiffleOptions> options, ILogger<Ffmpeg>
         return stdout.ToArray();
     }
 
+    /// <summary>
+    /// The time of the last video keyframe at or before <paramref name="seconds"/>. Copied video can only start at
+    /// a keyframe, so a remux started there begins exactly where the player's clock says; returns
+    /// <paramref name="seconds"/> when none is found in the 20 s before it.
+    /// </summary>
+    public async Task<double> KeyframeAtOrBeforeAsync(string path, int videoStream, double seconds)
+    {
+        var from = Math.Max(0, seconds - 20).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        var to = (seconds + 0.5).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        try
+        {
+            var output = Encoding.UTF8.GetString(await RunAsync(FfprobePath,
+                ["-v", "error", "-select_streams", videoStream.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                 "-skip_frame", "nokey", "-read_intervals", $"{from}%{to}",
+                 "-show_entries", "frame=best_effort_timestamp_time", "-of", "csv=p=0", path],
+                TimeSpan.FromSeconds(20)));
+            var best = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(l => double.TryParse(l.TrimEnd(','), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var t) ? t : double.NaN)
+                .Where(t => !double.IsNaN(t) && t <= seconds + 0.001)
+                .DefaultIfEmpty(double.NaN).Max();
+            return double.IsNaN(best) ? seconds : best;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+        {
+            log.LogDebug("No keyframe lookup for {Path}: {Error}", path, ex.Message);
+            return seconds;
+        }
+    }
+
     public static void Kill(Process p)
     {
         try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { /* already gone */ }

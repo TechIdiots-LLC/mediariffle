@@ -33,7 +33,7 @@ public static partial class PlaybackEndpoints
         var g = app.MapGroup("/api").RequireAuthorization();
 
         g.MapPost("/play", async (PlayRequest req, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db,
-                                   LibraryFiles files, StreamSessionManager sessions, CancellationToken ct) =>
+                                   LibraryFiles files, StreamSessionManager sessions, Ffmpeg ffmpeg, CancellationToken ct) =>
         {
             var userId = users.GetUserId(me)!;
             var file = await db.MediaFiles.FirstOrDefaultAsync(f => f.Id == req.FileId, ct);
@@ -57,6 +57,9 @@ public static partial class PlaybackEndpoints
                 start = saved is { Finished: false } ? Math.Max(0, saved.PositionSeconds - 5) : 0;
             }
             start = Math.Clamp(start.Value, 0, Math.Max(0, file.DurationSeconds - 1));
+            // Copied video starts at a keyframe; start the stream exactly there so its clock is right
+            if (plan.Mode == PlaybackMode.Remux && start > 0 && plan.Video is { } v)
+                start = await ffmpeg.KeyframeAtOrBeforeAsync(path, v.Index, start.Value);
 
             StreamSession session;
             try
@@ -165,8 +168,9 @@ public static partial class PlaybackEndpoints
                 }
                 try
                 {
-                    // Shifted by the stream's start, so cue times match the player's clock
-                    vtt = await ffmpeg.RunAsync(ffmpeg.FfmpegPath, PlaybackPlanner.WebVttArguments(input, stream, s.StartSeconds), TimeSpan.FromMinutes(2), ct);
+                    // The whole track, then shifted by the stream's start, so cue times match the player's clock
+                    var full = await ffmpeg.RunAsync(ffmpeg.FfmpegPath, PlaybackPlanner.WebVttArguments(input, stream), TimeSpan.FromMinutes(2), ct);
+                    vtt = WebVtt.Utf8(WebVtt.Shift(System.Text.Encoding.UTF8.GetString(full), s.StartSeconds));
                 }
                 catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
                 {
