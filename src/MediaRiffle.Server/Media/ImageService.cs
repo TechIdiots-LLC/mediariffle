@@ -45,7 +45,7 @@ public sealed class ImageService(IOptions<MediaRiffleOptions> options, Ffmpeg ff
     /// <summary>A frame from the video, made once and cached; null when ffmpeg can't make one.</summary>
     public Task<string?> FrameAsync(int fileId, string videoPath, double durationSeconds)
     {
-        var output = Path.Combine(options.Value.ImageDirectory, $"frame-{fileId}.jpg");
+        var output = Path.Combine(options.Value.ImageDirectory, $"frame{Version}-{fileId}.jpg");
         if (File.Exists(output)) return Task.FromResult<string?>(output);
         return _making.GetOrAdd(output, _ => MakeAsync());
 
@@ -54,8 +54,7 @@ public sealed class ImageService(IOptions<MediaRiffleOptions> options, Ffmpeg ff
             await _ffmpegSlots.WaitAsync();
             try
             {
-                // Past the opening titles, but not in the second half where it could spoil something
-                var at = durationSeconds > 600 ? durationSeconds * 0.1 : Math.Min(30, durationSeconds / 3);
+                var at = FrameTime(durationSeconds);
                 var temp = output + ".tmp.jpg";
                 await ffmpeg.RunAsync(ffmpeg.FfmpegPath, PlaybackPlanner.ThumbnailArguments(videoPath, at, temp), TimeSpan.FromSeconds(60));
                 File.Move(temp, output, overwrite: true);
@@ -77,6 +76,34 @@ public sealed class ImageService(IOptions<MediaRiffleOptions> options, Ffmpeg ff
     /// <summary>Drops cached frames, e.g. after a file changed.</summary>
     public void Forget(int fileId)
     {
-        try { File.Delete(Path.Combine(options.Value.ImageDirectory, $"frame-{fileId}.jpg")); } catch { }
+        try { File.Delete(Path.Combine(options.Value.ImageDirectory, $"frame{Version}-{fileId}.jpg")); } catch { }
+    }
+
+    /// <summary>
+    /// Bumped when frames are made differently: cached ones are made again, and the ?v= in picture URLs tells
+    /// browsers to fetch them anew. 2: frames from minutes in, through the thumbnail filter (version 1 took early,
+    /// often black, frames, and at 0:00 for files whose length wasn't known).
+    /// </summary>
+    public const int Version = 2;
+
+    /// <summary>
+    /// Where to take a frame: past the opening (black screens, logos, titles), but not late enough to spoil anything.
+    /// 10% in for anything over ten minutes, never before 3:00; a third in for shorter clips; 1:00 when the length
+    /// isn't known (ffmpeg stops at the end if the file is shorter).
+    /// </summary>
+    public static double FrameTime(double durationSeconds) =>
+        durationSeconds <= 0 ? 60
+        : durationSeconds > 600 ? Math.Min(Math.Max(180, durationSeconds * 0.1), durationSeconds * 0.4)
+        : durationSeconds / 3;
+
+    /// <summary>Removes frames made by earlier versions, once at start.</summary>
+    public void RemoveOldFrames()
+    {
+        try
+        {
+            foreach (var f in Directory.EnumerateFiles(options.Value.ImageDirectory, "frame*.jpg"))
+                if (!Path.GetFileName(f).StartsWith($"frame{Version}-", StringComparison.Ordinal)) File.Delete(f);
+        }
+        catch (Exception ex) { log.LogDebug("Couldn't remove old frames: {Error}", ex.Message); }
     }
 }

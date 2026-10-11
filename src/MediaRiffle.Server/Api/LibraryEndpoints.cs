@@ -90,7 +90,7 @@ public static class LibraryEndpoints
             var progress = await ProgressFor(db, userId, files.Select(f => f.Id));
             return Results.Ok(new
             {
-                show.Id, show.Title, image = $"/api/images/show/{id}",
+                show.Id, show.Title, image = $"/api/images/show/{id}?v={ImageService.Version}",
                 seasons = seasons.Select(s => new
                 {
                     s.Id, s.Number, s.Title,
@@ -107,7 +107,7 @@ public static class LibraryEndpoints
             var progress = await ProgressFor(db, users.GetUserId(me)!, parts.Select(p => p.Id));
             return Results.Ok(new
             {
-                movie.Id, movie.Title, movie.Year, image = $"/api/images/movie/{id}",
+                movie.Id, movie.Title, movie.Year, image = $"/api/images/movie/{id}?v={ImageService.Version}",
                 parts = parts.Select(p => FileSummary(p, progress)),
             });
         });
@@ -119,6 +119,7 @@ public static class LibraryEndpoints
             var progress = await ProgressFor(db, users.GetUserId(me)!, [id]);
             var probe = string.IsNullOrEmpty(f.ProbeJson) ? new ProbeResult() : ProbeResult.Parse(f.ProbeJson);
             var path = files.FullPath(f);
+            var neighbours = await Neighbours(db, f);
             var cap = Quality.Level((await users.GetUserAsync(me))?.MaxQuality);
             return Results.Ok(new
             {
@@ -132,7 +133,8 @@ public static class LibraryEndpoints
                 audio = probe.Audio.Select(a => new { a.Index, a.Label, a.IsDefault }),
                 subtitles = probe.Subtitles.Select(s => new { id = $"s{s.Index}", s.Label, text = s.IsTextSubtitle })
                     .Concat((path is null ? new() : LibraryFiles.Sidecars(path)).Select(x => new { id = $"x{x.Number}", x.Label, text = true })),
-                next = await NextEpisode(db, f),
+                next = neighbours.Next,
+                previous = neighbours.Previous,
             });
         });
 
@@ -191,12 +193,12 @@ public static class LibraryEndpoints
 
     private static async Task<List<object>> ShowsIn(AppDbContext db, ICollection<int> libraries) =>
         (await db.Shows.Where(s => libraries.Contains(s.LibraryId)).OrderBy(s => s.Title)
-            .Select(s => new { s.Id, s.Title, episodes = db.MediaFiles.Count(f => f.ShowId == s.Id), image = $"/api/images/show/{s.Id}" })
+            .Select(s => new { s.Id, s.Title, episodes = db.MediaFiles.Count(f => f.ShowId == s.Id), image = $"/api/images/show/{s.Id}?v={ImageService.Version}" })
             .ToListAsync()).Cast<object>().ToList();
 
     private static async Task<List<object>> MoviesIn(AppDbContext db, ICollection<int> libraries) =>
         (await db.Movies.Where(m => libraries.Contains(m.LibraryId)).OrderBy(m => m.Title)
-            .Select(m => new { m.Id, m.Title, m.Year, parts = m.Parts.Count, image = $"/api/images/movie/{m.Id}" })
+            .Select(m => new { m.Id, m.Title, m.Year, parts = m.Parts.Count, image = $"/api/images/movie/{m.Id}?v={ImageService.Version}" })
             .ToListAsync()).Cast<object>().ToList();
 
     private static IResult Image(HttpContext ctx, string? path)
@@ -221,19 +223,28 @@ public static class LibraryEndpoints
             f.Id, f.Title, f.EpisodeNumber, f.PartNumber, duration = f.DurationSeconds,
             playable = f.ProbeError is null && !string.IsNullOrEmpty(f.ProbeJson),
             position = p?.PositionSeconds ?? 0, finished = p?.Finished ?? false,
-            image = $"/api/images/file/{f.Id}",
+            image = $"/api/images/file/{f.Id}?v={ImageService.Version}",
         };
     }
 
     /// <summary>The episode after this one in its show, or null.</summary>
-    private static async Task<int?> NextEpisode(AppDbContext db, MediaFile f)
+    /// <summary>The episodes before and after this one in its show (season, then episode order), or a movie's other parts.</summary>
+    private static async Task<(int? Previous, int? Next)> Neighbours(AppDbContext db, MediaFile f)
     {
-        if (f.ShowId is null) return null;
-        var all = await db.MediaFiles.Where(x => x.ShowId == f.ShowId)
-            .Join(db.Seasons, x => x.SeasonId, s => s.Id, (x, s) => new { x.Id, s.Number, Ep = x.EpisodeNumber ?? int.MaxValue, x.RelativePath })
-            .ToListAsync();
-        var ordered = all.OrderBy(x => x.Number).ThenBy(x => x.Ep).ThenBy(x => x.RelativePath).Select(x => x.Id).ToList();
+        List<int> ordered;
+        if (f.ShowId is not null)
+        {
+            var all = await db.MediaFiles.Where(x => x.ShowId == f.ShowId)
+                .Join(db.Seasons, x => x.SeasonId, s => s.Id, (x, s) => new { x.Id, s.Number, Ep = x.EpisodeNumber ?? int.MaxValue, x.RelativePath })
+                .ToListAsync();
+            ordered = all.OrderBy(x => x.Number).ThenBy(x => x.Ep).ThenBy(x => x.RelativePath).Select(x => x.Id).ToList();
+        }
+        else if (f.MovieId is not null)
+        {
+            ordered = await db.MediaFiles.Where(x => x.MovieId == f.MovieId).OrderBy(x => x.PartNumber).Select(x => x.Id).ToListAsync();
+        }
+        else return (null, null);
         var i = ordered.IndexOf(f.Id);
-        return i >= 0 && i + 1 < ordered.Count ? ordered[i + 1] : null;
+        return (i > 0 ? ordered[i - 1] : null, i >= 0 && i + 1 < ordered.Count ? ordered[i + 1] : null);
     }
 }

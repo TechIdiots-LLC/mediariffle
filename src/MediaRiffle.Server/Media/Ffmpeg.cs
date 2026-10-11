@@ -62,6 +62,29 @@ public sealed class Ffmpeg(IOptions<MediaRiffleOptions> options, ILogger<Ffmpeg>
     }
 
     /// <summary>
+    /// ffprobe's JSON for a file, or the reason it couldn't be read, in words an admin can act on (ffprobe missing
+    /// is said as such, not as a process-start error).
+    /// </summary>
+    public async Task<(string? Json, string? Error)> ProbeAsync(string path, CancellationToken ct = default)
+    {
+        try
+        {
+            var bytes = await RunAsync(FfprobePath,
+                ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", path], TimeSpan.FromSeconds(90), ct);
+            return (Encoding.UTF8.GetString(bytes), null);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return (null, $"ffprobe isn't installed where MediaRiffle looks for it ({FfprobePath}). Install ffmpeg, or set " +
+                          "MediaRiffle:Transcoding:FfmpegFolder, then restart MediaRiffle.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return (null, ex.Message);
+        }
+    }
+
+    /// <summary>
     /// The time of the last video keyframe at or before <paramref name="seconds"/>. Copied video can only start at
     /// a keyframe, so a remux started there begins exactly where the player's clock says; returns
     /// <paramref name="seconds"/> when none is found in the 20 s before it.

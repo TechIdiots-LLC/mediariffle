@@ -197,9 +197,11 @@ public static class PlaybackPlanner
          "-map", streamIndex is { } i ? $"0:{i}" : "0:s:0", "-c:s", "webvtt", "-f", "webvtt", "pipe:1"];
 
     /// <summary>ffmpeg arguments for a 480 px wide JPEG of the frame at <paramref name="atSeconds"/>.</summary>
+    /// The thumbnail filter looks over the next 50 frames (about 2 s) and keeps the most typical one, so a fade, a cut
+    /// to black or a blurred frame at that exact moment doesn't become the picture.
     public static List<string> ThumbnailArguments(string input, double atSeconds, string output) =>
         ["-hide_banner", "-loglevel", "error", "-y", "-ss", Seconds(atSeconds), "-i", input,
-         "-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "4", output];
+         "-map", "0:v:0", "-frames:v", "1", "-vf", "thumbnail=50,scale=480:-2", "-q:v", "4", output];
 
     private static string Seconds(double s) => s.ToString("0.###", CultureInfo.InvariantCulture);
 }

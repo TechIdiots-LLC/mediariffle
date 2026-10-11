@@ -47,11 +47,25 @@ public static partial class PlaybackEndpoints
             var userId = users.GetUserId(me)!;
             var file = await db.MediaFiles.FirstOrDefaultAsync(f => f.Id == req.FileId, ct);
             if (file is null) return Results.NotFound();
-            if (file.ProbeError is not null || string.IsNullOrEmpty(file.ProbeJson))
-                return Results.Json(new { error = "This file couldn't be read: " + file.ProbeError }, statusCode: 422);
             var path = files.FullPath(file);
             if (path is null || !File.Exists(path))
                 return Results.Json(new { error = "The file isn't available right now (is the file server reachable?)." }, statusCode: 503);
+            // Unreadable at the last scan (ffmpeg missing then, a share that was down, …): try again now
+            if (file.ProbeError is not null || string.IsNullOrEmpty(file.ProbeJson))
+            {
+                var (json, error) = await ffmpeg.ProbeAsync(path, ct);
+                if (json is null)
+                    return Results.Json(new { error = "This file couldn't be read: " + error }, statusCode: 422);
+                var fresh = ProbeResult.Parse(json);
+                file.ProbeJson = json;
+                file.ProbeError = null;
+                file.DurationSeconds = fresh.DurationSeconds;
+                file.Container = fresh.FormatName;
+                file.VideoCodec = fresh.Video?.Codec ?? string.Empty;
+                file.Width = fresh.Video?.Width ?? 0;
+                file.Height = fresh.Video?.Height ?? 0;
+                await db.SaveChangesAsync(ct);
+            }
 
             var probe = ProbeResult.Parse(file.ProbeJson);
             int? burn = null;

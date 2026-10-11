@@ -139,6 +139,7 @@ using (var scope = app.Services.CreateScope())
     var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     if (!await roles.RoleExistsAsync(Roles.Admin)) await roles.CreateAsync(new IdentityRole(Roles.Admin));
     await scope.ServiceProvider.GetRequiredService<LibraryCatalog>().InitializeAsync();
+    scope.ServiceProvider.GetRequiredService<ImageService>().RemoveOldFrames();
 }
 
 app.UseForwardedHeaders();

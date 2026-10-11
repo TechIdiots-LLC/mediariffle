@@ -89,11 +89,19 @@ public static class AdminEndpoints
         });
 
         // ── Libraries ──
-        g.MapGet("/libraries", async (AppDbContext db) =>
+        g.MapGet("/libraries", async (AppDbContext db, LibraryScanner scanner) =>
         {
-            var counts = await db.MediaFiles.GroupBy(f => f.LibraryId).Select(x => new { x.Key, n = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.n);
+            var counts = await db.MediaFiles.GroupBy(f => f.LibraryId)
+                .Select(x => new { x.Key, n = x.Count(), bad = x.Count(f => f.ProbeError != null) })
+                .ToDictionaryAsync(x => x.Key);
             return (await db.Libraries.OrderBy(l => l.Name).ToListAsync())
-                .Select(l => new { l.Id, l.Name, kind = l.Kind.ToString(), l.Path, l.Tags, l.Enabled, files = counts.GetValueOrDefault(l.Id) });
+                .Select(l => new
+                {
+                    l.Id, l.Name, kind = l.Kind.ToString(), l.Path, l.Tags, l.Enabled,
+                    files = counts.TryGetValue(l.Id, out var c) ? c.n : 0,
+                    unreadable = c?.bad ?? 0,
+                    status = scanner.Status.TryGetValue(l.Id, out var s) ? s : null,
+                });
         });
 
         g.MapPost("/libraries", async (LibraryRequest req, AppDbContext db, LibraryCatalog catalog) =>
@@ -170,7 +178,7 @@ public static class AdminEndpoints
         });
 
         g.MapPost("/scan", (LibraryScanner scanner) => { scanner.RequestScan(); return Results.Accepted(); });
-        g.MapGet("/scan", (LibraryScanner scanner) => new { scanner.IsScanning, scanner.LastScanUtc, scanner.LastResult });
+        g.MapGet("/scan", (LibraryScanner scanner) => new { scanner.IsScanning, scanner.LastScanUtc, scanner.LastResult, scanner.Progress });
 
         g.MapGet("/sessions", async (StreamSessionManager sessions, UserManager<AppUser> users) =>
         {

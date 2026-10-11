@@ -36,6 +36,12 @@ public sealed class LibraryScanner : BackgroundService
     public bool IsScanning { get; private set; }
     public DateTime? LastScanUtc { get; private set; }
     public string LastResult { get; private set; } = "Not scanned yet";
+    /// <summary>What the running scan is doing, e.g. "Movies: 340 of 1601 files read"; null when idle.</summary>
+    public string? Progress { get; private set; }
+
+    /// <summary>How each library's last (or current) scan went, by library id, for Admin → Libraries.</summary>
+    public IReadOnlyDictionary<int, LibraryScanStatus> Status => _status;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, LibraryScanStatus> _status = new();
 
     /// <summary>Asks for a scan as soon as the current one (if any) is done.</summary>
     public void RequestScan() => _requests.Writer.TryWrite(true);
@@ -65,6 +71,7 @@ public sealed class LibraryScanner : BackgroundService
             finally
             {
                 IsScanning = false;
+                Progress = null;
                 LastScanUtc = DateTime.UtcNow;
             }
         }
@@ -75,16 +82,29 @@ public sealed class LibraryScanner : BackgroundService
         var summary = new StringBuilder();
         foreach (var lib in catalog.Enabled)
         {
+            Progress = $"{lib.Name}: looking for files…";
             if (!Directory.Exists(lib.Path))
             {
                 // A share that isn't mounted (or a path the service account can't see) must not empty the library
                 log.LogWarning("Library {Name}: folder {Path} isn't available; skipped, nothing removed", lib.Name, lib.Path);
                 summary.Append($"{lib.Name}: folder not available. ");
+                _status[lib.Id] = new("unavailable", "The folder isn't available (not mounted, or this server's account can't see it); nothing was removed.", DateTime.UtcNow);
                 continue;
             }
-            var (added, updated, removed, failed) = await ScanLibraryAsync(lib, ct);
-            log.LogInformation("Library {Name}: {Added} added, {Updated} updated, {Removed} removed, {Failed} unreadable", lib.Name, added, updated, removed, failed);
-            summary.Append($"{lib.Name}: {added} added, {updated} updated, {removed} removed, {failed} unreadable. ");
+            _status[lib.Id] = new("scanning", "Scanning…", DateTime.UtcNow);
+            try
+            {
+                var (added, updated, removed, failed) = await ScanLibraryAsync(lib, ct);
+                log.LogInformation("Library {Name}: {Added} added, {Updated} updated, {Removed} removed, {Failed} unreadable", lib.Name, added, updated, removed, failed);
+                var result = $"{added} added, {updated} updated, {removed} removed, {failed} unreadable";
+                summary.Append($"{lib.Name}: {result}. ");
+                _status[lib.Id] = new(failed > 0 ? "warning" : "ok", result, DateTime.UtcNow);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _status[lib.Id] = new("error", "Scan failed: " + ex.Message, DateTime.UtcNow);
+                throw;
+            }
         }
         return summary.Length == 0 ? "No libraries configured" : summary.ToString().Trim();
     }
@@ -113,22 +133,15 @@ public sealed class LibraryScanner : BackgroundService
 
         // Probing reads the start of every file, slow over a network share; a few at a time
         var probes = new Dictionary<string, (string? Json, string? Error)>();
+        int read = 0;
+        Progress = toProbe.Count == 0 ? $"{lib.Name}: {onDisk.Count} files, none new or changed" : $"{lib.Name}: 0 of {toProbe.Count} files read";
         await Parallel.ForEachAsync(toProbe, new ParallelOptions { MaxDegreeOfParallelism = 3, CancellationToken = ct }, async (kv, token) =>
         {
-            (string?, string?) result;
-            try
-            {
-                var bytes = await ffmpeg.RunAsync(ffmpeg.FfprobePath,
-                    ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", kv.Value.FullName],
-                    TimeSpan.FromSeconds(90), token);
-                result = (Encoding.UTF8.GetString(bytes), null);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                result = (null, ex.Message);
-            }
+            var result = await ffmpeg.ProbeAsync(kv.Value.FullName, token);
             lock (probes) probes[kv.Key] = result;
+            Progress = $"{lib.Name}: {Interlocked.Increment(ref read)} of {toProbe.Count} files read";
         });
+        if (toProbe.Count > 0) Progress = $"{lib.Name}: saving…";
 
         int added = 0, updated = 0, failed = 0;
         foreach (var (rel, info) in toProbe)
@@ -221,3 +234,6 @@ public sealed class LibraryScanner : BackgroundService
         file.SeasonId = null;
     }
 }
+
+/// <param name="State">ok, warning (some files unreadable), scanning, unavailable (folder missing) or error.</param>
+public sealed record LibraryScanStatus(string State, string Message, DateTime Utc);
