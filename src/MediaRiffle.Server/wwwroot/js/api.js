@@ -5,6 +5,7 @@ let csrf = null;
 
 export async function refreshCsrf() {
   const r = await fetch('/api/auth/csrf', { credentials: 'same-origin' });
+  if (!r.ok) throw new ApiError(r.status, `The server couldn't start a session (error ${r.status}); see its log.`);
   csrf = (await r.json()).token;
 }
 
@@ -28,7 +29,9 @@ export async function api(path, { method = 'GET', body, keepalive = false } = {}
     throw new ApiError(401, 'Please sign in.');
   }
   const text = await r.text();
-  const data = text ? JSON.parse(text) : null;
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; }
+  catch { if (r.ok) throw new ApiError(r.status, 'The server sent something unexpected.'); }
   if (!r.ok) throw new ApiError(r.status, data?.error ?? data?.detail ?? `Request failed (${r.status})`);
   return data;
 }

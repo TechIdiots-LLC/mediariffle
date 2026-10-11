@@ -18,6 +18,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Runs as a systemd service on Linux and under IIS (ASP.NET Core Module) or as a Windows service on Windows
 builder.Host.UseSystemd();
 builder.Host.UseWindowsService();
+// As a Windows service, warnings and errors go to the Application event log under the "MediaRiffle" source, which the
+// installer registers (the service's own account isn't allowed to create one)
+if (OperatingSystem.IsWindows())
+    builder.Services.Configure<Microsoft.Extensions.Logging.EventLog.EventLogSettings>(s => { s.SourceName = "MediaRiffle"; s.LogName = "Application"; });
 
 // Settings live outside the program folder, so an upgrade (replacing the published files) can't overwrite them:
 // /etc/mediariffle/appsettings.json on Linux, %ProgramData%\MediaRiffle\appsettings.json on Windows.
@@ -65,7 +69,9 @@ builder.Services.ConfigureApplicationCookie(o =>
     o.Cookie.Name = "mediariffle.auth";
     o.Cookie.HttpOnly = true;
     o.Cookie.SameSite = SameSiteMode.Strict;
-    o.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+    // Secure whenever the request is HTTPS, including behind a proxy that says so (X-Forwarded-Proto, trusted in
+    // TrustedProxies). Always would refuse plain http://localhost:5080 outright, which the installer opens first.
+    o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     o.ExpireTimeSpan = TimeSpan.FromDays(14);
     o.SlidingExpiration = true;
     // An API answers 401/403 instead of redirecting to a login page
@@ -80,7 +86,9 @@ builder.Services.AddAntiforgery(o =>
     o.HeaderName = "X-CSRF-TOKEN";
     o.Cookie.Name = "mediariffle.csrf";
     o.Cookie.SameSite = SameSiteMode.Strict;
-    o.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+    // Secure whenever the request is HTTPS, including behind a proxy that says so (X-Forwarded-Proto, trusted in
+    // TrustedProxies). Always would refuse plain http://localhost:5080 outright, which the installer opens first.
+    o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
 });
 
 builder.Services.AddRateLimiter(o =>

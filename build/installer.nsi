@@ -150,6 +150,10 @@ Section "${APP_NAME} service (required)" SecApp
   nsExec::ExecToLog 'sc.exe failure "${SERVICE}" reset= 86400 actions= restart/5000/restart/5000/restart/60000'
   Pop $0
 
+  ; The Application event log source the service logs under: its own account can't create one
+  WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Services\EventLog\Application\${SERVICE}" "EventMessageFile" "%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll"
+  WriteRegDWORD HKLM "SYSTEM\CurrentControlSet\Services\EventLog\Application\${SERVICE}" "TypesSupported" 7
+
   ; Settings and data: the service account may change its data folder and nothing else
   CreateDirectory "$APPDATA\MediaRiffle"
   IfFileExists "$APPDATA\MediaRiffle\appsettings.json" +3 0
@@ -203,6 +207,7 @@ Section "Uninstall"
     Pop $0
     nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="MediaRiffle"'
     Pop $0
+    DeleteRegKey HKLM "SYSTEM\CurrentControlSet\Services\EventLog\Application\${SERVICE}"
     DeleteRegKey HKLM "${UNINST_KEY}"
   ${EndIf}
 
