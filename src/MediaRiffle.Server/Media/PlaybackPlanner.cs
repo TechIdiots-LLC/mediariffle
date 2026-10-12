@@ -27,10 +27,17 @@ public enum SegmentFormat
 /// <param name="TargetHeight">A transcode's height, at most.</param>
 /// <param name="TargetVideoKbps">A transcode's peak video bitrate.</param>
 /// <param name="StreamKbps">About how much the stream needs (the file's bitrate when it isn't transcoded), for Auto.</param>
+/// <param name="Levels">
+/// Set for an adaptive transcode: the levels of its master playlist, best first, each a full-length playlist whose
+/// segments are made when asked for (see <see cref="PlaybackPlanner.SegmentArguments"/>). Null for a single stream.
+/// </param>
 public sealed record PlaybackPlan(
     PlaybackMode Mode, ProbeStream? Video, ProbeStream? Audio, ProbeStream? BurnSubtitle, string Reason,
     string Quality = Media.Quality.Original, int TargetHeight = 1080, int TargetVideoKbps = 8000, int AudioKbps = 192,
-    SegmentFormat Segments = SegmentFormat.Ts, int StreamKbps = 0);
+    SegmentFormat Segments = SegmentFormat.Ts, int StreamKbps = 0, IReadOnlyList<QualityLevel>? Levels = null)
+{
+    public bool IsAdaptive => Levels is { Count: > 0 };
+}
 
 /// <summary>Decides how a file plays in a browser, and writes the ffmpeg arguments for it.</summary>
 public static class PlaybackPlanner
@@ -125,26 +132,7 @@ public static class PlaybackPlanner
             }
             else
             {
-                int height = Math.Min(plan.TargetHeight, o.MaxHeight);
-                bool scale = v.Height > height;
-                var chain = o.Encoder switch
-                {
-                    // VA-API scales on the GPU, after the frames are uploaded to it
-                    VideoEncoder.Vaapi => "format=nv12,hwupload" + (scale ? $",scale_vaapi=w=-2:h={height}" : ""),
-                    VideoEncoder.Qsv => (scale ? $"scale=-2:{height}," : "") + "format=nv12",
-                    _ => (scale ? $"scale=-2:{height}," : "") + "format=yuv420p",
-                };
-                if (plan.BurnSubtitle is { } s)
-                {
-                    a.AddRange(["-filter_complex", $"[0:{v.Index}][0:{s.Index}]overlay,{chain}[v]", "-map", "[v]"]);
-                }
-                else
-                {
-                    a.AddRange(["-map", $"0:{v.Index}", "-vf", chain]);
-                }
-                a.AddRange(EncoderArguments(o, Math.Min(plan.TargetVideoKbps, o.MaxVideoKbps)));
-                // A keyframe at every segment boundary, so each segment starts cleanly
-                a.AddRange(["-force_key_frames", $"expr:gte(t,n_forced*{o.SegmentSeconds})"]);
+                a.AddRange(VideoTranscode(v, plan.BurnSubtitle, plan.TargetHeight, plan.TargetVideoKbps, o, fixedKeyframes: false));
             }
         }
 
@@ -175,6 +163,33 @@ public static class PlaybackPlanner
         return a;
     }
 
+    /// <summary>
+    /// Mapping, filters and encoder for H.264 at most <paramref name="targetHeight"/> lines high (never scaled up) and
+    /// <paramref name="kbps"/>, with an image subtitle burned in when given. A keyframe at every segment boundary, so
+    /// each segment starts cleanly (<paramref name="fixedKeyframes"/>: for an adaptive stream, where it must).
+    /// </summary>
+    private static List<string> VideoTranscode(ProbeStream v, ProbeStream? burn, int targetHeight, int kbps, TranscodingOptions o, bool fixedKeyframes)
+    {
+        var a = new List<string>();
+        int height = Math.Min(targetHeight, o.MaxHeight);
+        bool scale = v.Height > height;
+        var chain = o.Encoder switch
+        {
+            // VA-API scales on the GPU, after the frames are uploaded to it
+            VideoEncoder.Vaapi => "format=nv12,hwupload" + (scale ? $",scale_vaapi=w=-2:h={height}" : ""),
+            VideoEncoder.Qsv => (scale ? $"scale=-2:{height}," : "") + "format=nv12",
+            _ => (scale ? $"scale=-2:{height}," : "") + "format=yuv420p",
+        };
+        if (burn is { } s) a.AddRange(["-filter_complex", $"[0:{v.Index}][0:{s.Index}]overlay,{chain}[v]", "-map", "[v]"]);
+        else a.AddRange(["-map", $"0:{v.Index}", "-vf", chain]);
+        a.AddRange(EncoderArguments(o, Math.Min(kbps, o.MaxVideoKbps)));
+        // A player switching level starts a segment with no picture before it: NVENC's forced keyframes must be IDR
+        if (fixedKeyframes && o.Encoder == VideoEncoder.Nvenc) a.AddRange(["-forced-idr", "1"]);
+        // t counts from the first frame of this run, which starts on a segment boundary
+        a.AddRange(["-force_key_frames", $"expr:gte(t,n_forced*{o.SegmentSeconds})"]);
+        return a;
+    }
+
     private static IEnumerable<string> EncoderArguments(TranscodingOptions o, int kbps)
     {
         var max = $"{kbps}k";
@@ -186,6 +201,96 @@ public static class PlaybackPlanner
             VideoEncoder.Vaapi => ["-c:v", "h264_vaapi", "-rc_mode", "VBR", "-b:v", $"{kbps * 3 / 4}k", "-maxrate", max, "-bufsize", buf, "-profile:v", "high"],
             _ => ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-maxrate", max, "-bufsize", buf, "-profile:v", "high", "-level:v", "4.1"],
         };
+    }
+
+    // ── Adaptive streams ──
+    //
+    // An adaptive transcode is a master playlist of levels, each a full-length VOD playlist of fixed segments:
+    // segment k is [k·D, (k+1)·D) of the file. Nothing is made until a segment is asked for; then one ffmpeg makes
+    // that level from that segment on, and keeps going while the player keeps asking for the next ones. When the
+    // player switches level or seeks elsewhere, that ffmpeg is replaced by one for the new level or place. The
+    // timestamps are the file's own (-copyts), so segments from different runs and levels line up, and the player's
+    // clock is the file's.
+
+    /// <summary>The number of segments of an adaptive stream (a last sliver under a quarter second is dropped).</summary>
+    public static int SegmentCount(double durationSeconds, int segmentSeconds) =>
+        Math.Max(1, (int)Math.Ceiling(Math.Max(0, durationSeconds - 0.25) / segmentSeconds));
+
+    /// <summary>
+    /// The master playlist: a variant per level, at "v{i}/index.m3u8". <paramref name="first"/> is listed first (a
+    /// player without its own pick, such as Safari's, starts there); the levels keep their numbers whatever the order.
+    /// </summary>
+    public static string MasterPlaylist(PlaybackPlan plan, int first)
+    {
+        var levels = plan.Levels ?? [];
+        var sb = new System.Text.StringBuilder("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-INDEPENDENT-SEGMENTS\n");
+        var order = Enumerable.Range(0, levels.Count).OrderBy(i => i == first ? 0 : 1).ThenBy(i => i);
+        foreach (var i in order)
+        {
+            var l = levels[i];
+            var (w, h) = OutputSize(plan.Video, l.Height);
+            int kbps = l.VideoKbps + (plan.Audio is null ? 0 : l.AudioKbps);
+            var codecs = plan.Audio is null ? "avc1.640029" : "avc1.640029,mp4a.40.2";
+            sb.Append(CultureInfo.InvariantCulture,
+                $"#EXT-X-STREAM-INF:BANDWIDTH={kbps * 1000},RESOLUTION={w}x{h},CODECS=\"{codecs}\",NAME=\"{l.Id}\"\n");
+            sb.Append(CultureInfo.InvariantCulture, $"v{i}/index.m3u8\n");
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>A level's playlist: every segment of the file, D seconds each (the last one what's left).</summary>
+    public static string VariantPlaylist(double durationSeconds, int segmentSeconds)
+    {
+        int n = SegmentCount(durationSeconds, segmentSeconds);
+        var sb = new System.Text.StringBuilder();
+        sb.Append(CultureInfo.InvariantCulture,
+            $"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:{segmentSeconds + 1}\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-INDEPENDENT-SEGMENTS\n");
+        for (int k = 0; k < n; k++)
+        {
+            double len = k < n - 1 ? segmentSeconds : Math.Max(0.1, durationSeconds - (double)k * segmentSeconds);
+            sb.Append(CultureInfo.InvariantCulture, $"#EXTINF:{len:0.000000},\n{SegmentName(k)}\n");
+        }
+        sb.Append("#EXT-X-ENDLIST\n");
+        return sb.ToString();
+    }
+
+    public static string SegmentName(int k) => $"seg{k:00000}.ts";
+
+    /// <summary>
+    /// ffmpeg arguments that make level <paramref name="level"/> of an adaptive stream from segment
+    /// <paramref name="startSegment"/> to the end: MPEG-TS segments named by number in the working directory, and
+    /// list.csv, which gets a line when a segment is complete. The segment muxer cuts on the file's clock at every
+    /// multiple of D (-copyts), so a segment's number always means the same stretch of the file.
+    /// </summary>
+    public static List<string> SegmentArguments(PlaybackPlan plan, QualityLevel level, string input, int startSegment, TranscodingOptions o)
+    {
+        var d = o.SegmentSeconds;
+        var a = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
+        if (o.Encoder == VideoEncoder.Vaapi) a.AddRange(["-vaapi_device", o.VaapiDevice]);
+        // -ss even at 0: the first frame of a run is then always the first one on or after the boundary
+        a.AddRange(["-copyts", "-start_at_zero", "-ss", Seconds((double)startSegment * d), "-i", input]);
+        if (plan.Video is { } v) a.AddRange(VideoTranscode(v, plan.BurnSubtitle, level.Height, level.VideoKbps, o, fixedKeyframes: true));
+        if (plan.Audio is { } au) a.AddRange(["-map", $"0:{au.Index}", "-c:a", "aac", "-b:a", $"{level.AudioKbps}k", "-ac", "2"]);
+        a.AddRange([
+            "-sn", "-dn", "-map_metadata", "-1", "-max_muxing_queue_size", "4096",
+            // Not shifted to keep the first B-frame's timestamp from going negative, which only a run from 0 would be
+            "-avoid_negative_ts", "disabled",
+            "-f", "segment", "-segment_format", "mpegts",
+            "-segment_time", d.ToString(CultureInfo.InvariantCulture),
+            "-segment_start_number", startSegment.ToString(CultureInfo.InvariantCulture),
+            "-segment_list", "list.csv", "-segment_list_type", "csv",
+            "seg%05d.ts",
+        ]);
+        return a;
+    }
+
+    /// <summary>The picture size a level comes out at: scaled to its height (even width), or the picture's own when smaller.</summary>
+    public static (int Width, int Height) OutputSize(ProbeStream? v, int levelHeight)
+    {
+        if (v is null || v.Width <= 0 || v.Height <= 0) return (levelHeight * 16 / 9 / 2 * 2, levelHeight);
+        if (v.Height <= levelHeight) return (v.Width, v.Height);
+        int w = (int)Math.Round(v.Width * (double)levelHeight / v.Height / 2) * 2;
+        return (w, levelHeight);
     }
 
     /// <summary>

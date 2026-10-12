@@ -34,6 +34,15 @@ public sealed class ProbeResult
 {
     public string FormatName { get; init; } = string.Empty;
     public double DurationSeconds { get; init; }
+    /// <summary>When the first stream starts on the file's clock (ffprobe's start_time); 0 if unknown.</summary>
+    public double StartSeconds { get; init; }
+
+    /// <summary>
+    /// How long the picture and sound last, counted from where they start: what an adaptive stream (on a clock that
+    /// starts at the first frame) covers. Matroska counts its duration from 0 (a file starting at 2.5 s with 120 s in
+    /// it says 122.5); MPEG-TS and MP4 say how long what's in them lasts.
+    /// </summary>
+    public double ContentSeconds => FormatName.Contains("matroska") && StartSeconds > 0 ? Math.Max(0, DurationSeconds - StartSeconds) : DurationSeconds;
     /// <summary>The whole file's average bitrate (video and all audio), in kbit/s; 0 if unknown.</summary>
     public int BitRateKbps { get; init; }
     public List<ProbeStream> Streams { get; init; } = new();
@@ -78,6 +87,7 @@ public sealed class ProbeResult
         {
             FormatName = Str(format, "format_name") ?? string.Empty,
             DurationSeconds = double.TryParse(Str(format, "duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out var dur) ? dur : 0,
+            StartSeconds = double.TryParse(Str(format, "start_time"), NumberStyles.Float, CultureInfo.InvariantCulture, out var st) && st > 0 ? st : 0,
             BitRateKbps = long.TryParse(Str(format, "bit_rate"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var br) ? (int)(br / 1000) : 0,
             Streams = streams,
         };

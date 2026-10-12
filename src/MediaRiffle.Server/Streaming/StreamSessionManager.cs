@@ -32,6 +32,68 @@ public sealed class StreamSession
     public bool FailedEarly => Process is { HasExited: true, ExitCode: not 0 };
 
     public string PlaylistPath => Path.Combine(Directory, "index.m3u8");
+
+    // ── Adaptive streams (Plan.IsAdaptive): segments made when asked for, see PlaybackPlanner ──
+
+    public double DurationSeconds { get; init; }
+    public int SegmentSeconds { get; init; } = 4;
+    public int SegmentCount => PlaybackPlanner.SegmentCount(DurationSeconds, SegmentSeconds);
+    /// <summary>The level listed first in the master playlist, where a player without its own pick starts.</summary>
+    public int FirstLevel { get; set; }
+    /// <summary>The ffmpeg making segments now, or null (none asked for yet, or it was stopped for being far ahead).</summary>
+    internal SegmentEncoder? Encoder { get; set; }
+    internal SemaphoreSlim EncoderLock { get; } = new(1, 1);
+    /// <summary>The finished segments, by level and number: their files (each run of ffmpeg writes to its own folder).</summary>
+    internal ConcurrentDictionary<(int Level, int Segment), string> Segments { get; } = new();
+    /// <summary>The latest segment the player asked for, to stop an ffmpeg that has run far ahead of it.</summary>
+    internal int LastRequestedSegment { get; set; }
+}
+
+/// <summary>One ffmpeg making one level of an adaptive stream, from <see cref="StartSegment"/> on.</summary>
+internal sealed class SegmentEncoder(int level, int startSegment, string directory, Process process)
+{
+    public int Level { get; } = level;
+    public int StartSegment { get; } = startSegment;
+    public string Directory { get; } = directory;
+    public Process Process { get; } = process;
+    /// <summary>The last segment this run finished (StartSegment - 1 before the first).</summary>
+    public int Latest { get; private set; } = startSegment - 1;
+    private long _read;
+
+    private readonly StringBuilder _errors = new();
+    public void AddError(string line) { lock (_errors) { if (_errors.Length < 8000) _errors.AppendLine(line); } }
+    public string Errors { get { lock (_errors) return _errors.ToString(); } }
+
+    /// <summary>Adds the segments ffmpeg has finished since the last look (its list.csv gets a line per finished one).</summary>
+    public void Collect(StreamSession s)
+    {
+        lock (this)
+        {
+            try
+            {
+                var list = Path.Combine(Directory, "list.csv");
+                if (!File.Exists(list)) return;
+                using var f = new FileStream(list, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                if (f.Length <= _read) return;
+                f.Seek(_read, SeekOrigin.Begin);
+                var buf = new byte[f.Length - _read];
+                int n = f.ReadAtLeast(buf, buf.Length, throwOnEndOfStream: false);
+                var text = Encoding.UTF8.GetString(buf, 0, n);
+                int end = text.LastIndexOf('\n');
+                if (end < 0) return;   // only whole lines
+                _read += Encoding.UTF8.GetByteCount(text.AsSpan(0, end + 1));
+                foreach (var line in text[..end].Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    // seg00012.ts,48.089711,52.093711
+                    var name = line.Split(',')[0].Trim();
+                    if (!name.StartsWith("seg") || !name.EndsWith(".ts") || !int.TryParse(name.AsSpan(3, name.Length - 6), out var k)) continue;
+                    s.Segments[(Level, k)] = Path.Combine(Directory, name);
+                    if (k > Latest) Latest = k;
+                }
+            }
+            catch (IOException) { }
+        }
+    }
 }
 
 public sealed class SessionLimitException(string message) : Exception(message);
@@ -58,7 +120,7 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
     /// <summary>Whether a session is still running, without counting as activity on it.</summary>
     public bool Exists(string id) => _sessions.ContainsKey(id);
 
-    public async Task<StreamSession> StartAsync(string userId, int fileId, string fullPath, PlaybackPlan plan, double startSeconds)
+    public async Task<StreamSession> StartAsync(string userId, int fileId, string fullPath, PlaybackPlan plan, double startSeconds, double durationSeconds = 0)
     {
         await _startLock.WaitAsync();
         try
@@ -81,9 +143,18 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
             var session = new StreamSession
             {
                 Id = id, UserId = userId, FileId = fileId, FullPath = fullPath, Plan = plan,
-                StartSeconds = plan.Mode == PlaybackMode.Direct ? 0 : startSeconds, Directory = dir,
+                // An adaptive stream is the whole file on its own clock; the player starts it at startSeconds
+                StartSeconds = plan.Mode == PlaybackMode.Direct || plan.IsAdaptive ? 0 : startSeconds, Directory = dir,
+                DurationSeconds = durationSeconds, SegmentSeconds = Math.Max(1, T.SegmentSeconds),
             };
-            if (plan.Mode != PlaybackMode.Direct)
+            if (plan.IsAdaptive)
+            {
+                // Nothing runs until the player asks for a segment (SegmentAsync)
+                System.IO.Directory.CreateDirectory(dir);
+                log.LogInformation("Session {Id}: adaptive {Levels} of file {File} ({Reason})", id,
+                    string.Join("/", plan.Levels!.Select(l => l.Label)), fileId, plan.Reason);
+            }
+            else if (plan.Mode != PlaybackMode.Direct)
             {
                 System.IO.Directory.CreateDirectory(dir);
                 var args = PlaybackPlanner.HlsArguments(plan, fullPath, startSeconds, T);
@@ -120,7 +191,112 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
             Ffmpeg.Kill(p);
             p.Dispose();
         }
+        StopEncoder(s);
         DeleteFolder(s.Directory);
+    }
+
+    // ── Adaptive streams ──
+
+    /// <summary>How far the next segment asked for may be past what ffmpeg has made, to wait for it instead of restarting there.</summary>
+    private const int WaitAhead = 2;
+    /// <summary>An ffmpeg this far (in seconds) ahead of what the player asks for is stopped, e.g. while paused; it starts again when needed.</summary>
+    private const int MaxAheadSeconds = 180;
+
+    /// <summary>
+    /// Segment <paramref name="segment"/> of level <paramref name="level"/>: the file, once made. Made already, it's
+    /// there; coming soon from the ffmpeg running for that level, it's waited for; otherwise that ffmpeg is replaced
+    /// by one making this level from this segment on (one ffmpeg per stream). Null when it couldn't be made.
+    /// </summary>
+    public async Task<string?> SegmentAsync(StreamSession s, int level, int segment, CancellationToken ct)
+    {
+        if (!s.Plan.IsAdaptive || level < 0 || level >= s.Plan.Levels!.Count || segment < 0 || segment >= s.SegmentCount) return null;
+        s.LastRequestedSegment = segment;
+        if (s.Segments.TryGetValue((level, segment), out var done)) return done;
+
+        SegmentEncoder? mine;
+        await s.EncoderLock.WaitAsync(ct);
+        try
+        {
+            if (!_sessions.ContainsKey(s.Id)) return null;   // stopped meanwhile
+            var e = s.Encoder;
+            e?.Collect(s);
+            if (s.Segments.TryGetValue((level, segment), out done)) return done;
+            bool coming = e is { Process.HasExited: false } && e.Level == level &&
+                          segment >= e.StartSegment && segment <= Math.Max(e.Latest, e.StartSegment - 1) + WaitAhead;
+            mine = coming ? e! : StartEncoder(s, level, segment);
+        }
+        finally { s.EncoderLock.Release(); }
+
+        var until = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < until)
+        {
+            ct.ThrowIfCancellationRequested();
+            mine.Collect(s);
+            if (s.Segments.TryGetValue((level, segment), out done)) return done;
+            // Replaced (the player switched level or seeked meanwhile), or ffmpeg ended without it
+            if (s.Encoder != mine || mine.Process.HasExited)
+            {
+                mine.Collect(s);
+                return s.Segments.GetValueOrDefault((level, segment));
+            }
+            s.LastAccessUtc = DateTime.UtcNow;   // a slow encode isn't an idle viewer
+            await Task.Delay(100, ct);
+        }
+        return null;
+    }
+
+    /// <summary>Replaces the session's ffmpeg with one making <paramref name="level"/> from <paramref name="segment"/> on. Under EncoderLock.</summary>
+    private SegmentEncoder StartEncoder(StreamSession s, int level, int segment)
+    {
+        StopEncoder(s);
+        var lvl = s.Plan.Levels![level];
+        // Each run writes to its own folder, so a segment being sent is never overwritten by another run
+        var dir = Path.Combine(s.Directory, $"v{level}", $"r{segment}-{Environment.TickCount64}");
+        System.IO.Directory.CreateDirectory(dir);
+        var psi = ffmpeg.StartInfo(ffmpeg.FfmpegPath, PlaybackPlanner.SegmentArguments(s.Plan, lvl, s.FullPath, segment, T));
+        psi.WorkingDirectory = dir;
+        var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        var e = new SegmentEncoder(level, segment, dir, p);
+        p.ErrorDataReceived += (_, a) => { if (a.Data is { Length: > 0 } line) e.AddError(line); };
+        p.Exited += (_, _) =>
+        {
+            // Killed on purpose (replaced, stopped) isn't news; ffmpeg failing on its own is
+            if (p.ExitCode != 0 && s.Encoder == e && _sessions.ContainsKey(s.Id))
+                log.LogWarning("ffmpeg for session {Id} ({Level} from segment {Segment}) exited {Code}: {Errors}",
+                    s.Id, lvl.Label, segment, p.ExitCode, Ffmpeg.LastLines(e.Errors, 3));
+        };
+        p.Start();
+        p.BeginErrorReadLine();
+        p.StandardOutput.Close();
+        s.Encoder = e;
+        log.LogInformation("Session {Id}: {Level} from {Start}s", s.Id, lvl.Label, segment * s.SegmentSeconds);
+        return e;
+    }
+
+    private static void StopEncoder(StreamSession s)
+    {
+        if (s.Encoder is not { } e) return;
+        s.Encoder = null;
+        try { Ffmpeg.Kill(e.Process); e.Process.Dispose(); } catch (InvalidOperationException) { }
+    }
+
+    /// <summary>Stops an ffmpeg that has run far ahead of the player (paused, or a long buffer); it's started again from where it's needed.</summary>
+    private void ThrottleEncoders()
+    {
+        foreach (var s in _sessions.Values.Where(x => x.Plan.IsAdaptive))
+        {
+            if (s.Encoder is not { } e || e.Process.HasExited) continue;
+            e.Collect(s);
+            if ((e.Latest - s.LastRequestedSegment) * s.SegmentSeconds <= MaxAheadSeconds) continue;
+            if (!s.EncoderLock.Wait(0)) continue;
+            try
+            {
+                if (s.Encoder != e) continue;
+                StopEncoder(s);
+                log.LogDebug("Session {Id}: paused making segments, {Ahead}s ahead", s.Id, (e.Latest - s.LastRequestedSegment) * s.SegmentSeconds);
+            }
+            finally { s.EncoderLock.Release(); }
+        }
     }
 
     public IReadOnlyCollection<StreamSession> All => _sessions.Values.ToList();
@@ -180,6 +356,7 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
                     log.LogInformation("Session {Id} idle, stopping", s.Id);
                     Stop(s.Id);
                 }
+                ThrottleEncoders();
             }
         }
         catch (OperationCanceledException) { }

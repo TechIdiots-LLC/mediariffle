@@ -15,10 +15,17 @@ namespace MediaRiffle.Server.Api;
 /// <param name="Subtitle">"s{stream}" for one in the file, "x{n}" for a side-car file, or null.</param>
 /// <param name="Burn">Burn an image subtitle (PGS/DVD) into the video, which means transcoding.</param>
 /// <param name="Start">Where to start, in seconds; null to resume where the user stopped.</param>
-/// <param name="Quality">"original" or a Quality.Ladder id ("1080", "720", …); the player's Auto picks one.</param>
+/// <param name="Quality">
+/// "auto" (an adaptive stream of every level the user may have), "original", or a Quality.Ladder id ("1080", "720", …).
+/// </param>
 /// <param name="Hevc">The browser decodes HEVC Main (8-bit); <paramref name="Hevc10"/> Main 10.</param>
+/// <param name="Adaptive">
+/// For "original" picked by Auto: when the file can't be sent as it is (it would be transcoded), make it the adaptive
+/// stream instead of one at the best level.
+/// </param>
+/// <param name="StartLevel">The level an adaptive stream's player should start at (listed first in its master playlist).</param>
 public sealed record PlayRequest(int FileId, int? Audio, string? Subtitle, bool Burn, double? Start,
-    string? Quality = null, bool Hevc = false, bool Hevc10 = false);
+    string? Quality = null, bool Hevc = false, bool Hevc10 = false, bool Adaptive = false, string? StartLevel = null);
 
 public sealed record ProgressRequest(int FileId, double Position, bool? Finished);
 
@@ -29,6 +36,9 @@ public static partial class PlaybackEndpoints
 
     // Random, so no proxy or link can compress it: the speed test measures the real connection
     private static readonly byte[] SpeedTestBytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(1_000_000);
+
+    [GeneratedRegex(@"^seg(\d{5,6})\.ts$")]
+    private static partial Regex AdaptiveSegmentName();
 
     [GeneratedRegex(@"^(?<kind>[sx])(?<n>\d{1,4})$")]
     private static partial Regex SubtitleId();
@@ -73,8 +83,28 @@ public static partial class PlaybackEndpoints
                 burn = int.Parse(m.Groups["n"].Value);
             var account = await users.FindByIdAsync(userId);
             var quality = Media.Quality.Clamp(req.Quality, account?.MaxQuality);
+            var caps = new ClientCaps(req.Hevc, req.Hevc10);
+            var t = options.Value.Transcoding;
+            bool auto = quality == Media.Quality.Auto;
             var plan = PlaybackPlanner.Decide(probe, Path.GetExtension(path), req.Audio, burn,
-                quality, new ClientCaps(req.Hevc, req.Hevc10), options.Value.Transcoding);
+                auto ? Media.Quality.Original : quality, caps, t);
+            // What Original would be, so the player's Auto knows whether stepping up to it saves a transcode
+            var originalMode = auto || quality == Media.Quality.Original ? plan.Mode
+                : PlaybackPlanner.Decide(probe, Path.GetExtension(path), req.Audio, burn, Media.Quality.Original, caps, t).Mode;
+            // Transcoded video is an adaptive stream: of every level for Auto, else of the one picked (which still
+            // seeks without restarting). Sent as it is, or copied, it stays one stream.
+            if (plan.Video is not null && (auto || plan.Mode == PlaybackMode.Transcode))
+            {
+                var all = Media.Quality.AdaptiveLevels(plan.Video.Height, t.MaxHeight, account?.MaxQuality);
+                IReadOnlyList<QualityLevel> levels = auto || req.Adaptive ? all
+                    : Media.Quality.Level(quality) is { } one ? [one] : [all[0]];
+                plan = plan with
+                {
+                    Mode = PlaybackMode.Transcode, Levels = levels, Segments = SegmentFormat.Ts,
+                    Quality = levels.Count > 1 ? Media.Quality.Auto : levels[0].Id, StreamKbps = levels[0].TotalKbps,
+                    Reason = levels.Count > 1 ? $"adaptive: {string.Join(", ", levels.Select(l => l.Label))}" : plan.Reason,
+                };
+            }
 
             var start = req.Start;
             if (start is null)
@@ -90,8 +120,9 @@ public static partial class PlaybackEndpoints
             StreamSession session;
             try
             {
-                session = await sessions.StartAsync(userId, file.Id, path, plan, start.Value);
-                if (plan.Mode != PlaybackMode.Direct) await sessions.WaitForPlaylistAsync(session, ct);
+                session = await sessions.StartAsync(userId, file.Id, path, plan, start.Value, probe.ContentSeconds);
+                session.FirstLevel = plan.Levels is { } ls ? Math.Max(0, ls.ToList().FindIndex(l => l.Id == req.StartLevel)) : 0;
+                if (plan.Mode != PlaybackMode.Direct && !plan.IsAdaptive) await sessions.WaitForPlaylistAsync(session, ct);
             }
             catch (SessionLimitException ex) { return Results.Json(new { error = ex.Message }, statusCode: 503); }
             catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
@@ -113,12 +144,20 @@ public static partial class PlaybackEndpoints
                 segments = plan.Segments.ToString(),
                 // What the stream's video is: the file's own when it isn't transcoded (Cast needs to know)
                 videoCodec = plan.Mode == PlaybackMode.Transcode ? "h264" : plan.Video?.Codec,
-                url = plan.Mode == PlaybackMode.Direct ? $"{baseUrl}/file" : $"{baseUrl}/index.m3u8",
+                url = plan.Mode == PlaybackMode.Direct ? $"{baseUrl}/file" : plan.IsAdaptive ? $"{baseUrl}/master.m3u8" : $"{baseUrl}/index.m3u8",
                 contentType = plan.Mode == PlaybackMode.Direct ? ContentType(path) : "application/vnd.apple.mpegurl",
                 startSeconds = session.StartSeconds,
-                // Direct play seeks itself; resume there instead
-                seekTo = plan.Mode == PlaybackMode.Direct ? start : 0,
-                duration = file.DurationSeconds,
+                // Direct play and adaptive streams are the whole file and seek themselves; resume there instead
+                seekTo = plan.Mode == PlaybackMode.Direct || plan.IsAdaptive ? start : 0,
+                adaptive = plan.IsAdaptive,
+                // An adaptive stream's levels, by their number in its playlists (v{n}/), best first
+                levels = (plan.Levels ?? []).Select((l, i) => new
+                {
+                    id = l.Id, label = l.Label, kbps = l.VideoKbps + (plan.Audio is null ? 0 : l.AudioKbps),
+                    height = PlaybackPlanner.OutputSize(plan.Video, l.Height).Height, path = $"v{i}/",
+                }),
+                originalMode = originalMode.ToString(),
+                duration = plan.IsAdaptive ? session.DurationSeconds : file.DurationSeconds,
                 audio = plan.Audio?.Index,
                 burnedSubtitle = plan.BurnSubtitle is { } b ? $"s{b.Index}" : null,
                 subtitles = textSubs,
@@ -163,9 +202,38 @@ public static partial class PlaybackEndpoints
     {
         var g = app.MapGroup("/stream/{sessionId}").RequireCors("stream");
 
+        // Adaptive streams: the master playlist, each level's full playlist, and segments made when asked for
+        g.MapGet("/master.m3u8", (string sessionId, StreamSessionManager sessions, HttpContext ctx) =>
+        {
+            if (sessions.Get(sessionId) is not { Plan.IsAdaptive: true } s) return Results.NotFound();
+            ctx.Response.Headers.CacheControl = "no-cache";
+            return Results.Text(PlaybackPlanner.MasterPlaylist(s.Plan, s.FirstLevel), "application/vnd.apple.mpegurl");
+        });
+
+        g.MapGet("/v{level:int}/index.m3u8", (string sessionId, int level, StreamSessionManager sessions, HttpContext ctx) =>
+        {
+            if (sessions.Get(sessionId) is not { Plan.IsAdaptive: true } s || level < 0 || level >= s.Plan.Levels!.Count) return Results.NotFound();
+            ctx.Response.Headers.CacheControl = "no-cache";
+            return Results.Text(PlaybackPlanner.VariantPlaylist(s.DurationSeconds, s.SegmentSeconds), "application/vnd.apple.mpegurl");
+        });
+
+        g.MapGet("/v{level:int}/{segment}", async (string sessionId, int level, string segment, StreamSessionManager sessions, HttpContext ctx, CancellationToken ct) =>
+        {
+            var m = AdaptiveSegmentName().Match(segment);
+            if (!m.Success || sessions.Get(sessionId) is not { Plan.IsAdaptive: true } s) return Results.NotFound();
+            var file = await sessions.SegmentAsync(s, level, int.Parse(m.Groups[1].Value), ct);
+            if (file is null || !File.Exists(file)) return Results.NotFound();
+            ctx.Response.Headers.CacheControl = "private, max-age=3600";
+            return Results.File(file, "video/mp2t");
+        });
+
+        // The player's "still here" while paused, so a paused stream isn't stopped as idle
+        g.MapGet("/alive", (string sessionId, StreamSessionManager sessions) =>
+            sessions.Get(sessionId) is null ? Results.NotFound() : Results.NoContent());
+
         g.MapGet("/index.m3u8", async (string sessionId, StreamSessionManager sessions, HttpContext ctx, CancellationToken ct) =>
         {
-            if (sessions.Get(sessionId) is not { } s || s.Plan.Mode == PlaybackMode.Direct) return Results.NotFound();
+            if (sessions.Get(sessionId) is not { } s || s.Plan.Mode == PlaybackMode.Direct || s.Plan.IsAdaptive) return Results.NotFound();
             try { await sessions.WaitForPlaylistAsync(s, ct); }
             catch (Exception ex) when (ex is InvalidOperationException or TimeoutException) { return Results.Problem(ex.Message, statusCode: 500); }
             ctx.Response.Headers.CacheControl = "no-cache";
