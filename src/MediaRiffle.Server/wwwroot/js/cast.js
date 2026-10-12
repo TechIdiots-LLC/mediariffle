@@ -9,13 +9,16 @@ export function castAvailable() {
   ready = new Promise(resolve => {
     if (!window.chrome || !window.isSecureContext) return resolve(false);
     window.__onGCastApiAvailable = ok => {
-      if (!ok) return resolve(false);
-      const ctx = cast.framework.CastContext.getInstance();
-      ctx.setOptions({
-        receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
-        autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
-      });
-      resolve(true);
+      // "Available" with the framework missing happens (e.g. a headless or locked-down browser): no Cast then
+      if (!ok || !window.cast?.framework || !window.chrome?.cast) return resolve(false);
+      try {
+        const ctx = cast.framework.CastContext.getInstance();
+        ctx.setOptions({
+          receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+          autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+        });
+        resolve(true);
+      } catch { resolve(false); }
     };
     const s = document.createElement('script');
     s.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';

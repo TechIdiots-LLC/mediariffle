@@ -52,7 +52,8 @@ Put your settings in file 2. A complete example:
 | `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode. |
 | `Transcoding.MaxSessions` | Remuxes and transcodes running at once, all users together. Direct play doesn't count. |
 | `Transcoding.MaxSessionsPerUser` | A user starting more stops their oldest. |
-| `Transcoding.IdleTimeoutSeconds` | A stream nobody fetches from for this long is stopped and its files deleted. |
+| `Transcoding.SegmentSeconds` | Length of a stream segment. Shorter switches level and starts sooner; longer is a little more efficient. |
+| `Transcoding.IdleTimeoutSeconds` | A stream nobody fetches from for this long is stopped and its files deleted (a paused player keeps its stream). |
 | `Kestrel:Endpoints` | Where MediaRiffle listens. `127.0.0.1` when the proxy is on the same machine; the machine's LAN address when it isn't (then firewall the port to the proxy only). Not used under IIS. |
 
 ## Libraries and categories
@@ -73,16 +74,25 @@ never touched) and everyone's place in it.
 ## Quality
 
 The player has a quality menu: **Auto**, **Original**, and 1080p (8 Mbit/s), 720p (4), 480p (1.5), 360p (0.8).
-Only one stream runs per viewer; changing quality restarts it at the same point in the video.
 
+- **Auto** is an adaptive stream, as on streaming sites: a playlist offering every level (none above the picture's
+  own size, the server's `MaxHeight` or the user's cap), from which the player picks a level segment by segment by
+  timing each download, moving down as soon as the connection can't keep up and back up when it can. hls.js does
+  this in Chrome, Edge and Firefox; Safari, Chromecasts and AirPlay receivers do it themselves.
+  When the connection clearly has room for the file as it is, Auto sends that instead (no transcode at all), and
+  moves to the adaptive stream if it stops keeping up.
 - **Original** sends the file's own video when the device can decode it: H.264 everywhere, and HEVC (x265) on
   devices that report it (Safari; Chrome/Edge with a hardware HEVC decoder; Chrome on Android). Copied HEVC goes out
-  as fMP4 segments. Anything the device can't decode is transcoded to H.264 at the server's maximum
-  (`MaxHeight`/`MaxVideoKbps`).
+  as fMP4 segments. Anything the device can't decode is transcoded to H.264 at the best level allowed.
 - **A level** transcodes to that height and bitrate, unless the file already fits in it (then it's sent as it is).
-- **Auto** starts at the best level the measured connection carries with room to spare, steps down after repeated
-  stalls or when downloads fall behind, and steps back up after a minute with plenty of headroom.
+- Changing the menu restarts the stream at the same point in the video.
 - Casting always uses H.264, as most Chromecasts can't decode HEVC.
+
+The adaptive stream doesn't transcode every level at once. Its segments (`SegmentSeconds` long) are made when the
+player asks for them: one ffmpeg per viewer makes the level being watched, from the point being watched, and is
+replaced when the player switches level or seeks somewhere not made yet (a pause of about a second). Seeking within
+what's made is instant, and an ffmpeg that gets three minutes ahead of the viewer (e.g. while paused) stops until
+it's needed again. Seeking in a transcode never restarts the whole stream.
 
 Admins can cap a user's quality (**Admin → Users → Best quality**), e.g. 720p for someone streaming over a slow
 connection, so one viewer can't use all of the server's upload. A capped user doesn't get Original.

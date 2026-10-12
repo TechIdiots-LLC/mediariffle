@@ -2,11 +2,15 @@ import { api } from './api.js';
 import { h, formatTime } from './dom.js';
 import { castAvailable, castMedia, onCastChange, isCasting } from './cast.js';
 
-// Plays one file. The server picks how (Direct: the file as it is; Remux/Transcode: an HLS stream that starts
-// at `startSeconds` into the file), and the controls here run on the file's clock either way:
-// file time = session.startSeconds + video.currentTime.
+// Plays one file. The server picks how (Direct: the file as it is; Remux: an HLS stream of the copied video that
+// starts at `startSeconds` into the file; adaptive: a transcode at several levels, the whole file on its own clock),
+// and the controls here run on the file's clock either way: file time = session.startSeconds + video.currentTime.
 //
-// Quality is one stream at a time: picking another (or Auto deciding to) restarts the stream at the same spot.
+// Auto is the adaptive stream: hls.js (or Safari, or the Chromecast) measures each segment's download and moves
+// between levels by itself, as DASH players do; the server makes a level's segments when they're asked for. When
+// the connection clearly has room for the file as it is, Auto plays that instead (no transcode), and falls back to
+// the adaptive stream if it stops keeping up. Picking Original or one level is one stream at a time: changing it
+// restarts the stream at the same spot.
 
 const QUALITY_KEY = 'mediariffle.quality';
 const SPEED_KEY = 'mediariffle.kbps';
@@ -63,7 +67,6 @@ export class Player {
     this.quality = this.choice === 'auto' ? null : this.choice;   // what's streaming; Auto fills it in
     this.stalls = [];
     this.lastSwitch = 0;
-    this.slowChecks = 0;
 
     this.video = h('video', { playsinline: true, preload: 'auto' });
     this.status = h('div', { class: 'spinner' }, 'Starting…');
@@ -113,7 +116,7 @@ export class Player {
       // A stall while playing (not right after starting or seeking) is what Auto steps down for
       if (this.playingSince && performance.now() - this.playingSince > 4000 && !this.video.seeking) this.stalls.push(performance.now());
     });
-    this.video.addEventListener('playing', () => { this.status.textContent = ''; this.playingSince ??= performance.now(); });
+    this.video.addEventListener('playing', () => { this.status.textContent = ''; this.playingSince ??= performance.now(); this.recovering = false; });
     this.video.addEventListener('ended', () => this.onEnded());
     this.video.addEventListener('error', () => { if (this.session) this.status.textContent = 'This video can\'t be played here.'; });
 
@@ -122,7 +125,9 @@ export class Player {
     this.onKey = e => this.key(e);
     addEventListener('keydown', this.onKey);
     this.setupMediaSession();
-    this.monitor = setInterval(() => this.checkQuality(), 2000);
+    this.monitor = setInterval(() => { this.checkQuality(); this.keepAlive(); }, 2000);
+    this.lastAlive = 0;
+    this.playingLevel = null;   // the adaptive stream's level playing now: { id, label }
 
     // AirPlay (Safari on Mac, iPhone, iPad): to an Apple TV, or a TV or Roku with AirPlay 2. The button shows only when
     // Safari sees a receiver; while the video plays there, it's H.264 (not every receiver decodes HEVC)
@@ -193,12 +198,16 @@ export class Player {
     const caps = this.forCast ? { hevc: false, hevc10: false } : this.caps;
     const s = await api('/api/play', { method: 'POST', body: {
       fileId: this.fileId, audio: this.audio, subtitle: this.subtitle, burn: !!burn, start: startAt,
-      quality: this.quality, hevc: caps.hevc, hevc10: caps.hevc10 } });
+      quality: this.quality, hevc: caps.hevc, hevc10: caps.hevc10,
+      // Auto trying Original: if the file has to be transcoded anyway, the adaptive stream instead
+      adaptive: this.choice === 'auto', startLevel: this.levelFor(this.estimate()) } });
     this.session = s;
     this.quality = s.quality;   // the server may have lowered it to the user's cap
+    this.playingLevel = null;
     this.playingSince = null;
     this.stalls = [];
-    this.slowChecks = 0;
+    this.aheadSamples = [];
+    this.seekBar.max = String(Math.max(1, Math.floor(this.duration())));
     this.showQuality();
     this.attach(s);
     this.setTextTrack();
@@ -208,15 +217,24 @@ export class Player {
 
   // ── Quality ──────────────────────────────────────────────────────────────
 
-  levelIndex(id) { return this.qualities.findIndex(q => q.id === id); }
-
-  // Auto's first pick: the best quality that fits the measured connection with room to spare
+  // Auto's first pick: the file as it is when the measured connection has plenty of room for it, else the adaptive
+  // stream (which then follows the connection by itself)
   async autoStart() {
-    let kbps = +recall(SPEED_KEY) || 0;
+    let kbps = this.estimate();
     if (!kbps) kbps = await this.speedTest();
     if (kbps) remember(SPEED_KEY, String(Math.round(kbps)));
-    const fits = this.qualities.find(q => q.kbps > 0 && q.kbps * 1.4 <= kbps);
-    return (fits ?? this.qualities[this.qualities.length - 1])?.id ?? 'original';
+    const original = this.qualities.find(q => q.id === 'original');
+    return original && original.kbps > 0 && original.kbps * 1.5 <= kbps ? 'original' : 'auto';
+  }
+
+  // The connection's speed as last measured (kbit/s), or 0
+  estimate() { return +recall(SPEED_KEY) || 0; }
+
+  // The best level that fits a connection of `kbps` with room to spare: where an adaptive stream starts
+  levelFor(kbps) {
+    const levels = this.qualities.filter(q => q.id !== 'original');
+    if (!kbps) return levels[Math.min(1, levels.length - 1)]?.id ?? null;   // not measured yet: one below the best
+    return (levels.find(q => q.kbps * 1.3 <= kbps) ?? levels[levels.length - 1])?.id ?? null;
   }
 
   async speedTest() {
@@ -232,9 +250,16 @@ export class Player {
   pickQuality(choice) {
     this.choice = choice;
     remember(QUALITY_KEY, choice);
-    if (choice === 'auto') { this.showQuality(); return; }   // keep the current stream; Auto takes over from here
+    if (choice === 'auto') {
+      // The file as it is: keep it, Auto takes over from here. One transcoded level: to the adaptive stream.
+      if (this.session && !this.isAdaptiveAuto() && this.session.mode === 'Transcode') this.switchTo('auto');
+      else this.showQuality();
+      return;
+    }
     if (choice !== this.quality) this.switchTo(choice);
   }
+
+  isAdaptiveAuto() { return !!this.session?.adaptive && this.session.levels.length > 1; }
 
   async switchTo(id, why) {
     this.quality = id;
@@ -244,12 +269,18 @@ export class Player {
   }
 
   showQuality() {
-    const label = this.qualities.find(q => q.id === this.quality)?.label?.replace(/ \(.*\)$/, '') ?? this.quality;
+    const label = this.isAdaptiveAuto() ? this.playingLevel?.label
+      : this.qualities.find(q => q.id === this.quality)?.label?.replace(/ \(.*\)$/, '') ?? this.quality;
     this.autoOption.textContent = this.choice === 'auto' && label ? `Auto (${label})` : 'Auto';
-    if (this.session) this.info.textContent = `${this.session.mode}${this.session.mode === 'Transcode' ? '' : ' · ' + (this.session.videoCodec ?? '')}`;
+    if (!this.session) return;
+    this.info.textContent = this.session.adaptive
+      ? `Transcode${this.playingLevel ? ' · ' + this.playingLevel.label : ''}`
+      : `${this.session.mode}${this.session.mode === 'Transcode' ? '' : ' · ' + (this.session.videoCodec ?? '')}`;
   }
 
-  // Every 2 s: step down when the connection can't keep up, back up after a long stretch with room to spare
+  // Every 2 s, for Auto. The adaptive stream switches levels by itself; this only moves between it and the file as
+  // it is: to the adaptive stream when the file stops keeping up, back to the file after a long stretch at the best
+  // level with plenty of room (when the file plays without a transcode)
   checkQuality() {
     if (this.choice !== 'auto' || !this.session || this.video.paused || this.forCast) return;
     const now = performance.now();
@@ -257,21 +288,46 @@ export class Player {
     const est = this.hls?.bandwidthEstimate ? this.hls.bandwidthEstimate / 1000 : 0;
     if (est) remember(SPEED_KEY, String(Math.round(est)));
     const ahead = this.bufferAhead();
-    const i = this.levelIndex(this.quality);
-    const need = this.session.streamKbps || this.qualities[i]?.kbps || 0;
     const sinceSwitch = now - this.lastSwitch;
+    const original = this.qualities.find(q => q.id === 'original');
 
-    const slow = est > 0 && need > 0 && est < need * 1.1 && ahead < 6;
-    this.slowChecks = slow ? this.slowChecks + 1 : 0;
-    if ((this.stalls.length >= 2 || this.slowChecks >= 3) && sinceSwitch > 15000 && i < this.qualities.length - 1) {
-      this.switchTo(this.qualities[i + 1].id, `Slower connection: ${this.qualities[i + 1].label}`);
+    if (!this.session.adaptive) {
+      // The buffer ahead shrinking while playing means it downloads slower than it plays; how fast it shrinks
+      // says how much slower (one big segment can take long enough that no download speed is measured meanwhile)
+      this.aheadSamples = [...(this.aheadSamples ?? []), { t: now, ahead }].filter(x => now - x.t <= 12000);
+      const first = this.aheadSamples[0];
+      const span = (now - first.t) / 1000;
+      const slope = span >= 9 ? (ahead - first.ahead) / span : 0;   // buffer seconds gained per second
+      const draining = ahead < 30 && slope < -0.3;
+      const need = this.session.streamKbps || original?.kbps || 0;
+      if ((this.stalls.length >= 2 || draining) && sinceSwitch > 15000) {
+        // What it really downloads at: the speed the adaptive stream starts from
+        if (need > 0) remember(SPEED_KEY, String(Math.round(need * Math.max(0.05, 1 + Math.min(0, slope)))));
+        this.aheadSamples = [];
+        this.switchTo('auto', 'Slower connection: adapting to it');
+      }
       return;
     }
-    const better = this.qualities[i - 1];
-    if (better && better.kbps > 0 && est > better.kbps * 1.6 && ahead > 15 && sinceSwitch > 60000 &&
-        this.stalls.length === 0) {
-      this.switchTo(better.id, `Faster connection: ${better.label}`);
+    const top = this.hls && this.hls.levels.length && this.hls.currentLevel === this.topLevel();
+    if (original && original.kbps > 0 && this.session.originalMode !== 'Transcode' && top &&
+        est > original.kbps * 1.6 && ahead > 20 && this.stalls.length === 0 && sinceSwitch > 120000) {
+      this.lastSwitch = now;
+      this.switchTo('original', 'Faster connection: the file as it is');
     }
+  }
+
+  // hls.js's index of the best level (it orders levels by bitrate, lowest first)
+  topLevel() {
+    let best = 0;
+    this.hls.levels.forEach((l, i) => { if (l.bitrate > this.hls.levels[best].bitrate) best = i; });
+    return best;
+  }
+
+  // While paused the player fetches nothing; this keeps the stream from being stopped as idle
+  keepAlive() {
+    if (!this.session || !this.video.paused || Date.now() - this.lastAlive < 30000) return;
+    this.lastAlive = Date.now();
+    fetch(`/stream/${this.session.sessionId}/alive`, { cache: 'no-store' }).catch(() => {});
   }
 
   bufferAhead() {
@@ -284,22 +340,46 @@ export class Player {
 
   attach(s) {
     this.detach();
-    if (s.mode === 'Direct') {
-      this.video.src = s.url;
+    // The file as it is, or an adaptive stream played by the browser itself (Safari), starts at seekTo once loaded
+    const native = url => {
+      this.video.src = url;
       if (s.seekTo > 0) this.video.addEventListener('loadedmetadata', () => { this.video.currentTime = s.seekTo; }, { once: true });
+    };
+    if (s.mode === 'Direct') {
+      native(s.url);
     } else if (this.airplayCapable && this.video.canPlayType('application/vnd.apple.mpegurl')) {
       // Safari: its own HLS player, not hls.js. AirPlay can only hand a TV a real stream URL (which it then fetches
       // itself, as a Chromecast does), not media fed through Media Source Extensions
-      this.video.src = s.url;
+      native(s.url);
     } else if (window.Hls?.isSupported()) {
-      this.hls = new window.Hls({ startPosition: 0, maxBufferLength: 60, backBufferLength: 90 });
-      this.hls.on(window.Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) this.status.textContent = 'Playback error: ' + (data.details ?? data.type);
+      const Hls = window.Hls;
+      const est = this.estimate();
+      this.hls = new Hls({
+        startPosition: s.adaptive ? (s.seekTo || 0) : 0, maxBufferLength: 60, backBufferLength: 90,
+        // Its bandwidth estimate starts from the last one measured here, so the first level fits the connection
+        ...(est ? { abrEwmaDefaultEstimate: est * 1000 } : {}),
+      });
+      this.hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
+        const name = this.hls?.levels[data.level]?.name;
+        this.playingLevel = s.levels?.find(l => l.id === name) ?? null;
+        this.showQuality();
+      });
+      this.hls.on(Hls.Events.ERROR, (_, data) => {
+        if (!data.fatal) return;
+        // Past the last segment there is (a file a little shorter than it said): that's the end
+        if (s.adaptive && this.position() > this.duration() - 12) { this.onEnded(); return; }
+        // The stream went away (stopped as idle, the server restarted): a new one from here, once
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !this.recovering) {
+          this.recovering = true;
+          this.restart(this.position(), { keepPaused: true });
+          return;
+        }
+        this.status.textContent = 'Playback error: ' + (data.details ?? data.type);
       });
       this.hls.loadSource(s.url);
       this.hls.attachMedia(this.video);
     } else if (this.video.canPlayType('application/vnd.apple.mpegurl')) {
-      this.video.src = s.url;   // Safari plays HLS itself
+      native(s.url);   // Safari plays HLS itself
     } else {
       this.status.textContent = 'This browser can\'t play HLS.';
     }
@@ -366,7 +446,7 @@ export class Player {
 
   seekBy(seconds) {
     if (!this.session) return;
-    const t = Math.min(Math.max(0, this.position() + seconds), Math.max(0, this.details.summary.duration - 1));
+    const t = Math.min(Math.max(0, this.position() + seconds), Math.max(0, this.duration() - 1));
     this.seek(t);
   }
 
@@ -452,8 +532,11 @@ export class Player {
     if (!this.video.paused && Date.now() - this.lastSaved > 10000) this.saveProgress();
   }
 
+  // How long this plays: an adaptive stream says (it counts from the first frame), else what the scan found
+  duration() { return this.session?.adaptive && this.session.duration > 0 ? this.session.duration : this.details.summary.duration; }
+
   showTime(pos) {
-    this.time.textContent = `${formatTime(pos)} / ${formatTime(this.details.summary.duration)}`;
+    this.time.textContent = `${formatTime(pos)} / ${formatTime(this.duration())}`;
   }
 
   saveProgress(leaving = false, finished = undefined) {

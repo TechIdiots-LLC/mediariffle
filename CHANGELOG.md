@@ -6,6 +6,16 @@
   while playing one). Everything you tag the same way is one of your lists, to browse, play through or shuffle like
   the admins' categories; only you see them. The home page shows your Favorites and your lists. They go with the show
   or movie when it leaves the library, and with the account.
+- **Auto quality is adaptive streaming**, as on streaming sites: the player (hls.js, or Safari, a Chromecast or an
+  AirPlay receiver itself) times each segment's download and moves between 1080p, 720p, 480p and 360p segment by
+  segment, down as soon as the connection can't keep up and back up when it can, without restarting. The server makes
+  only the level being watched, from where it's watched, one ffmpeg per viewer, replaced when the player switches or
+  seeks. When the connection clearly has room for the file as it is, Auto still plays that (no transcode), and moves
+  to the adaptive stream when it stops keeping up (seen from the buffer running down, before it runs out).
+- **Seeking a transcode is instant** within what's been made, and anywhere else no longer restarts the stream: picked
+  levels are adaptive streams of one level.
+- A paused player keeps its stream (it used to be stopped as idle after 90 seconds), and a stream that goes away
+  anyway is started again where it was.
 - **Admin → Users: change a user's role**, viewer to admin or back, from the Role column. Your own role can only be
   changed by another admin. The change reaches the user's open sessions within a minute, without signing in again.
 
