@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.4.0
+### ✨ Features and improvements
 - **Favorites and your own lists**: a ☆ Favorite button and an "Add to a list…" box on a show's or movie's page (and
   while playing one). Everything you tag the same way is one of your lists, to browse, play through or shuffle like
   the admins' categories; only you see them. The home page shows your Favorites and your lists. They go with the show
@@ -14,13 +21,13 @@
   to the adaptive stream when it stops keeping up (seen from the buffer running down, before it runs out).
 - **Seeking a transcode is instant** within what's been made, and anywhere else no longer restarts the stream: picked
   levels are adaptive streams of one level.
-- A paused player keeps its stream (it used to be stopped as idle after 90 seconds), and a stream that goes away
-  anyway is started again where it was.
 - **Admin → Users: change a user's role**, viewer to admin or back, from the Role column. Your own role can only be
   changed by another admin. The change reaches the user's open sessions within a minute, without signing in again.
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- **A paused player keeps its stream**: it used to be stopped as idle after 90 seconds, so playing again failed. A
+  stream that goes away anyway (e.g. the server restarted) is started again where it was.
+- **Cast** no longer throws an error when the browser says it can cast but Google's Cast framework didn't load.
 
 ## 0.3.1
 ### ✨ Features and improvements
