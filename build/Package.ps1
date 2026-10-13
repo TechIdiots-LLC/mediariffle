@@ -31,6 +31,8 @@ dotnet publish $project -c Release -r $Rid --self-contained true -p:Version=$Ver
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed (exit $LASTEXITCODE)" }
 # Development settings have no place in a release
 Remove-Item "$publish/appsettings.Development.json" -ErrorAction SilentlyContinue
+# The license goes with every copy (BSD 3-Clause: binary redistributions must carry it)
+Copy-Item LICENSE $publish
 
 if ($Rid -like 'win-*') {
     # Shipped beside the program: downloads and installs ffmpeg for it

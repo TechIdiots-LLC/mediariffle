@@ -52,7 +52,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 VIAddVersionKey "FileVersion" "${VERSION_NUMERIC}"
 VIAddVersionKey "FileDescription" "${APP_NAME} installer (${ARCH})"
 VIAddVersionKey "CompanyName" "${PUBLISHER}"
-VIAddVersionKey "LegalCopyright" "${PUBLISHER}"
+VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}. BSD 3-Clause License."
 
 !ifdef APP_ICON
   !define MUI_ICON "${APP_ICON}"

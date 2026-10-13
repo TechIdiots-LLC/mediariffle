@@ -2,7 +2,8 @@
 
 ## master
 ### ✨ Features and improvements
-- _...Add new stuff here..._
+- **License**: MediaRiffle is released under the BSD 3-Clause License, copyright TechIdiots LLC. `LICENSE` ships
+  with every package (in the program folder, and as `/usr/share/doc/mediariffle/copyright` in the `.deb`).
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._

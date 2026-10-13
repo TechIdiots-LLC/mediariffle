@@ -74,6 +74,9 @@ var data = TarGz(tar =>
     AddFile(tar, "lib/systemd/system/mediariffle.service", Lf(Path.Combine(deploy, "mediariffle.service")), Plain);
     Parents("etc/mediariffle/appsettings.json");
     AddFile(tar, "etc/mediariffle/appsettings.json", Lf(Path.Combine(deploy, "appsettings.json")), Plain);
+    // Where Debian keeps a package's license (it's also in /opt/mediariffle, from the publish folder)
+    Parents("usr/share/doc/mediariffle/copyright");
+    AddFile(tar, "usr/share/doc/mediariffle/copyright", Lf(Path.Combine(publish, "LICENSE")), Plain);
 });
 
 var controlText = $"""

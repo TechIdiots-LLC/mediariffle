@@ -83,3 +83,9 @@ New changes go under `## master` in `CHANGELOG.md`; the bump moves them into the
 
 Packages can also be built by hand: `./build/Package.ps1 -Rid win-x64` (needs NSIS for the installer) or
 `-Rid linux-x64` (needs only the .NET SDK).
+
+## License
+
+MediaRiffle is released under the [BSD 3-Clause License](LICENSE), copyright TechIdiots LLC. It includes
+[hls.js](https://github.com/video-dev/hls.js) (Apache License 2.0, `src/MediaRiffle.Server/wwwroot/lib/hls.js/LICENSE`)
+and runs [FFmpeg](https://ffmpeg.org/), which is installed separately and has its own license.
