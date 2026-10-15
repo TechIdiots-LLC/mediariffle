@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.5.1
+### ✨ Features and improvements
 - **Two-step verification for Admin**: Admin asks for a passkey (Face ID, Touch ID, Windows Hello, a phone or a
   security key) or an authenticator app's code (Apple Passwords, Google or Microsoft Authenticator, 1Password, …), once
   every 12 hours. An admin without one is walked through setting it up the first time they open Admin, ending with ten
@@ -9,6 +16,7 @@
   someone's under Admin → Users. Signing in itself is unchanged. See docs/configuration.md.
 
 ### 🐞 Bug fixes
+- Admin two-step verification (passkeys / authenticator app), and shows with several series ([!5](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/5)) (@acalcutt)
 - **A show's other series are told apart**: season folders named for another series of the show (`UK - Season 01`,
   `All Stars - Season 02`, `Down Under - S01`, `Global All Stars Season 01`) used to be merged into the show's own
   seasons by the episode numbers in the file names. Each is its own series now, and files loose in the show's folder
