@@ -22,9 +22,16 @@ function renderNav() {
     h('a', { href: '#/' }, 'Home'),
     h('span', { class: 'spacer' }),
     state.user.isAdmin ? h('a', { href: '#/admin' }, 'Admin') : null,
-    h('span', { class: 'muted' }, state.user.name),
-    h('a', { href: '#/logout' }, 'Sign out'));
+    h('details', { class: 'usermenu' },
+      h('summary', {}, state.user.name),
+      h('div', { class: 'menu' },
+        h('a', { href: '#/profile' }, 'Profile'),
+        h('a', { href: '#/logout' }, 'Sign out'))));
 }
+
+function closeUserMenu() { nav.querySelector('.usermenu')?.removeAttribute('open'); }
+// A click anywhere outside the open menu closes it
+document.addEventListener('click', e => { if (!e.target.closest?.('.usermenu')) closeUserMenu(); });
 
 function errorBox(e) { return h('p', { class: 'error' }, e?.message ?? String(e)); }
 
@@ -42,10 +49,12 @@ const routes = [
   [/^#\/movie\/(\d+)$/, m => movieView(+m[1])],
   [/^#\/play\/(\d+)$/, m => playView(+m[1])],
   [/^#\/admin$/, adminView],
+  [/^#\/profile$/, profileView],
   [/^#?\/?$/, homeView],
 ];
 
 async function route() {
+  closeUserMenu();
   if (player) { player.destroy(); player = null; }
   if (pageTimer) { clearInterval(pageTimer); pageTimer = null; }
   const hash = location.hash || '#/';
@@ -64,7 +73,7 @@ async function route() {
 
 // ── Accounts ─────────────────────────────────────────────────────────────────
 
-function credentialsForm({ title, intro, button, onSubmit, remember = false }) {
+function credentialsForm({ title, intro, button, onSubmit, remember = false, extra = null }) {
   const user = h('input', { autocomplete: 'username', required: true, maxlength: 64 });
   const pass = h('input', { type: 'password', autocomplete: remember ? 'current-password' : 'new-password', required: true, minlength: remember ? 1 : 10 });
   const keep = h('input', { type: 'checkbox', checked: true });
@@ -77,6 +86,7 @@ function credentialsForm({ title, intro, button, onSubmit, remember = false }) {
     } },
     h('h1', {}, title),
     intro ? h('p', { class: 'muted' }, intro) : null,
+    extra,
     h('label', {}, 'User name', user),
     h('label', {}, 'Password', pass),
     remember ? h('label', { class: 'row' }, keep, 'Keep me signed in') : h('p', { class: 'muted' }, 'At least 10 characters.'),
@@ -87,8 +97,63 @@ function credentialsForm({ title, intro, button, onSubmit, remember = false }) {
 }
 
 function loginView() {
-  credentialsForm({ title: 'Sign in', button: 'Sign in', remember: true,
+  if (state.user) { location.hash = '#/'; return; }
+  // Google sign-in is a page navigation (to Google and back), not a fetch
+  const google = state.google
+    ? [h('a', { class: 'google-btn', href: '/api/auth/google/signin' }, 'Sign in with Google'), h('p', { class: 'muted or' }, 'or')]
+    : null;
+  credentialsForm({ title: 'Sign in', button: 'Sign in', remember: true, extra: [takeGoogleMessage(), google],
     onSubmit: (u, p, keep) => api('/api/auth/login', { method: 'POST', body: { userName: u, password: p, remember: keep } }) });
+}
+
+async function profileView() {
+  const account = await api('/api/auth/account');
+  const message = takeGoogleMessage();
+  let google;
+  if (!state.google) google = h('p', { class: 'muted' }, 'Google sign-in isn\'t set up on this server.');
+  else if (account.google) google = [
+    h('p', {}, 'Linked to ', h('strong', {}, account.google), '. You can sign in with Google or with your password.'),
+    h('div', { class: 'row' },
+      h('a', { class: 'google-btn', href: '/api/auth/google/link' }, 'Link a different Google account'),
+      h('button', { class: 'secondary', onclick: async () => {
+        if (!confirm('Unlink your Google account? You\'ll sign in with your user name and password only.')) return;
+        try { await api('/api/auth/google/unlink', { method: 'POST' }); profileView(); }
+        catch (e) { alert(e.message); }
+      } }, 'Unlink'))];
+  else google = [
+    h('p', { class: 'muted' }, 'Link your Google account to sign in with it instead of your password.'),
+    h('a', { class: 'google-btn', href: '/api/auth/google/link' }, 'Link Google account')];
+  const hidden = h('div');
+  mount(view,
+    h('h1', {}, 'Profile'),
+    h('div', { class: 'card' },
+      h('p', {}, 'Signed in as ', h('strong', {}, account.name), state.user.isAdmin ? ' (admin)' : ''),
+      h('h2', {}, 'Google'),
+      message,
+      google,
+      h('h2', {}, 'Hidden'),
+      hidden));
+  hiddenSection(hidden);
+}
+
+// What the user hid, to open or unhide in one place
+async function hiddenSection(box) {
+  let items;
+  try { items = await api('/api/hidden'); }
+  catch (e) { mount(box, errorBox(e)); return; }
+  const link = i => i.kind === 'show' ? `#/show/${i.id}` : i.kind === 'movie' ? `#/movie/${i.id}` : `#/play/${i.id}`;
+  const label = { show: 'Show', movie: 'Movie', file: 'Episode' };
+  mount(box,
+    h('p', { class: 'muted' }, 'Hidden shows, movies and episodes stay listed, greyed out, but are left out of Play all, Shuffle and Continue watching.'),
+    items.length
+      ? h('table', {},
+          h('tr', {}, h('th', {}, 'Type'), h('th', {}, 'Title'), h('th', {}, 'Hidden'), h('th', {})),
+          items.map(i => h('tr', {},
+            h('td', { class: 'muted' }, label[i.kind]),
+            h('td', {}, h('a', { href: link(i) }, i.title), i.detail ? h('span', { class: 'muted' }, ` · ${i.detail}`) : null),
+            h('td', { class: 'muted' }, new Date(i.createdUtc).toLocaleDateString()),
+            h('td', {}, hideButton(i.kind, i.id, true, () => hiddenSection(box), label[i.kind].toLowerCase())))))
+      : h('p', {}, 'Nothing hidden.'));
 }
 
 function setupView() {
@@ -111,22 +176,34 @@ async function logout() {
 
 // ── Browsing ─────────────────────────────────────────────────────────────────
 
-function playButtons(what, label) {
+function playButtons(what, label, disabled = false) {
   const go = shuffle => startQueue(what, shuffle, label).catch(e => alert(e.message));
   return h('span', { class: 'row' },
-    h('button', { onclick: () => go(false) }, '▶ Play all'),
-    h('button', { class: 'secondary', onclick: () => go(true) }, '🔀 Shuffle'));
+    h('button', { onclick: () => go(false), disabled }, '▶ Play all'),
+    h('button', { class: 'secondary', onclick: () => go(true), disabled }, '🔀 Shuffle'));
 }
 
+// Hidden shows and movies stay listed, greyed out, so they can be opened and unhidden
 function showTiles(shows) {
-  return shows.map(i => h('a', { class: 'tile', href: `#/show/${i.id}` },
-    art(i.image), h('div', { class: 'name' }, i.title), h('div', { class: 'sub' }, `${i.episodes} episodes`)));
+  return shows.map(i => h('a', { class: 'tile' + (i.hidden ? ' hidden' : ''), href: `#/show/${i.id}` },
+    art(i.image), h('div', { class: 'name' }, i.title),
+    h('div', { class: 'sub' }, i.hidden ? 'Hidden' : `${i.episodes} episodes`)));
 }
 
 function movieTiles(movies) {
-  return movies.map(i => h('a', { class: 'tile', href: `#/movie/${i.id}` },
+  return movies.map(i => h('a', { class: 'tile' + (i.hidden ? ' hidden' : ''), href: `#/movie/${i.id}` },
     art(i.image), h('div', { class: 'name' }, i.title),
-    h('div', { class: 'sub' }, [i.year, i.parts > 1 ? `${i.parts} parts` : null].filter(Boolean).join(' · '))));
+    h('div', { class: 'sub' }, [i.hidden ? 'Hidden' : null, i.year, i.parts > 1 ? `${i.parts} parts` : null].filter(Boolean).join(' · '))));
+}
+
+// Hides a show, a movie or an episode from this user (it stays listed, greyed out), or shows it again
+function hideButton(kind, id, hidden, onChange, noun) {
+  return h('button', { class: 'secondary hide-btn', title: hidden ? `Show this ${noun} again` : `Leave this ${noun} out of Play all, Shuffle and Continue watching`,
+    onclick: async e => {
+      e.preventDefault(); e.stopPropagation();
+      try { const r = await api(`/api/items/${kind}/${id}/hidden`, { method: 'PUT', body: { hidden: !hidden } }); onChange(r.hidden); }
+      catch (err) { alert(err.message); }
+    } }, hidden ? 'Unhide' : 'Hide');
 }
 
 const FAVORITES = 'Favorites';
@@ -250,37 +327,58 @@ async function listView(tag) {
     empty ? h('p', {}, 'Nothing in this list.') : null);
 }
 
-function episodeRow(e) {
+// An episode or movie part. A hidden one (on its own, or with its whole show or movie: `off`) is greyed out and
+// can't be played from here; `onHide` adds the Hide/Unhide button for the episode itself.
+function episodeRow(e, { off = false, onHide = null } = {}) {
   const done = e.finished;
-  return h('a', { class: 'episode' + (done ? ' watched' : ''), href: `#/play/${e.id}`, onclick: () => clearQueue() },
-    art(e.image, e.duration && !done ? e.position / e.duration : 0),
+  const disabled = off || e.hidden;
+  const content = [
+    art(e.image, e.duration && !done && !disabled ? e.position / e.duration : 0),
     h('div', {},
       h('div', { class: 'name' }, (e.episodeNumber ? `${e.episodeNumber}. ` : '') + e.title),
-      h('div', { class: 'sub muted' }, formatTime(e.duration) + (e.position > 30 && !done ? ` · stopped at ${formatTime(e.position)}` : ''),
+      h('div', { class: 'sub muted' }, disabled ? 'Hidden · ' : '', formatTime(e.duration) + (e.position > 30 && !done ? ` · stopped at ${formatTime(e.position)}` : ''),
         e.playable ? null : ' · can\'t be read')),
-    h('span', { class: 'play' }, '▶'));
+    h('span', { class: 'play' }, disabled ? '' : '▶')];
+  return h('div', { class: 'episode' + (done ? ' watched' : '') + (disabled ? ' hidden' : '') },
+    disabled ? h('div', { class: 'episode-main' }, content)
+      : h('a', { class: 'episode-main', href: `#/play/${e.id}`, onclick: () => clearQueue() }, content),
+    onHide && !off ? hideButton('file', e.id, e.hidden, onHide, 'episode') : null);
 }
 
 async function showView(id) {
   const show = await api(`/api/shows/${id}`);
   const list = h('div', { class: 'episodes' });
   const tabs = h('div', { class: 'tabs' });
+  let current = null;
   const pick = season => {
+    current = season;
     for (const b of tabs.children) b.classList.toggle('active', b.dataset.id === String(season.id));
-    mount(list, season.episodes.map(episodeRow));
+    mount(list, season.episodes.map(e => episodeRow(e, { off: show.hidden, onHide: hidden => { e.hidden = hidden; pick(current); } })));
   };
-  mount(tabs, show.seasons.map(s => h('button', { 'data-id': s.id, onclick: () => pick(s) }, s.title)));
-  mount(view, h('div', { class: 'row' }, h('h1', {}, show.title), playButtons({ show: id }, show.title)), listsControl('show', id), tabs, list);
-  // Open on the first season with something unwatched
-  const first = show.seasons.find(s => s.episodes.some(e => !e.finished)) ?? show.seasons[0];
-  if (first) pick(first);
+  const draw = () => {
+    mount(tabs, show.seasons.map(s => h('button', { 'data-id': s.id, onclick: () => pick(s) }, s.title)));
+    mount(view,
+      h('div', { class: 'row' }, h('h1', {}, show.title), playButtons({ show: id }, show.title, show.hidden),
+        hideButton('show', id, show.hidden, hidden => { show.hidden = hidden; draw(); }, 'show')),
+      show.hidden ? h('p', { class: 'muted' }, 'You\'ve hidden this show: it\'s left out of Play all, Shuffle and Continue watching. Only you see this.') : null,
+      listsControl('show', id), tabs, list);
+    // Open on the season that was open, else the first with something unwatched
+    const first = current ?? show.seasons.find(s => s.episodes.some(e => !e.finished)) ?? show.seasons[0];
+    if (first) pick(first);
+  };
+  draw();
 }
 
 async function movieView(id) {
   const movie = await api(`/api/movies/${id}`);
-  if (movie.parts.length === 1) { location.replace(`#/play/${movie.parts[0].id}`); return; }
-  mount(view, h('h1', {}, movie.title + (movie.year ? ` (${movie.year})` : '')), listsControl('movie', id),
-    h('div', { class: 'episodes' }, movie.parts.map(p => episodeRow({ ...p, title: `Part ${p.partNumber}`, episodeNumber: null }))));
+  if (movie.parts.length === 1 && !movie.hidden) { location.replace(`#/play/${movie.parts[0].id}`); return; }
+  const draw = () => mount(view,
+    h('div', { class: 'row' }, h('h1', {}, movie.title + (movie.year ? ` (${movie.year})` : '')),
+      hideButton('movie', id, movie.hidden, hidden => { movie.hidden = hidden; draw(); }, 'movie')),
+    movie.hidden ? h('p', { class: 'muted' }, 'You\'ve hidden this movie: it\'s left out of Play all, Shuffle and Continue watching. Only you see this.') : null,
+    listsControl('movie', id),
+    h('div', { class: 'episodes' }, movie.parts.map(p => episodeRow({ ...p, title: movie.parts.length > 1 ? `Part ${p.partNumber}` : movie.title, episodeNumber: null }, { off: movie.hidden }))));
+  draw();
 }
 
 async function playView(fileId) {
@@ -313,7 +411,15 @@ async function playView(fileId) {
   // Favorite or list the movie, or the show an episode is from, from here too
   const lists = details.movieId ? listsControl('movie', details.movieId)
     : details.showId ? listsControl('show', details.showId, 'This show:') : null;
-  mount(view, h('h1', {}, details.summary.title), queueBar, p.element(), lists,
+  // Hide this movie, or this episode (a hidden show is unhidden from its own page); it keeps playing now
+  const hideBox = h('div', { class: 'row' });
+  const drawHide = () => mount(hideBox,
+    details.movieId ? hideButton('movie', details.movieId, details.hidden.movie, x => { details.hidden.movie = x; drawHide(); }, 'movie')
+      : details.hidden.show ? h('span', { class: 'muted' }, 'You\'ve hidden this show. ', h('a', { href: `#/show/${details.showId}` }, 'Unhide it on its page'))
+      : hideButton('file', fileId, details.hidden.file, x => { details.hidden.file = x; drawHide(); }, 'episode'),
+    (details.hidden.movie || details.hidden.file) ? h('span', { class: 'muted' }, 'Hidden: left out of Play all, Shuffle and Continue watching.') : null);
+  drawHide();
+  mount(view, h('h1', {}, details.summary.title), queueBar, p.element(), lists, hideBox,
     h('p', { class: 'muted' }, [details.videoCodec, details.width ? `${details.width}×${details.height}` : null, details.container].filter(Boolean).join(' · ')));
   try { await p.start(); }
   catch (e) { p.status.textContent = e.message; }
@@ -468,5 +574,26 @@ async function adminView() {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 
+// Coming back from Google, the server says what happened in ?google=…; it's shown once on Sign in or Profile
+const googleOutcome = new URLSearchParams(location.search).get('google');
+let googleMessage = {
+  linked: { ok: true, text: 'Your Google account is linked: you can now sign in with Google.' },
+  taken: { text: 'That Google account is already linked to another MediaRiffle account.' },
+  unknown: { text: 'That Google account isn\'t linked to a MediaRiffle account. Sign in with your user name and password, then link it under Profile.' },
+  locked: { text: 'Too many failed sign-ins; try again in 15 minutes.' },
+  cancelled: { text: 'Google sign-in was cancelled.' },
+  failed: { text: 'Google sign-in didn\'t work; please try again.' },
+}[googleOutcome] ?? null;
+if (googleOutcome !== null) history.replaceState(null, '', location.pathname + location.hash);
+
+function takeGoogleMessage() {
+  const m = googleMessage;
+  googleMessage = null;
+  return m ? h('p', { class: m.ok ? 'ok' : 'error' }, m.text) : null;
+}
+
 addEventListener('hashchange', route);
-loadState().then(route).catch(e => mount(view, errorBox(e)));
+loadState()
+  // replaceState, not location.hash, so the page isn't routed twice
+  .then(() => { if (googleMessage && state.user) history.replaceState(null, '', location.pathname + '#/profile'); })
+  .then(route).catch(e => mount(view, errorBox(e)));

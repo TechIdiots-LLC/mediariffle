@@ -41,6 +41,21 @@ input, select {
 .brand { font-weight: 700; font-size: 18px; color: var(--text); }
 #nav { display: flex; gap: 14px; flex-wrap: wrap; flex: 1; }
 #nav .spacer { flex: 1; }
+/* The user name opens a small menu: Profile, Sign out */
+.usermenu { position: relative; }
+.usermenu > summary { cursor: pointer; color: var(--muted); list-style: none; }
+.usermenu > summary::-webkit-details-marker { display: none; }
+.usermenu > summary::after { content: " ▾"; }
+.usermenu .menu {
+  position: absolute; right: 0; top: calc(100% + 8px); min-width: 140px; display: grid;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 0;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .15);
+}
+.usermenu .menu a { padding: 6px 14px; color: var(--text); }
+.usermenu .menu a:hover { background: var(--bg); text-decoration: none; }
+.google-btn { display: inline-block; text-align: center; padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); }
+.google-btn:hover { background: var(--bg); text-decoration: none; }
+.or { text-align: center; margin: 0; }
 main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 
 h1 { font-size: 24px; margin: 4px 0 16px; }
@@ -64,8 +79,16 @@ h2 { font-size: 18px; margin: 24px 0 10px; }
 .bar { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--accent); }
 
 .episodes { display: grid; gap: 8px; }
-.episode { display: grid; grid-template-columns: 160px 1fr auto; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; color: var(--text); }
+.episode { display: grid; grid-template-columns: 160px 1fr auto auto; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; color: var(--text); }
 .episode:hover { text-decoration: none; border-color: var(--accent); }
+/* The row's link (or, hidden, a plain box) lays its parts out in the row's own grid, beside the Hide button */
+.episode-main { display: contents; color: var(--text); }
+.episode-main:hover { text-decoration: none; }
+/* Hidden by this user: greyed out, still listed */
+.tile.hidden .art, .episode.hidden .art { filter: grayscale(1); opacity: .45; }
+.tile.hidden .name, .episode.hidden .name { color: var(--muted); }
+.episode.hidden:hover { border-color: var(--border); }
+.hide-btn { padding: 4px 10px; font-size: 13px; }
 .episode .art { aspect-ratio: 16 / 9; border-radius: 6px; }
 .episode.watched .name::after { content: " ✓"; color: var(--ok); }
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -93,7 +116,7 @@ google-cast-launcher {
   --disconnected-color: var(--accent); --connected-color: var(--accent);
 }
 @media (max-width: 640px) {
-  .episode { grid-template-columns: 110px 1fr; }
+  .episode { grid-template-columns: 110px 1fr auto; }
   .episode .play { display: none; }
 }
 

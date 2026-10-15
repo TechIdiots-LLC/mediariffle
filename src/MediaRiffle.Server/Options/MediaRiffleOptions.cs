@@ -35,12 +35,25 @@ public sealed class TranscodingOptions
     public int IdleTimeoutSeconds { get; set; } = 90;
 }
 
+/// <summary>
+/// Sign-in with Google (OpenID Connect), for accounts that have linked a Google account. Off unless both are set;
+/// they come from an OAuth client of type "Web application" in the Google Cloud console.
+/// </summary>
+public sealed class GoogleOptions
+{
+    public string ClientId { get; set; } = string.Empty;
+    public string ClientSecret { get; set; } = string.Empty;
+
+    public bool Enabled => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret);
+}
+
 public sealed class MediaRiffleOptions
 {
     public const string Section = "MediaRiffle";
 
     public List<LibraryOptions> Libraries { get; set; } = new();
     public TranscodingOptions Transcoding { get; set; } = new();
+    public GoogleOptions Google { get; set; } = new();
 
     /// <summary>
     /// Where the database, keys, thumbnails and transcodes live. Defaults to /var/lib/mediariffle on Linux and

@@ -2,10 +2,14 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using MediaRiffle.Server.Data;
+using MediaRiffle.Server.Options;
 using MediaRiffle.Server.Security;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace MediaRiffle.Server.Api;
 
@@ -23,10 +27,11 @@ public static class AuthEndpoints
     {
         var g = app.MapGroup("/api/auth");
 
-        g.MapGet("/state", async (ClaimsPrincipal user, UserManager<AppUser> users) => new
+        g.MapGet("/state", async (ClaimsPrincipal user, UserManager<AppUser> users, IOptions<MediaRiffleOptions> options) => new
         {
             version = Version,
             setupNeeded = !await users.Users.AnyAsync(),
+            google = options.Value.Google.Enabled,
             user = user.Identity?.IsAuthenticated == true
                 ? new { name = user.Identity.Name, isAdmin = user.IsInRole(Roles.Admin) }
                 : null,
@@ -81,6 +86,85 @@ public static class AuthEndpoints
             await signIn.SignInAsync(user, isPersistent: true);
             return Results.Ok();
         }).RequireRateLimiting("auth");
+
+        g.MapGet("/account", async (ClaimsPrincipal principal, UserManager<AppUser> users) =>
+        {
+            var user = await users.GetUserAsync(principal);
+            if (user is null) return Results.Unauthorized();
+            var google = (await users.GetLoginsAsync(user)).FirstOrDefault(l => l.LoginProvider == GoogleDefaults.AuthenticationScheme);
+            return Results.Ok(new { name = user.UserName, google = google?.ProviderDisplayName });
+        }).RequireAuthorization();
+
+        MapGoogle(g);
+    }
+
+    /// <summary>
+    /// Google sign-in. These are page navigations, not fetches: each goes to Google and comes back through
+    /// /signin-google to /api/auth/google/done, which sends the browser home with ?google=… saying what happened.
+    /// Google's answer is only ever matched to an account that linked it; nobody is created or matched by e-mail.
+    /// </summary>
+    static void MapGoogle(RouteGroupBuilder g)
+    {
+        const string Provider = GoogleDefaults.AuthenticationScheme;
+        // Who asked to link, carried inside Google's encrypted state: the sign-in cookie is SameSite=Strict, so the
+        // browser doesn't send it on the way back from Google
+        const string LinkUser = "mediariffle.link";
+
+        g.MapGet("/google/signin", (IOptions<MediaRiffleOptions> options) =>
+            options.Value.Google.Enabled
+                ? Results.Challenge(new AuthenticationProperties { RedirectUri = "/api/auth/google/done" }, [Provider])
+                : Results.NotFound()).RequireRateLimiting("auth");
+
+        // Reached by a link on the Account page; another site can't start it, since the Strict cookie isn't sent then
+        g.MapGet("/google/link", (ClaimsPrincipal principal, UserManager<AppUser> users, IOptions<MediaRiffleOptions> options) =>
+        {
+            if (!options.Value.Google.Enabled) return Results.NotFound();
+            var props = new AuthenticationProperties { RedirectUri = "/api/auth/google/done" };
+            props.Items[LinkUser] = users.GetUserId(principal);
+            // Lets someone with several Google accounts choose which one to link
+            props.SetParameter("prompt", "select_account");
+            return Results.Challenge(props, [Provider]);
+        }).RequireAuthorization().RequireRateLimiting("auth");
+
+        g.MapGet("/google/done", async (HttpContext ctx, UserManager<AppUser> users, SignInManager<AppUser> signIn) =>
+        {
+            var result = await ctx.AuthenticateAsync(IdentityConstants.ExternalScheme);
+            await ctx.SignOutAsync(IdentityConstants.ExternalScheme);
+            var key = result.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!result.Succeeded || key is null) return Back("failed");
+            var email = result.Principal!.FindFirstValue(ClaimTypes.Email) ?? "Google account";
+
+            if (result.Properties?.Items.TryGetValue(LinkUser, out var userId) == true && userId is not null)
+            {
+                var user = await users.FindByIdAsync(userId);
+                if (user is null) return Back("failed");
+                var owner = await users.FindByLoginAsync(Provider, key);
+                if (owner is not null) return Back(owner.Id == user.Id ? "linked" : "taken");
+                // One Google account per user: linking another replaces it
+                foreach (var old in (await users.GetLoginsAsync(user)).Where(l => l.LoginProvider == Provider))
+                    await users.RemoveLoginAsync(user, Provider, old.ProviderKey);
+                var added = await users.AddLoginAsync(user, new UserLoginInfo(Provider, key, email));
+                if (!added.Succeeded) return Back("failed");
+                return Back("linked");
+            }
+
+            var signedIn = await signIn.ExternalLoginSignInAsync(Provider, key, isPersistent: true, bypassTwoFactor: true);
+            if (signedIn.Succeeded) return Results.Redirect("/");
+            return Back(signedIn.IsLockedOut ? "locked" : "unknown");
+        }).RequireRateLimiting("auth");
+
+        g.MapPost("/google/unlink", async (ClaimsPrincipal principal, UserManager<AppUser> users, SignInManager<AppUser> signIn) =>
+        {
+            var user = await users.GetUserAsync(principal);
+            if (user is null) return Results.Unauthorized();
+            foreach (var old in (await users.GetLoginsAsync(user)).Where(l => l.LoginProvider == Provider))
+                await users.RemoveLoginAsync(user, Provider, old.ProviderKey);
+            // Removing a login changes the security stamp, which would sign this session out at its next check
+            await signIn.RefreshSignInAsync(user);
+            return Results.Ok();
+        }).RequireAuthorization();
+
+        static IResult Back(string outcome) => Results.Redirect($"/?google={outcome}");
     }
 
     /// <summary>The running version, e.g. 0.1.0 (from &lt;Version&gt; in the project file).</summary>

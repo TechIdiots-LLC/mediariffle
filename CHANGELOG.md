@@ -4,6 +4,14 @@
 ### ✨ Features and improvements
 - **License**: MediaRiffle is released under the BSD 3-Clause License, copyright TechIdiots LLC. `LICENSE` ships
   with every package (in the program folder, and as `/usr/share/doc/mediariffle/copyright` in the `.deb`).
+- **Sign in with Google**: link your Google account under your name → Profile, then sign in with it instead of your
+  password. Google only signs in accounts that linked it; people still join with invites. Off until an admin sets
+  `MediaRiffle:Google:ClientId` and `ClientSecret` (see docs/configuration.md).
+- **A menu under your name** in the top bar, with Profile and Sign out.
+- **Hide what you don't want to see**: a Hide button on a show's or movie's page, on each episode, and while playing.
+  Hidden things stay listed, greyed out (Unhide brings them back), but are left out of Play all, Shuffle (categories,
+  lists, libraries and shows), Continue watching and the next episode. Only you see what you hid. Profile → Hidden
+  lists everything you hid, to open or unhide in one place.
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._

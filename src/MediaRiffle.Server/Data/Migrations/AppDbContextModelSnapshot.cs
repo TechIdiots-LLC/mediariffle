@@ -87,6 +87,45 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("MediaRiffle.Server.Data.HiddenItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("MediaFileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("MovieId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ShowId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MediaFileId");
+
+                    b.HasIndex("MovieId");
+
+                    b.HasIndex("ShowId");
+
+                    b.HasIndex("UserId", "MediaFileId");
+
+                    b.HasIndex("UserId", "MovieId");
+
+                    b.HasIndex("UserId", "ShowId");
+
+                    b.ToTable("Hidden");
+                });
+
             modelBuilder.Entity("MediaRiffle.Server.Data.Invite", b =>
                 {
                     b.Property<int>("Id")
@@ -500,6 +539,30 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("AspNetUserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("MediaRiffle.Server.Data.HiddenItem", b =>
+                {
+                    b.HasOne("MediaRiffle.Server.Data.MediaFile", null)
+                        .WithMany()
+                        .HasForeignKey("MediaFileId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MediaRiffle.Server.Data.Movie", null)
+                        .WithMany()
+                        .HasForeignKey("MovieId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MediaRiffle.Server.Data.Show", null)
+                        .WithMany()
+                        .HasForeignKey("ShowId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MediaRiffle.Server.Data.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MediaRiffle.Server.Data.MediaFile", b =>
