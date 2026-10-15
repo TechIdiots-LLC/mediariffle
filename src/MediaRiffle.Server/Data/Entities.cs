@@ -135,6 +135,21 @@ public sealed class UserTag
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>
+/// Something a user doesn't want to see: a show, a movie, or one episode (exactly one of <see cref="ShowId"/>,
+/// <see cref="MovieId"/> and <see cref="MediaFileId"/>). It's still listed, greyed out, but left out of Play all,
+/// Shuffle, Continue watching and the next episode. Only that user is affected.
+/// </summary>
+public sealed class HiddenItem
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } = string.Empty;
+    public int? ShowId { get; set; }
+    public int? MovieId { get; set; }
+    public int? MediaFileId { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
 /// <summary>Where a user stopped in a file.</summary>
 public sealed class PlaybackProgress
 {

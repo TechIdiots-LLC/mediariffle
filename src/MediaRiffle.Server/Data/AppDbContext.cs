@@ -13,6 +13,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
     public DbSet<PlaybackProgress> Progress => Set<PlaybackProgress>();
     public DbSet<UserTag> UserTags => Set<UserTag>();
+    public DbSet<HiddenItem> Hidden => Set<HiddenItem>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -49,5 +50,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         b.Entity<UserTag>().HasOne<AppUser>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<UserTag>().HasOne<Show>().WithMany().HasForeignKey(t => t.ShowId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<UserTag>().HasOne<Movie>().WithMany().HasForeignKey(t => t.MovieId).OnDelete(DeleteBehavior.Cascade);
+
+        // Hidden, likewise, goes with the user and with the show, movie or episode
+        b.Entity<HiddenItem>().HasIndex(x => new { x.UserId, x.ShowId });
+        b.Entity<HiddenItem>().HasIndex(x => new { x.UserId, x.MovieId });
+        b.Entity<HiddenItem>().HasIndex(x => new { x.UserId, x.MediaFileId });
+        b.Entity<HiddenItem>().HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<HiddenItem>().HasOne<Show>().WithMany().HasForeignKey(x => x.ShowId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<HiddenItem>().HasOne<Movie>().WithMany().HasForeignKey(x => x.MovieId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<HiddenItem>().HasOne<MediaFile>().WithMany().HasForeignKey(x => x.MediaFileId).OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -15,6 +15,7 @@ Put your settings in file 2. A complete example:
     "ScanIntervalMinutes": 60,
     "TrustedProxies": [ "127.0.0.1" ],
     "ForwardLimit": 1,
+    "Google": { "ClientId": "", "ClientSecret": "" },
     "Libraries": [
       { "Name": "TV Shows", "Kind": "Shows",  "Path": "/mnt/media/Shows" },
       { "Name": "Movies",   "Kind": "Movies", "Path": "/mnt/media/Movies" }
@@ -46,6 +47,7 @@ Put your settings in file 2. A complete example:
 | `Libraries` | Only used on the **first start**, to add the first libraries. After that they're managed under **Admin → Libraries** (see below), and this setting is ignored. |
 | `Libraries[].Kind` | `Shows` (`Show/Season 01/Show - S01E01 - Title.mkv`) or `Movies` (`Movie (1999).mkv`, `Movie/cd1.avi`). |
 | `Libraries[].Path` | The folder: a local path, a mount point (`/mnt/media/Shows`), or on Windows a UNC path (`\\files.example.lan\Media\Shows`). Only files under it are read. |
+| `Google.ClientId`, `Google.ClientSecret` | Turn on **Sign in with Google** (see below). Empty: off. |
 | `Transcoding.FfmpegFolder` | Folder holding `ffmpeg` and `ffprobe`; empty to use `PATH`. |
 | `Transcoding.Encoder` | `Libx264` (CPU), `Nvenc` (NVIDIA), `Qsv` (Intel Quick Sync), `Vaapi` (Intel/AMD on Linux). |
 | `Transcoding.MaxHeight` | Transcodes are scaled down to this many lines. |
@@ -55,6 +57,26 @@ Put your settings in file 2. A complete example:
 | `Transcoding.SegmentSeconds` | Length of a stream segment. Shorter switches level and starts sooner; longer is a little more efficient. |
 | `Transcoding.IdleTimeoutSeconds` | A stream nobody fetches from for this long is stopped and its files deleted (a paused player keeps its stream). |
 | `Kestrel:Endpoints` | Where MediaRiffle listens. `127.0.0.1` when the proxy is on the same machine; the machine's LAN address when it isn't (then firewall the port to the proxy only). Not used under IIS. |
+
+## Sign in with Google
+
+People can sign in with their Google account (OpenID Connect) once they've linked it to their MediaRiffle account.
+Google never creates an account: people still join with an invite, then link Google under **their name → Profile →
+Link Google account**. The same page shows which Google account is linked, and unlinks it. A Google account can be
+linked to only one MediaRiffle account. Signing in with Google honours the same lockout as passwords.
+
+To turn it on:
+
+1. In the [Google Cloud console](https://console.cloud.google.com/apis/credentials), set up the OAuth consent screen
+   (External; the `openid`, `email` and `profile` scopes are enough), then **Create credentials → OAuth client ID →
+   Web application**.
+2. Under **Authorized redirect URIs**, add `https://media.example.com/signin-google` (your address, ending in
+   `/signin-google`). Google accepts `http://` only for `localhost`.
+3. Put the client ID and secret in `MediaRiffle:Google` (or `MediaRiffle__Google__ClientId` /
+   `MediaRiffle__Google__ClientSecret`), and restart MediaRiffle.
+
+Behind a reverse proxy, the proxy must be in `TrustedProxies` and send `X-Forwarded-Proto` (and `X-Forwarded-Host`
+if it changes the host name), or MediaRiffle sends Google an `http://` redirect address that doesn't match.
 
 ## Libraries and categories
 

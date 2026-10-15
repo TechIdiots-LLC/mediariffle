@@ -36,8 +36,8 @@ public static class ListEndpoints
             var name = tag.Trim();
             var mine = db.UserTags.Where(t => t.UserId == userId && t.Tag == name);
             var enabled = EnabledIds(catalog);
-            var shows = await LibraryEndpoints.ShowTiles(db, db.Shows.Where(s => enabled.Contains(s.LibraryId) && mine.Any(t => t.ShowId == s.Id)));
-            var movies = await LibraryEndpoints.MovieTiles(db, db.Movies.Where(m => enabled.Contains(m.LibraryId) && mine.Any(t => t.MovieId == m.Id)));
+            var shows = await LibraryEndpoints.ShowTiles(db, userId!, db.Shows.Where(s => enabled.Contains(s.LibraryId) && mine.Any(t => t.ShowId == s.Id)));
+            var movies = await LibraryEndpoints.MovieTiles(db, userId!, db.Movies.Where(m => enabled.Contains(m.LibraryId) && mine.Any(t => t.MovieId == m.Id)));
             // The name as the user wrote it (the lookup ignores case)
             var stored = await mine.Select(t => t.Tag).FirstOrDefaultAsync() ?? name;
             return Results.Ok(new { tag = stored, favorites = IsFavorites(stored), shows, movies });

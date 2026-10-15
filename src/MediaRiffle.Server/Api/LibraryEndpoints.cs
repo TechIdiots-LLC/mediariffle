@@ -25,11 +25,11 @@ public static class LibraryEndpoints
         g.MapGet("/libraries/{id:int}", (int id, LibraryCatalog catalog) =>
             catalog.Get(id) is { Enabled: true } l ? Results.Ok(new { l.Id, l.Name, kind = l.Kind.ToString(), l.Tags }) : Results.NotFound());
 
-        g.MapGet("/libraries/{id:int}/shows", async (int id, LibraryCatalog catalog, AppDbContext db) =>
-            catalog.Get(id) is not { Enabled: true } ? Results.NotFound() : Results.Ok(await ShowsIn(db, [id])));
+        g.MapGet("/libraries/{id:int}/shows", async (int id, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
+            catalog.Get(id) is not { Enabled: true } ? Results.NotFound() : Results.Ok(await ShowsIn(db, users.GetUserId(me)!, [id])));
 
-        g.MapGet("/libraries/{id:int}/movies", async (int id, LibraryCatalog catalog, AppDbContext db) =>
-            catalog.Get(id) is not { Enabled: true } ? Results.NotFound() : Results.Ok(await MoviesIn(db, [id])));
+        g.MapGet("/libraries/{id:int}/movies", async (int id, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
+            catalog.Get(id) is not { Enabled: true } ? Results.NotFound() : Results.Ok(await MoviesIn(db, users.GetUserId(me)!, [id])));
 
         // Categories: the tags on the libraries (as in MediaLibraryManager), each with what's in it
         g.MapGet("/tags", async (LibraryCatalog catalog, AppDbContext db) =>
@@ -38,26 +38,28 @@ public static class LibraryEndpoints
             return catalog.Tags.Select(t => new { tag = t, files = catalog.WithTag(t).Sum(id => counts.GetValueOrDefault(id)) });
         });
 
-        g.MapGet("/tags/{tag}", async (string tag, LibraryCatalog catalog, AppDbContext db) =>
+        g.MapGet("/tags/{tag}", async (string tag, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
         {
             var ids = catalog.WithTag(tag);
             if (ids.Count == 0) return Results.NotFound();
-            return Results.Ok(new { tag, shows = await ShowsIn(db, ids), movies = await MoviesIn(db, ids) });
+            var userId = users.GetUserId(me)!;
+            return Results.Ok(new { tag, shows = await ShowsIn(db, userId, ids), movies = await MoviesIn(db, userId, ids) });
         });
 
         // What to play in a row: a category, one of the user's lists, a library or a show, in order or shuffled.
         // Episodes in season order, movies part by part; shuffled, every episode and movie part is mixed together.
+        // What the user hid (a show, a movie or an episode) is left out.
         g.MapGet("/queue", async (string? tag, string? list, int? library, int? show, bool? shuffle,
             ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
         {
             var enabled = catalog.Enabled.Select(l => l.Id).ToHashSet();
-            IQueryable<MediaFile> q = db.MediaFiles.Where(f => f.ProbeError == null && f.ProbeJson != "");
+            var userId = users.GetUserId(me)!;
+            var q = HiddenEndpoints.NotHidden(db, userId, db.MediaFiles.Where(f => f.ProbeError == null && f.ProbeJson != ""));
             if (show is { } sid) q = q.Where(f => f.ShowId == sid);
             else if (library is { } lid) q = q.Where(f => f.LibraryId == lid);
             else if (!string.IsNullOrWhiteSpace(tag)) { var ids = catalog.WithTag(tag); q = q.Where(f => ids.Contains(f.LibraryId)); }
             else if (!string.IsNullOrWhiteSpace(list))
             {
-                var userId = users.GetUserId(me);
                 var name = list.Trim();
                 var mine = db.UserTags.Where(t => t.UserId == userId && t.Tag == name);
                 q = q.Where(f => mine.Any(t => (t.ShowId != null && t.ShowId == f.ShowId) || (t.MovieId != null && t.MovieId == f.MovieId)));
@@ -96,13 +98,15 @@ public static class LibraryEndpoints
             var files = await db.MediaFiles.Where(f => f.ShowId == id)
                 .OrderBy(f => f.EpisodeNumber ?? int.MaxValue).ThenBy(f => f.RelativePath).ToListAsync();
             var progress = await ProgressFor(db, userId, files.Select(f => f.Id));
+            var hiddenFiles = await HiddenEndpoints.HiddenFiles(db, userId, files.Select(f => f.Id));
             return Results.Ok(new
             {
                 show.Id, show.Title, image = $"/api/images/show/{id}?v={ImageService.Version}",
+                hidden = await db.Hidden.AnyAsync(x => x.UserId == userId && x.ShowId == id),
                 seasons = seasons.Select(s => new
                 {
                     s.Id, s.Number, s.Title,
-                    episodes = files.Where(f => f.SeasonId == s.Id).Select(f => FileSummary(f, progress)),
+                    episodes = files.Where(f => f.SeasonId == s.Id).Select(f => FileSummary(f, progress, hiddenFiles)),
                 }),
             });
         });
@@ -112,10 +116,12 @@ public static class LibraryEndpoints
             var movie = await db.Movies.Include(m => m.Parts).FirstOrDefaultAsync(m => m.Id == id);
             if (movie is null) return Results.NotFound();
             var parts = movie.Parts.OrderBy(p => p.PartNumber).ToList();
-            var progress = await ProgressFor(db, users.GetUserId(me)!, parts.Select(p => p.Id));
+            var userId = users.GetUserId(me)!;
+            var progress = await ProgressFor(db, userId, parts.Select(p => p.Id));
             return Results.Ok(new
             {
                 movie.Id, movie.Title, movie.Year, image = $"/api/images/movie/{id}?v={ImageService.Version}",
+                hidden = await db.Hidden.AnyAsync(x => x.UserId == userId && x.MovieId == id),
                 parts = parts.Select(p => FileSummary(p, progress)),
             });
         });
@@ -124,10 +130,12 @@ public static class LibraryEndpoints
         {
             var f = await db.MediaFiles.FirstOrDefaultAsync(x => x.Id == id);
             if (f is null) return Results.NotFound();
-            var progress = await ProgressFor(db, users.GetUserId(me)!, [id]);
+            var userId = users.GetUserId(me)!;
+            var progress = await ProgressFor(db, userId, [id]);
             var probe = string.IsNullOrEmpty(f.ProbeJson) ? new ProbeResult() : ProbeResult.Parse(f.ProbeJson);
             var path = files.FullPath(f);
-            var neighbours = await Neighbours(db, f);
+            var neighbours = await Neighbours(db, userId, f);
+            var mine = db.Hidden.Where(x => x.UserId == userId);
             var cap = Quality.Level((await users.GetUserAsync(me))?.MaxQuality);
             return Results.Ok(new
             {
@@ -144,14 +152,22 @@ public static class LibraryEndpoints
                     .Concat((path is null ? new() : LibraryFiles.Sidecars(path)).Select(x => new { id = $"x{x.Number}", x.Label, text = true })),
                 next = neighbours.Next,
                 previous = neighbours.Previous,
+                // Whether the user hid this episode, its show or this movie
+                hidden = new
+                {
+                    file = await mine.AnyAsync(x => x.MediaFileId == id),
+                    show = f.ShowId is { } sid && await mine.AnyAsync(x => x.ShowId == sid),
+                    movie = f.MovieId is { } mid && await mine.AnyAsync(x => x.MovieId == mid),
+                },
             });
         });
 
-        // Started but not finished, newest first: the home page's "Continue watching"
+        // Started but not finished, newest first: the home page's "Continue watching" (leaving out what the user hid)
         g.MapGet("/continue", async (ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
         {
             var userId = users.GetUserId(me)!;
-            var recent = await db.Progress.Where(p => p.UserId == userId && !p.Finished && p.PositionSeconds > 30)
+            var visible = HiddenEndpoints.NotHidden(db, userId, db.MediaFiles);
+            var recent = await db.Progress.Where(p => p.UserId == userId && !p.Finished && p.PositionSeconds > 30 && visible.Any(f => f.Id == p.MediaFileId))
                 .OrderByDescending(p => p.UpdatedUtc).Take(20).ToListAsync();
             var ids = recent.Select(p => p.MediaFileId).ToList();
             var fileRows = await db.MediaFiles.Where(f => ids.Contains(f.Id)).ToDictionaryAsync(f => f.Id);
@@ -200,22 +216,30 @@ public static class LibraryEndpoints
         });
     }
 
-    private static Task<List<object>> ShowsIn(AppDbContext db, ICollection<int> libraries) =>
-        ShowTiles(db, db.Shows.Where(s => libraries.Contains(s.LibraryId)));
+    private static Task<List<object>> ShowsIn(AppDbContext db, string userId, ICollection<int> libraries) =>
+        ShowTiles(db, userId, db.Shows.Where(s => libraries.Contains(s.LibraryId)));
 
-    private static Task<List<object>> MoviesIn(AppDbContext db, ICollection<int> libraries) =>
-        MovieTiles(db, db.Movies.Where(m => libraries.Contains(m.LibraryId)));
+    private static Task<List<object>> MoviesIn(AppDbContext db, string userId, ICollection<int> libraries) =>
+        MovieTiles(db, userId, db.Movies.Where(m => libraries.Contains(m.LibraryId)));
 
-    /// <summary>Shows as the browsing pages list them, by title.</summary>
-    internal static async Task<List<object>> ShowTiles(AppDbContext db, IQueryable<Show> shows) =>
+    /// <summary>Shows as the browsing pages list them, by title, with whether this user hid them.</summary>
+    internal static async Task<List<object>> ShowTiles(AppDbContext db, string userId, IQueryable<Show> shows) =>
         (await shows.OrderBy(s => s.Title)
-            .Select(s => new { s.Id, s.Title, episodes = db.MediaFiles.Count(f => f.ShowId == s.Id), image = $"/api/images/show/{s.Id}?v={ImageService.Version}" })
+            .Select(s => new
+            {
+                s.Id, s.Title, episodes = db.MediaFiles.Count(f => f.ShowId == s.Id), image = $"/api/images/show/{s.Id}?v={ImageService.Version}",
+                hidden = db.Hidden.Any(x => x.UserId == userId && x.ShowId == s.Id),
+            })
             .ToListAsync()).Cast<object>().ToList();
 
-    /// <summary>Movies as the browsing pages list them, by title.</summary>
-    internal static async Task<List<object>> MovieTiles(AppDbContext db, IQueryable<Movie> movies) =>
+    /// <summary>Movies as the browsing pages list them, by title, with whether this user hid them.</summary>
+    internal static async Task<List<object>> MovieTiles(AppDbContext db, string userId, IQueryable<Movie> movies) =>
         (await movies.OrderBy(m => m.Title)
-            .Select(m => new { m.Id, m.Title, m.Year, parts = m.Parts.Count, image = $"/api/images/movie/{m.Id}?v={ImageService.Version}" })
+            .Select(m => new
+            {
+                m.Id, m.Title, m.Year, parts = m.Parts.Count, image = $"/api/images/movie/{m.Id}?v={ImageService.Version}",
+                hidden = db.Hidden.Any(x => x.UserId == userId && x.MovieId == m.Id),
+            })
             .ToListAsync()).Cast<object>().ToList();
 
     private static IResult Image(HttpContext ctx, string? path)
@@ -232,26 +256,30 @@ public static class LibraryEndpoints
         return await db.Progress.Where(p => p.UserId == userId && ids.Contains(p.MediaFileId)).ToDictionaryAsync(p => p.MediaFileId);
     }
 
-    private static object FileSummary(MediaFile f, Dictionary<int, PlaybackProgress> progress)
+    private static object FileSummary(MediaFile f, Dictionary<int, PlaybackProgress> progress, HashSet<int>? hiddenFiles = null)
     {
         progress.TryGetValue(f.Id, out var p);
         return new
         {
             f.Id, f.Title, f.EpisodeNumber, f.PartNumber, duration = f.DurationSeconds,
             playable = f.ProbeError is null && !string.IsNullOrEmpty(f.ProbeJson),
+            hidden = hiddenFiles?.Contains(f.Id) ?? false,
             position = p?.PositionSeconds ?? 0, finished = p?.Finished ?? false,
             image = $"/api/images/file/{f.Id}?v={ImageService.Version}",
         };
     }
 
-    /// <summary>The episode after this one in its show, or null.</summary>
-    /// <summary>The episodes before and after this one in its show (season, then episode order), or a movie's other parts.</summary>
-    private static async Task<(int? Previous, int? Next)> Neighbours(AppDbContext db, MediaFile f)
+    /// <summary>
+    /// The episodes before and after this one in its show (season, then episode order), skipping episodes the user hid,
+    /// or a movie's other parts.
+    /// </summary>
+    private static async Task<(int? Previous, int? Next)> Neighbours(AppDbContext db, string userId, MediaFile f)
     {
         List<int> ordered;
         if (f.ShowId is not null)
         {
-            var all = await db.MediaFiles.Where(x => x.ShowId == f.ShowId)
+            var hiddenFiles = db.Hidden.Where(h => h.UserId == userId && h.MediaFileId != null).Select(h => h.MediaFileId);
+            var all = await db.MediaFiles.Where(x => x.ShowId == f.ShowId && (x.Id == f.Id || !hiddenFiles.Contains(x.Id)))
                 .Join(db.Seasons, x => x.SeasonId, s => s.Id, (x, s) => new { x.Id, s.Number, Ep = x.EpisodeNumber ?? int.MaxValue, x.RelativePath })
                 .ToListAsync();
             ordered = all.OrderBy(x => x.Number).ThenBy(x => x.Ep).ThenBy(x => x.RelativePath).Select(x => x.Id).ToList();

@@ -63,7 +63,22 @@ builder.Services.AddIdentityCore<AppUser>(o =>
     .AddSignInManager()
     .AddDefaultTokenProviders();
 
-builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme).AddIdentityCookies();
+var authentication = builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme);
+authentication.AddIdentityCookies();
+// Google only signs in accounts that linked it under Account; it never creates one (people join with invites)
+if (options.Google.Enabled)
+    authentication.AddGoogle(o =>
+    {
+        o.ClientId = options.Google.ClientId;
+        o.ClientSecret = options.Google.ClientSecret;
+        // Google's answer lands in the short-lived external cookie, read once by /api/auth/google/done
+        o.SignInScheme = IdentityConstants.ExternalScheme;
+        o.CallbackPath = "/signin-google";
+        // Cancelling on Google's page, or an answer that can't be checked (e.g. an expired attempt), goes back
+        // home with a message instead of an error page
+        o.AccessDeniedPath = "/?google=cancelled";
+        o.Events.OnRemoteFailure = c => { c.Response.Redirect("/?google=failed"); c.HandleResponse(); return Task.CompletedTask; };
+    });
 builder.Services.ConfigureApplicationCookie(o =>
 {
     o.Cookie.Name = "mediariffle.auth";
@@ -164,6 +179,7 @@ app.MapAuthEndpoints();
 app.MapAdminEndpoints();
 app.MapLibraryEndpoints();
 app.MapListEndpoints();
+app.MapHiddenEndpoints();
 app.MapPlaybackEndpoints();
 app.MapStreamEndpoints();
 app.MapFallbackToFile("index.html");
