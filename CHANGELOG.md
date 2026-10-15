@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.5.0
+### ✨ Features and improvements
 - **License**: MediaRiffle is released under the BSD 3-Clause License, copyright TechIdiots LLC. `LICENSE` ships
   with every package (in the program folder, and as `/usr/share/doc/mediariffle/copyright` in the `.deb`).
 - **Sign in with Google**: link your Google account under your name → Profile, then sign in with it instead of your
@@ -31,7 +38,8 @@
   lists everything you hid, to open or unhide in one place.
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- Music ([!3](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/3)) (@acalcutt)
+- Google auth ([!2](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/2)) (@acalcutt)
 
 ## 0.4.0
 ### ✨ Features and improvements
