@@ -25,8 +25,16 @@ public sealed class TranscodingOptions
     public VideoEncoder Encoder { get; set; } = VideoEncoder.Libx264;
     /// <summary>For Vaapi: the render device, e.g. /dev/dri/renderD128.</summary>
     public string VaapiDevice { get; set; } = "/dev/dri/renderD128";
-    /// <summary>Transcoded video is scaled down to at most this height.</summary>
+    /// <summary>
+    /// Transcoded video is scaled down to at most this height. 2160 allows 4K transcodes (raise MaxVideoKbps to about
+    /// 25000 with it), which want a hardware encoder.
+    /// </summary>
     public int MaxHeight { get; set; } = 1080;
+    /// <summary>
+    /// HDR video (HDR10, HLG) converted to ordinary H.264 is tone-mapped, so it isn't washed out. Needs an ffmpeg with
+    /// the zscale filter (libzimg), as most builds have; costs CPU time.
+    /// </summary>
+    public bool ToneMapHdr { get; set; } = true;
     /// <summary>Peak video bitrate of a transcode, in kbit/s.</summary>
     public int MaxVideoKbps { get; set; } = 8000;
     /// <summary>Streams transcoding or remuxing at once, across all users; more are refused until one ends.</summary>

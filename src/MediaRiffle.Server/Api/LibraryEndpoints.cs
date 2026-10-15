@@ -150,7 +150,7 @@ public static class LibraryEndpoints
             });
         });
 
-        g.MapGet("/files/{id:int}", async (int id, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db, LibraryFiles files) =>
+        g.MapGet("/files/{id:int}", async (int id, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db, LibraryFiles files, IOptions<MediaRiffleOptions> options) =>
         {
             var f = await db.MediaFiles.FirstOrDefaultAsync(x => x.Id == id);
             if (f is null) return Results.NotFound();
@@ -170,7 +170,8 @@ public static class LibraryEndpoints
                 bitrateKbps = probe.BitRateKbps,
                 // The qualities this user may pick, best first; Original only without a cap
                 qualities = (cap is null ? new[] { new { id = Quality.Original, label = "Original", kbps = probe.BitRateKbps } } : [])
-                    .Concat(Quality.Ladder.Where(l => cap is null || l.Height <= cap.Height)
+                    // The levels this file can have here: within the server's maximum and the user's cap, none (much) bigger than the picture
+                    .Concat(Quality.AdaptiveLevels(f.Height, options.Value.Transcoding.MaxHeight, cap?.Id)
                         .Select(l => new { id = l.Id, label = $"{l.Label} ({l.TotalKbps / 1000.0:0.#} Mbit/s)", kbps = l.TotalKbps })),
                 audio = probe.Audio.Select(a => new { a.Index, a.Label, a.IsDefault }),
                 subtitles = probe.Subtitles.Select(s => new { id = $"s{s.Index}", s.Label, text = s.IsTextSubtitle })

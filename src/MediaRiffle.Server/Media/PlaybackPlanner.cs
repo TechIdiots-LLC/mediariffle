@@ -31,10 +31,15 @@ public enum SegmentFormat
 /// Set for an adaptive transcode: the levels of its master playlist, best first, each a full-length playlist whose
 /// segments are made when asked for (see <see cref="PlaybackPlanner.SegmentArguments"/>). Null for a single stream.
 /// </param>
+/// <param name="ToneMap">
+/// Transcoded HDR video is tone-mapped to SDR (BT.709) first, so it isn't washed out; set when the video is HDR and
+/// the server's ffmpeg can (see <see cref="Ffmpeg.CanToneMap"/>).
+/// </param>
 public sealed record PlaybackPlan(
     PlaybackMode Mode, ProbeStream? Video, ProbeStream? Audio, ProbeStream? BurnSubtitle, string Reason,
     string Quality = Media.Quality.Original, int TargetHeight = 1080, int TargetVideoKbps = 8000, int AudioKbps = 192,
-    SegmentFormat Segments = SegmentFormat.Ts, int StreamKbps = 0, IReadOnlyList<QualityLevel>? Levels = null)
+    SegmentFormat Segments = SegmentFormat.Ts, int StreamKbps = 0, IReadOnlyList<QualityLevel>? Levels = null,
+    bool ToneMap = false)
 {
     public bool IsAdaptive => Levels is { Count: > 0 };
 }
@@ -132,7 +137,7 @@ public static class PlaybackPlanner
             }
             else
             {
-                a.AddRange(VideoTranscode(v, plan.BurnSubtitle, plan.TargetHeight, plan.TargetVideoKbps, o, fixedKeyframes: false));
+                a.AddRange(VideoTranscode(v, plan.BurnSubtitle, plan.TargetHeight, plan.TargetVideoKbps, o, fixedKeyframes: false, plan.ToneMap));
             }
         }
 
@@ -168,21 +173,27 @@ public static class PlaybackPlanner
     /// <paramref name="kbps"/>, with an image subtitle burned in when given. A keyframe at every segment boundary, so
     /// each segment starts cleanly (<paramref name="fixedKeyframes"/>: for an adaptive stream, where it must).
     /// </summary>
-    private static List<string> VideoTranscode(ProbeStream v, ProbeStream? burn, int targetHeight, int kbps, TranscodingOptions o, bool fixedKeyframes)
+    private static List<string> VideoTranscode(ProbeStream v, ProbeStream? burn, int targetHeight, int kbps, TranscodingOptions o,
+        bool fixedKeyframes, bool toneMap = false)
     {
         var a = new List<string>();
         int height = Math.Min(targetHeight, o.MaxHeight);
         bool scale = v.Height > height;
+        // HDR is scaled down first (less to tone-map), then tone-mapped on the CPU, whatever the encoder
+        var hdr = toneMap && v.IsHdr ? (scale ? $"scale=-2:{height}," : "") + ToneMapFilter(v) + "," : null;
         var chain = o.Encoder switch
         {
             // VA-API scales on the GPU, after the frames are uploaded to it
-            VideoEncoder.Vaapi => "format=nv12,hwupload" + (scale ? $",scale_vaapi=w=-2:h={height}" : ""),
-            VideoEncoder.Qsv => (scale ? $"scale=-2:{height}," : "") + "format=nv12",
-            _ => (scale ? $"scale=-2:{height}," : "") + "format=yuv420p",
+            VideoEncoder.Vaapi => hdr is not null ? hdr + "format=nv12,hwupload"
+                : "format=nv12,hwupload" + (scale ? $",scale_vaapi=w=-2:h={height}" : ""),
+            VideoEncoder.Qsv => (hdr ?? (scale ? $"scale=-2:{height}," : "")) + "format=nv12",
+            _ => (hdr ?? (scale ? $"scale=-2:{height}," : "")) + "format=yuv420p",
         };
         if (burn is { } s) a.AddRange(["-filter_complex", $"[0:{v.Index}][0:{s.Index}]overlay,{chain}[v]", "-map", "[v]"]);
         else a.AddRange(["-map", $"0:{v.Index}", "-vf", chain]);
-        a.AddRange(EncoderArguments(o, Math.Min(kbps, o.MaxVideoKbps)));
+        a.AddRange(EncoderArguments(o, Math.Min(kbps, o.MaxVideoKbps), Math.Min(height, v.Height > 0 ? v.Height : height)));
+        // Tone-mapped (or ordinary) output is BT.709: say so, or players may take it for the source's BT.2020
+        if (hdr is not null) a.AddRange(["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]);
         // A player switching level starts a segment with no picture before it: NVENC's forced keyframes must be IDR
         if (fixedKeyframes && o.Encoder == VideoEncoder.Nvenc) a.AddRange(["-forced-idr", "1"]);
         // t counts from the first frame of this run, which starts on a segment boundary
@@ -190,17 +201,36 @@ public static class PlaybackPlanner
         return a;
     }
 
-    private static IEnumerable<string> EncoderArguments(TranscodingOptions o, int kbps)
+    private static IEnumerable<string> EncoderArguments(TranscodingOptions o, int kbps, int height)
     {
         var max = $"{kbps}k";
         var buf = $"{kbps * 2}k";
+        var level = H264Level(height);
         return o.Encoder switch
         {
             VideoEncoder.Nvenc => ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "23", "-maxrate", max, "-bufsize", buf, "-profile:v", "high"],
             VideoEncoder.Qsv => ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "23", "-maxrate", max, "-bufsize", buf, "-profile:v", "high"],
             VideoEncoder.Vaapi => ["-c:v", "h264_vaapi", "-rc_mode", "VBR", "-b:v", $"{kbps * 3 / 4}k", "-maxrate", max, "-bufsize", buf, "-profile:v", "high"],
-            _ => ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-maxrate", max, "-bufsize", buf, "-profile:v", "high", "-level:v", "4.1"],
+            _ => ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-maxrate", max, "-bufsize", buf, "-profile:v", "high", "-level:v", level],
         };
+    }
+
+    /// <summary>The H.264 level a picture this tall needs: 4.1 up to 1080p, 5.1 for 4K.</summary>
+    public static string H264Level(int height) => height > 1088 ? "5.1" : "4.1";
+
+    /// <summary>The CODECS of an H.264 High profile stream this tall (with AAC), for a master playlist.</summary>
+    public static string HlsVideoCodec(int height) => height > 1088 ? "avc1.640033" : "avc1.640029";
+
+    /// <summary>
+    /// HDR to SDR: into linear light (the source's transfer, PQ or HLG, and BT.2020 colours, taken from the probe as
+    /// files don't always say so in the stream), tone-mapped with Hable, then BT.709 for an ordinary screen. zscale
+    /// is libzimg's; <see cref="Ffmpeg.CanToneMap"/> checks this ffmpeg has it.
+    /// </summary>
+    public static string ToneMapFilter(ProbeStream v)
+    {
+        var transfer = v.ColorTransfer == "arib-std-b67" ? "arib-std-b67" : "smpte2084";
+        return $"zscale=tin={transfer}:min=bt2020nc:pin=bt2020:rin=tv:t=linear:npl=100,format=gbrpf32le," +
+               "zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv";
     }
 
     // ── Adaptive streams ──
@@ -230,7 +260,7 @@ public static class PlaybackPlanner
             var l = levels[i];
             var (w, h) = OutputSize(plan.Video, l.Height);
             int kbps = l.VideoKbps + (plan.Audio is null ? 0 : l.AudioKbps);
-            var codecs = plan.Audio is null ? "avc1.640029" : "avc1.640029,mp4a.40.2";
+            var codecs = plan.Audio is null ? HlsVideoCodec(h) : $"{HlsVideoCodec(h)},mp4a.40.2";
             sb.Append(CultureInfo.InvariantCulture,
                 $"#EXT-X-STREAM-INF:BANDWIDTH={kbps * 1000},RESOLUTION={w}x{h},CODECS=\"{codecs}\",NAME=\"{l.Id}\"\n");
             sb.Append(CultureInfo.InvariantCulture, $"v{i}/index.m3u8\n");
@@ -269,7 +299,7 @@ public static class PlaybackPlanner
         if (o.Encoder == VideoEncoder.Vaapi) a.AddRange(["-vaapi_device", o.VaapiDevice]);
         // -ss even at 0: the first frame of a run is then always the first one on or after the boundary
         a.AddRange(["-copyts", "-start_at_zero", "-ss", Seconds((double)startSegment * d), "-i", input]);
-        if (plan.Video is { } v) a.AddRange(VideoTranscode(v, plan.BurnSubtitle, level.Height, level.VideoKbps, o, fixedKeyframes: true));
+        if (plan.Video is { } v) a.AddRange(VideoTranscode(v, plan.BurnSubtitle, level.Height, level.VideoKbps, o, fixedKeyframes: true, plan.ToneMap));
         if (plan.Audio is { } au) a.AddRange(["-map", $"0:{au.Index}", "-c:a", "aac", "-b:a", $"{level.AudioKbps}k", "-ac", "2"]);
         a.AddRange([
             "-sn", "-dn", "-map_metadata", "-1", "-max_muxing_queue_size", "4096",
