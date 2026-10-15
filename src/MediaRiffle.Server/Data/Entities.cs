@@ -12,6 +12,11 @@ public sealed class AppUser : IdentityUser
     /// would make every sign-in ask for a code: two-step verification guards Admin, not signing in.
     /// </summary>
     public bool AuthenticatorEnabled { get; set; }
+    /// <summary>
+    /// A PIN others on a shared device must enter to switch into this account (Switch user), hashed like a password;
+    /// null for none.
+    /// </summary>
+    public string? SwitchPinHash { get; set; }
 }
 
 /// <summary>A one-time invitation to create an account. Only the token's SHA-256 is stored.</summary>

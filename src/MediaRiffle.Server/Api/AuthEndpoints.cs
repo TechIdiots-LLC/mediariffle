@@ -27,14 +27,23 @@ public static class AuthEndpoints
     {
         var g = app.MapGroup("/api/auth");
 
-        g.MapGet("/state", async (ClaimsPrincipal user, UserManager<AppUser> users, IOptions<MediaRiffleOptions> options) => new
+        g.MapGet("/state", async (HttpContext ctx, ClaimsPrincipal user, UserManager<AppUser> users, IOptions<MediaRiffleOptions> options) =>
         {
-            version = Version,
-            setupNeeded = !await users.Users.AnyAsync(),
-            google = options.Value.Google.Enabled,
-            user = user.Identity?.IsAuthenticated == true
-                ? new { name = user.Identity.Name, isAdmin = user.IsInRole(Roles.Admin) }
-                : null,
+            // The account in use stays at the top of this device's list, with its stamp as it is now (it changes with
+            // e.g. setting up two-step verification, which would otherwise make switching back ask for the password)
+            if (user.Identity?.IsAuthenticated == true && await AccountSwitchEndpoints.IsKeptAsync(ctx) && await users.GetUserAsync(user) is { } me)
+                await DeviceAccounts.RememberAsync(ctx, users, me);
+            return new
+            {
+                version = Version,
+                setupNeeded = !await users.Users.AnyAsync(),
+                google = options.Value.Google.Enabled,
+                user = user.Identity?.IsAuthenticated == true
+                    ? new { name = user.Identity.Name, isAdmin = user.IsInRole(Roles.Admin) }
+                    : null,
+                // Other accounts signed in on this device, for Switch user
+                deviceAccounts = DeviceAccounts.Read(ctx).Count,
+            };
         });
 
         // The antiforgery token for the signed-in (or anonymous) user; fetched again after signing in or out
@@ -55,6 +64,7 @@ public static class AuthEndpoints
             return Results.Ok();
         }).RequireRateLimiting("auth");
 
+        // A kept sign-in ("keep me signed in") joins this device's accounts for Switch user, by the cookie's OnSigningIn
         g.MapPost("/login", async (LoginRequest req, SignInManager<AppUser> signIn) =>
         {
             var result = await signIn.PasswordSignInAsync(req.UserName.Trim(), req.Password, req.Remember, lockoutOnFailure: true);
@@ -64,10 +74,14 @@ public static class AuthEndpoints
                 : Results.Json(new { error = "Wrong user name or password." }, statusCode: 401);
         }).RequireRateLimiting("auth");
 
-        g.MapPost("/logout", async (SignInManager<AppUser> signIn) =>
+        // Signs out the account in use and takes it off this device (?all=true: every account on it). Says how many
+        // others are still signed in here, for the page to offer them.
+        g.MapPost("/logout", async (bool? all, HttpContext ctx, ClaimsPrincipal me, UserManager<AppUser> users, SignInManager<AppUser> signIn) =>
         {
+            if (all == true) DeviceAccounts.ForgetAll(ctx);
+            else if (users.GetUserId(me) is { } id) DeviceAccounts.Forget(ctx, id);
             await signIn.SignOutAsync();
-            return Results.Ok();
+            return Results.Ok(new { others = all == true ? 0 : DeviceAccounts.Read(ctx).Count(a => a.UserId != users.GetUserId(me)) });
         });
 
         g.MapPost("/register", async (RegisterRequest req, AppDbContext db, UserManager<AppUser> users, SignInManager<AppUser> signIn) =>
@@ -92,7 +106,7 @@ public static class AuthEndpoints
             var user = await users.GetUserAsync(principal);
             if (user is null) return Results.Unauthorized();
             var google = (await users.GetLoginsAsync(user)).FirstOrDefault(l => l.LoginProvider == GoogleDefaults.AuthenticationScheme);
-            return Results.Ok(new { name = user.UserName, google = google?.ProviderDisplayName });
+            return Results.Ok(new { name = user.UserName, google = google?.ProviderDisplayName, pin = user.SwitchPinHash is not null });
         }).RequireAuthorization();
 
         MapGoogle(g);

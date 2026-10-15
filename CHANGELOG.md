@@ -2,6 +2,10 @@
 
 ## master
 ### ✨ Features and improvements
+- **Switch user**: everyone signed in on a device (with "Keep me signed in") is listed under your name → Switch user
+  and on the sign-in page, to switch between without a password, like Google accounts or Netflix profiles. Add another
+  account from there; sign out one or all. An account can ask for a PIN before others switch into it (Profile → Switch
+  user PIN). Admin still asks for its own two-step check after a switch. See docs/configuration.md.
 - **Two-step verification for Admin**: Admin asks for a passkey (Face ID, Touch ID, Windows Hello, a phone or a
   security key) or an authenticator app's code (Apple Passwords, Google or Microsoft Authenticator, 1Password, …), once
   every 12 hours. An admin without one is walked through setting it up the first time they open Admin, ending with ten

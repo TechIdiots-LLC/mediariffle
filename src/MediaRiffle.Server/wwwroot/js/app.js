@@ -30,6 +30,7 @@ function renderNav() {
       h('summary', {}, state.user.name),
       h('div', { class: 'menu' },
         h('a', { href: '#/profile' }, 'Profile'),
+        h('a', { href: '#/switch' }, 'Switch user'),
         h('a', { href: '#/logout' }, 'Sign out'))));
 }
 
@@ -46,6 +47,8 @@ const routes = [
   [/^#\/setup$/, setupView],
   [/^#\/join\/([\w-]+)$/, joinView],
   [/^#\/logout$/, logout],
+  [/^#\/switch$/, switchView],
+  [/^#\/add-account(?:\/(.+))?$/, m => signInForm(m[1] ? decodeURIComponent(m[1]) : '')],
   [/^#\/library\/(\d+)$/, m => libraryView(+m[1])],
   [/^#\/tag\/(.+)$/, m => tagView(decodeURIComponent(m[1]))],
   [/^#\/list\/(.+)$/, m => listView(decodeURIComponent(m[1]))],
@@ -67,7 +70,7 @@ async function route() {
   if (pageTimer) { clearInterval(pageTimer); pageTimer = null; }
   for (const fn of leaving.splice(0)) fn();
   const hash = location.hash || '#/';
-  const open = /^#\/(login|setup|join\/)/.test(hash);
+  const open = /^#\/(login|setup|join\/|switch|add-account)/.test(hash);
   if (state.setupNeeded && !hash.startsWith('#/setup')) { location.hash = '#/setup'; return; }
   if (!state.user && !open) { location.hash = '#/login'; return; }
   for (const [re, fn] of routes) {
@@ -82,8 +85,8 @@ async function route() {
 
 // ── Accounts ─────────────────────────────────────────────────────────────────
 
-function credentialsForm({ title, intro, button, onSubmit, remember = false, extra = null }) {
-  const user = h('input', { autocomplete: 'username', required: true, maxlength: 64 });
+function credentialsForm({ title, intro, button, onSubmit, remember = false, extra = null, userName = '' }) {
+  const user = h('input', { autocomplete: 'username', required: true, maxlength: 64, value: userName });
   const pass = h('input', { type: 'password', autocomplete: remember ? 'current-password' : 'new-password', required: true, minlength: remember ? 1 : 10 });
   const keep = h('input', { type: 'checkbox', checked: true });
   const msg = h('p', { class: 'error' });
@@ -98,21 +101,108 @@ function credentialsForm({ title, intro, button, onSubmit, remember = false, ext
     extra,
     h('label', {}, 'User name', user),
     h('label', {}, 'Password', pass),
-    remember ? h('label', { class: 'row' }, keep, 'Keep me signed in') : h('p', { class: 'muted' }, 'At least 10 characters.'),
+    remember ? h('label', { class: 'row', title: 'Also keeps this account under Switch user on this device' }, keep, 'Keep me signed in')
+      : h('p', { class: 'muted' }, 'At least 10 characters.'),
     h('button', { type: 'submit' }, button),
     msg);
   mount(view, form);
-  user.focus();
+  (userName ? pass : user).focus();
 }
 
 function loginView() {
   if (state.user) { location.hash = '#/'; return; }
+  // Accounts already signed in on this device: pick one instead of typing a password
+  if (state.deviceAccounts > 0) { location.replace('#/switch'); return; }
+  signInForm();
+}
+
+// The sign-in form: on the sign-in page, and from Switch user to add another account (`userName`: an account whose
+// sign-in here ran out, typed in already)
+function signInForm(userName = '') {
   // Google sign-in is a page navigation (to Google and back), not a fetch
   const google = state.google
     ? [h('a', { class: 'google-btn', href: '/api/auth/google/signin' }, 'Sign in with Google'), h('p', { class: 'muted or' }, 'or')]
     : null;
-  credentialsForm({ title: 'Sign in', button: 'Sign in', remember: true, extra: [takeGoogleMessage(), google],
-    onSubmit: (u, p, keep) => api('/api/auth/login', { method: 'POST', body: { userName: u, password: p, remember: keep } }) });
+  credentialsForm({ title: state.user ? 'Add an account' : 'Sign in', button: 'Sign in', remember: true, userName,
+    extra: [takeGoogleMessage(), google,
+      state.deviceAccounts > 0 ? h('p', {}, h('a', { href: '#/switch' }, '← Accounts on this device')) : null],
+    onSubmit: async (u, p, keep) => {
+      await api('/api/auth/login', { method: 'POST', body: { userName: u, password: p, remember: keep } });
+      music.close(true);   // the music and its queue were the other account's
+    } });
+}
+
+// ── Switch user ──────────────────────────────────────────────────────────────
+
+/**
+ * The accounts signed in on this device, to switch to without a password (a PIN if its owner set one), or to take off
+ * the device; adding another goes through the sign-in form. Open without being signed in, as the sign-in page.
+ */
+async function switchView() {
+  const accounts = await api('/api/auth/accounts');
+  if (!accounts.length) { location.replace(state.user ? '#/add-account' : '#/login'); return; }
+  const msg = h('p', { class: 'error' });
+  const done = async () => {
+    music.close(true);   // the music and its queue were the other account's
+    await loadState();
+    location.hash = '#/';
+  };
+  const pick = async (a, card) => {
+    msg.textContent = '';
+    if (a.current) { location.hash = '#/'; return; }
+    if (a.expired) { location.hash = `#/add-account/${encodeURIComponent(a.name)}`; return; }
+    if (a.pin && !card.querySelector('input')) { askPin(a, card); return; }
+    try { await api('/api/auth/accounts/switch', { method: 'POST', body: { userId: a.id } }); await done(); }
+    catch (e) {
+      if (e.data?.expired) location.hash = `#/add-account/${encodeURIComponent(a.name)}`;
+      else msg.textContent = e.message;
+    }
+  };
+  const askPin = (a, card) => {
+    const pin = h('input', { type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: 8, size: 8, placeholder: 'PIN', required: true });
+    const err = h('span', { class: 'error' });
+    card.append(h('form', { class: 'row account-pin', onsubmit: async e => {
+      e.preventDefault();
+      err.textContent = '';
+      try { await api('/api/auth/accounts/switch', { method: 'POST', body: { userId: a.id, pin: pin.value } }); await done(); }
+      catch (x) { err.textContent = x.message; pin.select(); }
+    } }, pin, h('button', { type: 'submit' }, 'Switch'), err));
+    pin.focus();
+  };
+  const forget = async (a, e) => {
+    e.stopPropagation();
+    if (!confirm(`Take ${a.name} off this device? Switching back will need the password.`)) return;
+    await api('/api/auth/accounts/forget', { method: 'POST', body: { userId: a.id } });
+    if (a.current) { music.close(true); await loadState(); }
+    switchView();
+  };
+  mount(view,
+    h('div', { class: 'accounts' },
+      h('h1', {}, state.user ? 'Switch user' : 'Who\'s watching?'),
+      h('div', { class: 'account-list' }, accounts.map(a => {
+        const card = h('div', { class: 'card account' + (a.current ? ' current' : '') });
+        card.append(
+          h('button', { class: 'account-main', onclick: () => pick(a, card) },
+            h('span', { class: 'avatar' }, (a.name[0] ?? '?').toUpperCase()),
+            h('span', { class: 'account-name' }, a.name,
+              h('span', { class: 'muted' }, [a.current ? ' · signed in' : null, a.admin ? ' · admin' : null, a.pin ? ' · 🔒 PIN' : null,
+                a.expired ? ' · sign in again' : null].filter(Boolean).join(''))),
+          ),
+          h('button', { class: 'chip-x', title: 'Take off this device', onclick: e => forget(a, e) }, '×'));
+        return card;
+      })),
+      msg,
+      h('div', { class: 'row' },
+        h('a', { class: 'google-btn', href: '#/add-account' }, '+ Add another account'),
+        h('button', { class: 'secondary', onclick: async () => {
+          if (!confirm('Sign out every account on this device?')) return;
+          music.close(true);
+          await api('/api/auth/logout?all=true', { method: 'POST' });
+          await loadState();
+          location.hash = '#/login';
+        } }, 'Sign out of all')),
+      h('p', { class: 'muted' }, 'Accounts signed in here with "Keep me signed in" are listed for 14 days after they\'re last used. ' +
+        'An account can ask for a PIN before switching to it (its Profile).')));
 }
 
 async function profileView() {
@@ -140,6 +230,8 @@ async function profileView() {
     h('div', { class: 'card' },
       h('p', {}, 'Signed in as ', h('strong', {}, account.name), state.user.isAdmin ? ' (admin)' : ''),
       mfa ? [h('h2', {}, 'Two-step verification'), mfa] : null,
+      h('h2', {}, 'Switch user PIN'),
+      pinSection(account),
       h('h2', {}, 'Google'),
       message,
       google,
@@ -147,6 +239,34 @@ async function profileView() {
       hidden));
   if (mfa) mfaSettings(mfa);
   hiddenSection(hidden);
+}
+
+// A PIN others on a shared device must enter to switch into this account; setting or removing it wants the password
+function pinSection(account) {
+  const box = h('div');
+  const draw = () => {
+    const pin = h('input', { type: 'password', inputmode: 'numeric', autocomplete: 'new-password', maxlength: 8, size: 8, placeholder: '4–8 digits' });
+    const pass = h('input', { type: 'password', autocomplete: 'current-password', size: 16, placeholder: 'Your password', required: true });
+    const msg = h('span', { class: 'error' });
+    const save = async remove => {
+      msg.textContent = '';
+      try {
+        const r = await api('/api/auth/pin', { method: 'POST', body: { password: pass.value, pin: remove ? null : pin.value } });
+        account.pin = r.pin;
+        draw();
+      } catch (e) { msg.textContent = e.message; }
+    };
+    mount(box,
+      h('p', { class: 'muted' }, account.pin
+        ? '🔒 On: switching to this account from Switch user asks for the PIN.'
+        : 'Off: anyone using a device you\'re signed in on can switch to this account from Switch user. A PIN stops that.'),
+      h('form', { class: 'row', onsubmit: e => { e.preventDefault(); save(false); } },
+        pin, pass, h('button', { type: 'submit' }, account.pin ? 'Change PIN' : 'Set PIN'),
+        account.pin ? h('button', { type: 'button', class: 'secondary', onclick: () => save(true) }, 'Remove PIN') : null),
+      msg);
+  };
+  draw();
+  return box;
 }
 
 // What the user hid, to open or unhide in one place
@@ -182,11 +302,12 @@ function joinView(m) {
     onSubmit: (u, p) => api('/api/auth/register', { method: 'POST', body: { invite: m[1], userName: u, password: p } }) });
 }
 
+// Signs out the account in use (taking it off this device); others still signed in here are offered next
 async function logout() {
   music.close(true);
-  await api('/api/auth/logout', { method: 'POST' });
+  const r = await api('/api/auth/logout', { method: 'POST' });
   await loadState();
-  location.hash = '#/login';
+  location.hash = r?.others > 0 ? '#/switch' : '#/login';
 }
 
 // ── Browsing ─────────────────────────────────────────────────────────────────
