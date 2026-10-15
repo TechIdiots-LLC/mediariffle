@@ -2,6 +2,7 @@ import { api, refreshCsrf } from './api.js';
 import { h, mount, art, formatTime } from './dom.js';
 import { Player } from './player.js';
 import { startQueue, positionOf, clearQueue } from './queue.js';
+import { Listener, trackRows } from './music.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
@@ -47,7 +48,10 @@ const routes = [
   [/^#\/list\/(.+)$/, m => listView(decodeURIComponent(m[1]))],
   [/^#\/show\/(\d+)$/, m => showView(+m[1])],
   [/^#\/movie\/(\d+)$/, m => movieView(+m[1])],
+  [/^#\/artist\/(\d+)$/, m => artistView(+m[1])],
+  [/^#\/album\/(\d+)$/, m => albumView(+m[1])],
   [/^#\/play\/(\d+)$/, m => playView(+m[1])],
+  [/^#\/listen\/(\d+)$/, m => listenView(+m[1])],
   [/^#\/admin$/, adminView],
   [/^#\/profile$/, profileView],
   [/^#?\/?$/, homeView],
@@ -280,10 +284,12 @@ async function homeView() {
 
 async function libraryView(id) {
   const lib = await api(`/api/libraries/${id}`);
-  const shows = lib.kind === 'Shows';
-  const items = await api(`/api/libraries/${id}/${shows ? 'shows' : 'movies'}`);
+  const kind = { Shows: 'shows', Movies: 'movies', Music: 'artists' }[lib.kind];
+  const tiles = { Shows: showTiles, Movies: movieTiles, Music: artistTiles }[lib.kind];
+  const items = await api(`/api/libraries/${id}/${kind}`);
+  const name = i => i.title ?? i.name;
   const grid = h('div', { class: 'grid' });
-  const draw = q => mount(grid, (shows ? showTiles : movieTiles)(items.filter(i => !q || i.title.toLowerCase().includes(q))));
+  const draw = q => mount(grid, tiles(items.filter(i => !q || name(i).toLowerCase().includes(q))));
   draw('');
   mount(view,
     h('div', { class: 'row' }, h('h1', {}, lib.name), playButtons({ library: id }, lib.name), filterBox(draw)),
@@ -292,20 +298,68 @@ async function libraryView(id) {
     items.length ? null : h('p', { class: 'muted' }, 'Nothing here yet. An admin can rescan under Admin.'));
 }
 
-// A category: every show and movie in the libraries carrying this tag, to browse or play through
+// A category: every show, movie and artist in the libraries carrying this tag, to browse or play through
 async function tagView(tag) {
   const t = await api(`/api/tags/${encodeURIComponent(tag)}`);
-  const showGrid = h('div', { class: 'grid' }), movieGrid = h('div', { class: 'grid' });
+  const showGrid = h('div', { class: 'grid' }), movieGrid = h('div', { class: 'grid' }), artistGrid = h('div', { class: 'grid' });
   const draw = q => {
-    const match = i => !q || i.title.toLowerCase().includes(q);
+    const match = i => !q || (i.title ?? i.name).toLowerCase().includes(q);
     mount(showGrid, showTiles(t.shows.filter(match)));
     mount(movieGrid, movieTiles(t.movies.filter(match)));
+    mount(artistGrid, artistTiles(t.artists.filter(match)));
   };
   draw('');
   mount(view,
     h('div', { class: 'row' }, h('h1', {}, t.tag), playButtons({ tag: t.tag }, t.tag), filterBox(draw)),
     t.shows.length ? [h('h2', {}, 'Shows'), showGrid] : null,
-    t.movies.length ? [h('h2', {}, 'Movies'), movieGrid] : null);
+    t.movies.length ? [h('h2', {}, 'Movies'), movieGrid] : null,
+    t.artists.length ? [h('h2', {}, 'Music'), artistGrid] : null);
+}
+
+// ── Music ────────────────────────────────────────────────────────────────────
+
+function artistTiles(artists) {
+  return artists.map(a => h('a', { class: 'tile', href: `#/artist/${a.id}` },
+    art(a.image, 0, 'music'), h('div', { class: 'name' }, a.name), h('div', { class: 'sub' }, `${a.albums} album${a.albums === 1 ? '' : 's'}`)));
+}
+
+function albumTiles(albums, showArtist = false) {
+  return albums.map(a => h('a', { class: 'tile', href: `#/album/${a.id}` },
+    art(a.image, 0, 'music'), h('div', { class: 'name' }, a.title),
+    h('div', { class: 'sub' }, [showArtist ? a.artist : null, a.year, `${a.tracks} track${a.tracks === 1 ? '' : 's'}`].filter(Boolean).join(' · '))));
+}
+
+async function artistView(id) {
+  const a = await api(`/api/artists/${id}`);
+  mount(view,
+    h('div', { class: 'row' }, h('h1', {}, a.name), playButtons({ artist: id }, a.name)),
+    h('div', { class: 'grid' }, albumTiles(a.albums)),
+    a.appearsOn.length ? [h('h2', {}, 'Appears on'), h('div', { class: 'grid' }, albumTiles(a.appearsOn, true))] : null);
+}
+
+async function albumView(id) {
+  const a = await api(`/api/albums/${id}`);
+  // A track starts the album from there
+  const pick = t => startQueue({ album: id }, false, a.title, t.id).catch(e => alert(e.message));
+  mount(view,
+    h('div', { class: 'album-head' },
+      h('div', { class: 'listen-art' }, art(a.image, 0, 'music')),
+      h('div', {},
+        h('h1', {}, a.title),
+        h('p', {}, h('a', { href: `#/artist/${a.artist.id}` }, a.artist.name), a.year ? ` · ${a.year}` : ''),
+        h('p', { class: 'muted' }, `${a.tracks.length} track${a.tracks.length === 1 ? '' : 's'} · ${formatTime(a.duration)}`),
+        playButtons({ album: id }, a.title))),
+    h('div', { class: 'tracks' }, trackRows(a, pick)));
+}
+
+async function listenView(fileId) {
+  let track;
+  try { track = await api(`/api/tracks/${fileId}`); }
+  catch (e) { if (e.status === 404) { location.replace(`#/play/${fileId}`); return; } throw e; }
+  const l = new Listener(track, positionOf(fileId));
+  player = l;
+  mount(view, l.element());
+  await l.start();
 }
 
 // One of the user's own lists (Favorites among them): the shows and movies they tagged with it
@@ -383,6 +437,8 @@ async function movieView(id) {
 
 async function playView(fileId) {
   const details = await api(`/api/files/${fileId}`);
+  // Music (reached from a mixed queue, or an old link) plays on the listening page
+  if (details.kind === 'Track') { location.replace(`#/listen/${fileId}`); return; }
   const p = new Player(details);
   player = p;
   const place = positionOf(fileId);
@@ -430,14 +486,14 @@ async function playView(fileId) {
 // Add or edit a library, in place of the "Add a library" button
 function libraryForm(lib) {
   const name = h('input', { value: lib?.name ?? '', maxlength: 100, required: true });
-  const kind = h('select', {}, ['Shows', 'Movies'].map(k => h('option', { value: k, selected: (lib?.kind ?? 'Shows') === k }, k)));
+  const kind = h('select', {}, ['Shows', 'Movies', 'Music'].map(k => h('option', { value: k, selected: (lib?.kind ?? 'Shows') === k }, k)));
   const path = h('input', { value: lib?.path ?? '', size: 50, placeholder: '/mnt/media/Shows or \\\\files.example.lan\\Media\\Shows', required: true });
   const tags = h('input', { value: lib?.tags ?? '', size: 40, placeholder: 'e.g. Cartoons, Kids' });
   const enabled = h('input', { type: 'checkbox', checked: lib?.enabled ?? true });
   const msg = h('p', { class: 'muted' });
   const check = async () => {
     msg.className = 'muted'; msg.textContent = 'Checking…';
-    const r = await api('/api/admin/libraries/check', { method: 'POST', body: { path: path.value } });
+    const r = await api('/api/admin/libraries/check', { method: 'POST', body: { path: path.value, kind: kind.value } });
     msg.className = r.ok ? 'ok' : 'error';
     mount(msg, r.message, r.sample?.length ? h('br') : null, (r.sample ?? []).map(s => [h('br'), h('code', {}, s)]));
   };

@@ -8,6 +8,13 @@
   password. Google only signs in accounts that linked it; people still join with invites. Off until an admin sets
   `MediaRiffle:Google:ClientId` and `ClientSecret` (see docs/configuration.md).
 - **A menu under your name** in the top bar, with Profile and Sign out.
+- **Music libraries**: a new library kind, browsed by artist, album and track. Songs are filed by their tags (album
+  artist, album, disc and track number, year), or by `Artist/Album/01 - Title` folders and names; tracks with
+  different artists and no album artist make a "Various Artists" compilation. Play all and Shuffle work on a library,
+  an artist, an album or a category, and picking a track plays the album from there, on a listening page that moves
+  straight on to the next track and shows on the lock screen. MP3, AAC and WAV (and FLAC and Ogg where the browser
+  plays them) are sent as they are; anything else is converted to AAC once and kept. Cover art from `cover.jpg` /
+  `folder.jpg`. See docs/configuration.md.
 - **Hide what you don't want to see**: a Hide button on a show's or movie's page, on each episode, and while playing.
   Hidden things stay listed, greyed out (Unhide brings them back), but are left out of Play all, Shuffle (categories,
   lists, libraries and shows), Continue watching and the next episode. Only you see what you hid. Profile → Hidden

@@ -145,6 +145,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<LibraryScanner>())
 builder.Services.AddSingleton<StreamSessionManager>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<StreamSessionManager>());
 builder.Services.AddSingleton<ImageService>();
+builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<LibraryCatalog>();
 builder.Services.AddSingleton<LibraryFiles>();
 
@@ -180,6 +181,7 @@ app.MapAdminEndpoints();
 app.MapLibraryEndpoints();
 app.MapListEndpoints();
 app.MapHiddenEndpoints();
+app.MapMusicEndpoints();
 app.MapPlaybackEndpoints();
 app.MapStreamEndpoints();
 app.MapFallbackToFile("index.html");

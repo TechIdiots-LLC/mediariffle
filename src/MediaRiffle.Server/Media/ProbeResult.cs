@@ -47,6 +47,16 @@ public sealed class ProbeResult
     public int BitRateKbps { get; init; }
     public List<ProbeStream> Streams { get; init; } = new();
 
+    /// <summary>
+    /// The file's tags (title, artist, album, track, …), any case: the container's, and the first audio stream's
+    /// where the container has none of its own (Ogg and Opus keep them there).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Tags { get; init; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The first of these tags that's set, trimmed; null when none is.</summary>
+    public string? Tag(params string[] names) =>
+        names.Select(n => Tags.TryGetValue(n, out var v) ? v.Trim() : null).FirstOrDefault(v => !string.IsNullOrEmpty(v));
+
     public ProbeStream? Video => Streams.FirstOrDefault(s => s.Type == StreamType.Video);
     public IEnumerable<ProbeStream> Audio => Streams.Where(s => s.Type == StreamType.Audio);
     public IEnumerable<ProbeStream> Subtitles => Streams.Where(s => s.Type == StreamType.Subtitle);
@@ -61,10 +71,13 @@ public sealed class ProbeResult
         var root = doc.RootElement;
         var format = root.TryGetProperty("format", out var f) ? f : default;
         var streams = new List<ProbeStream>();
+        var fileTags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        AddTags(fileTags, format);
         if (root.TryGetProperty("streams", out var list) && list.ValueKind == JsonValueKind.Array)
         {
             foreach (var s in list.EnumerateArray())
             {
+                if (Str(s, "codec_type") == "audio" && !streams.Any(x => x.Type == StreamType.Audio)) AddTags(fileTags, s);
                 var type = Str(s, "codec_type") switch
                 {
                     "video" => StreamType.Video,
@@ -90,7 +103,16 @@ public sealed class ProbeResult
             StartSeconds = double.TryParse(Str(format, "start_time"), NumberStyles.Float, CultureInfo.InvariantCulture, out var st) && st > 0 ? st : 0,
             BitRateKbps = long.TryParse(Str(format, "bit_rate"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var br) ? (int)(br / 1000) : 0,
             Streams = streams,
+            Tags = fileTags,
         };
+    }
+
+    // A tag already set (from the container) is kept
+    private static void AddTags(Dictionary<string, string> into, JsonElement owner)
+    {
+        if (owner.ValueKind != JsonValueKind.Object || !owner.TryGetProperty("tags", out var tags) || tags.ValueKind != JsonValueKind.Object) return;
+        foreach (var t in tags.EnumerateObject())
+            if (t.Value.ValueKind == JsonValueKind.String && !into.ContainsKey(t.Name)) into[t.Name] = t.Value.GetString()!;
     }
 
     private static string? Str(JsonElement e, string name) =>

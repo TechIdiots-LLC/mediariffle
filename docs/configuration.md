@@ -45,7 +45,7 @@ Put your settings in file 2. A complete example:
 | `TrustedProxies` | IP addresses of the reverse proxies in front (HAProxy, Apache, nginx). Only these may set `X-Forwarded-For`/`-Proto`. |
 | `ForwardLimit` | How many proxies are in the chain: 1 for HAProxy alone, 2 for HAProxy → Apache. |
 | `Libraries` | Only used on the **first start**, to add the first libraries. After that they're managed under **Admin → Libraries** (see below), and this setting is ignored. |
-| `Libraries[].Kind` | `Shows` (`Show/Season 01/Show - S01E01 - Title.mkv`) or `Movies` (`Movie (1999).mkv`, `Movie/cd1.avi`). |
+| `Libraries[].Kind` | `Shows` (`Show/Season 01/Show - S01E01 - Title.mkv`), `Movies` (`Movie (1999).mkv`, `Movie/cd1.avi`) or `Music` (`Artist/Album/01 - Title.mp3`, or by tags; see below). |
 | `Libraries[].Path` | The folder: a local path, a mount point (`/mnt/media/Shows`), or on Windows a UNC path (`\\files.example.lan\Media\Shows`). Only files under it are read. |
 | `Google.ClientId`, `Google.ClientSecret` | Turn on **Sign in with Google** (see below). Empty: off. |
 | `Transcoding.FfmpegFolder` | Folder holding `ffmpeg` and `ffprobe`; empty to use `PATH`. |
@@ -80,7 +80,7 @@ if it changes the host name), or MediaRiffle sends Google an `http://` redirect 
 
 ## Libraries and categories
 
-Admins add, edit and remove libraries under **Admin → Libraries**: a name, whether it holds shows or movies, its folder,
+Admins add, edit and remove libraries under **Admin → Libraries**: a name, whether it holds shows, movies or music, its folder,
 and tags. **Check folder** shows whether this server's account can read the folder and a few of the videos it found,
 before anything is saved. A new library, or a changed folder, is scanned straight away.
 
@@ -139,3 +139,32 @@ Movies/
 
 `S01E02` and `1x02` episode numbers are both understood; a `Season NN` folder sets the season when the name has none.
 Release tags (`1080p`, `x264`, `BluRay`, …) are dropped from titles.
+
+## Music
+
+A library of kind **Music** holds songs: MP3, AAC/M4A, FLAC, Ogg/Opus, WAV, WMA, ALAC, AIFF, APE, WavPack. It's browsed
+by artist, then album, then track; **Play all** and **Shuffle** work on a library, an artist, an album or a category,
+and picking a track plays its album from there. Music isn't in Continue watching.
+
+Songs are filed by their **tags** (artist, album artist, album, track and disc number, title, year), as written by
+most rippers and taggers. Untagged files are read from their folders and names:
+
+```
+Music/
+  Nirvana/
+    Nevermind/
+      cover.jpg                        (optional album art; folder.jpg also works)
+      01 - Smells Like Teen Spirit.mp3
+      02 - In Bloom.mp3
+  Pink Floyd/
+    The Wall/
+      CD1/01 - In the Flesh.flac       (CD1, Disc 2, … folders are discs of the album)
+```
+
+An album is the tracks in one folder with the same album tag. Its artist is the **album artist** tag; without one,
+it's the tracks' artist, or **Various Artists** when they differ (a compilation). A track's own artist is shown beside
+it, and the artist's page lists the compilations they appear on.
+
+A browser plays MP3, AAC and WAV as they are, and FLAC and Ogg where it supports them. Anything else is converted once
+to AAC and kept in `audio` under `DataDirectory` (up to 2 GB; the least recently played go first), so it seeks like
+any file.

@@ -1,8 +1,11 @@
 namespace MediaRiffle.Server.Options;
 
-public enum LibraryKind { Shows, Movies }
+public enum LibraryKind { Shows, Movies, Music }
 
-/// <summary>A folder of media: a "Shows" library holds Show/Season NN/episode files, a "Movies" library holds movie files.</summary>
+/// <summary>
+/// A folder of media: a "Shows" library holds Show/Season NN/episode files, a "Movies" library holds movie files, a
+/// "Music" library holds Artist/Album/track files (read from their tags when they have them).
+/// </summary>
 public sealed class LibraryOptions
 {
     /// <summary>Shown in the UI and used in URLs; must be unique.</summary>
@@ -84,6 +87,8 @@ public sealed class MediaRiffleOptions
 
     public string TranscodeDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "transcode");
     public string ImageDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "images");
+    /// <summary>Music converted for browsers that can't play the file itself (kept, oldest dropped past a size).</summary>
+    public string AudioDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "audio");
     public string KeysDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "keys");
     public string DatabasePath => System.IO.Path.Combine(ResolvedDataDirectory, "mediariffle.db");
 }

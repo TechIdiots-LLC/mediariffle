@@ -11,6 +11,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Movie> Movies => Set<Movie>();
     public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
+    public DbSet<Artist> Artists => Set<Artist>();
+    public DbSet<Album> Albums => Set<Album>();
     public DbSet<PlaybackProgress> Progress => Set<PlaybackProgress>();
     public DbSet<UserTag> UserTags => Set<UserTag>();
     public DbSet<HiddenItem> Hidden => Set<HiddenItem>();
@@ -38,6 +40,17 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         b.Entity<MediaFile>().HasOne<Movie>().WithMany(m => m.Parts).HasForeignKey(f => f.MovieId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<MediaFile>().HasOne<Show>().WithMany().HasForeignKey(f => f.ShowId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<MediaFile>().HasOne<Season>().WithMany().HasForeignKey(f => f.SeasonId).OnDelete(DeleteBehavior.Cascade);
+
+        // Music: artists and albums go with their library (as its tracks do). No foreign key from a track to its album:
+        // adding one to MediaFiles makes SQLite rebuild the whole table on upgrade, and albums are only removed once empty
+        b.Entity<Artist>().Property(a => a.Name).UseCollation("NOCASE");
+        b.Entity<Artist>().HasIndex(a => new { a.LibraryId, a.Name }).IsUnique();
+        b.Entity<Artist>().HasOne<MediaLibrary>().WithMany().HasForeignKey(a => a.LibraryId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Album>().HasIndex(a => new { a.LibraryId, a.GroupKey }).IsUnique();
+        b.Entity<Album>().HasIndex(a => a.ArtistId);
+        b.Entity<Album>().HasOne<MediaLibrary>().WithMany().HasForeignKey(a => a.LibraryId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Album>().HasOne<Artist>().WithMany().HasForeignKey(a => a.ArtistId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<MediaFile>().HasIndex(f => f.AlbumId);
 
         b.Entity<PlaybackProgress>().HasKey(p => new { p.UserId, p.MediaFileId });
         b.Entity<PlaybackProgress>().HasIndex(p => new { p.UserId, p.UpdatedUtc });
