@@ -21,7 +21,8 @@ public static class AdminEndpoints
 {
     public static void MapAdminEndpoints(this WebApplication app)
     {
-        var g = app.MapGroup("/api/admin").RequireAuthorization("Admin");
+        // Admins, and only after two-step verification (a passkey or an authenticator code) in the last few hours
+        var g = app.MapGroup("/api/admin").RequireAuthorization("Admin").AddEndpointFilter(Mfa.RequireForAdmin);
 
         g.MapPost("/invites", async (InviteRequest req, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db, HttpContext ctx) =>
         {
@@ -52,8 +53,15 @@ public static class AdminEndpoints
         g.MapGet("/users", async (UserManager<AppUser> users) =>
         {
             var admins = (await users.GetUsersInRoleAsync(Roles.Admin)).Select(u => u.Id).ToHashSet();
-            return (await users.Users.OrderBy(u => u.UserName).ToListAsync())
-                .Select(u => new { u.Id, u.UserName, u.CreatedUtc, isAdmin = admins.Contains(u.Id), lockedOut = u.LockoutEnd > DateTimeOffset.UtcNow, u.MaxQuality });
+            var list = new List<object>();
+            foreach (var u in await users.Users.OrderBy(u => u.UserName).ToListAsync())
+                list.Add(new
+                {
+                    u.Id, u.UserName, u.CreatedUtc, isAdmin = admins.Contains(u.Id), lockedOut = u.LockoutEnd > DateTimeOffset.UtcNow, u.MaxQuality,
+                    // Has a passkey or an authenticator app (two-step verification)
+                    mfa = await Mfa.IsSetUpAsync(users, u),
+                });
+            return list;
         });
 
         // The best quality a user may stream (e.g. "720" for someone on a slow connection), or none for no limit
@@ -90,6 +98,21 @@ public static class AdminEndpoints
             if (user is null) return Results.NotFound();
             await db.Progress.Where(p => p.UserId == id).ExecuteDeleteAsync();
             await users.DeleteAsync(user);
+            return Results.Ok();
+        });
+
+        // Someone who lost their passkeys, authenticator and recovery codes: removes them all, so they can set it up
+        // again (an admin is guided through it the next time they open Admin). Not yourself.
+        g.MapPost("/users/{id}/reset-mfa", async (string id, ClaimsPrincipal me, UserManager<AppUser> users) =>
+        {
+            if (users.GetUserId(me) == id) return Results.BadRequest(new { error = "Change your own under Profile; another admin can reset it." });
+            var user = await users.FindByIdAsync(id);
+            if (user is null) return Results.NotFound();
+            foreach (var p in await users.GetPasskeysAsync(user)) await users.RemovePasskeyAsync(user, p.CredentialId);
+            user.AuthenticatorEnabled = false;
+            await users.UpdateAsync(user);
+            await users.ResetAuthenticatorKeyAsync(user);
+            await users.GenerateNewTwoFactorRecoveryCodesAsync(user, 0);
             return Results.Ok();
         });
 

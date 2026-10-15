@@ -2,7 +2,11 @@
 
 ## master
 ### ✨ Features and improvements
-- _...Add new stuff here..._
+- **Two-step verification for Admin**: Admin asks for a passkey (Face ID, Touch ID, Windows Hello, a phone or a
+  security key) or an authenticator app's code (Apple Passwords, Google or Microsoft Authenticator, 1Password, …), once
+  every 12 hours. An admin without one is walked through setting it up the first time they open Admin, ending with ten
+  one-time recovery codes. Manage passkeys, the authenticator and recovery codes under Profile; another admin can reset
+  someone's under Admin → Users. Signing in itself is unchanged. See docs/configuration.md.
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._

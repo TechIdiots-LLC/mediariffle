@@ -3,6 +3,7 @@ import { h, mount, art, formatTime } from './dom.js';
 import { Player } from './player.js';
 import { startQueue, positionOf, clearQueue } from './queue.js';
 import { music, nowPlayingView, trackRows } from './music.js';
+import { adminGate, mfaSettings } from './mfa.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
@@ -132,15 +133,19 @@ async function profileView() {
     h('p', { class: 'muted' }, 'Link your Google account to sign in with it instead of your password.'),
     h('a', { class: 'google-btn', href: '/api/auth/google/link' }, 'Link Google account')];
   const hidden = h('div');
+  // Two-step verification: for admins (Admin asks for it); viewers have nothing it guards
+  const mfa = state.user.isAdmin ? h('div') : null;
   mount(view,
     h('h1', {}, 'Profile'),
     h('div', { class: 'card' },
       h('p', {}, 'Signed in as ', h('strong', {}, account.name), state.user.isAdmin ? ' (admin)' : ''),
+      mfa ? [h('h2', {}, 'Two-step verification'), mfa] : null,
       h('h2', {}, 'Google'),
       message,
       google,
       h('h2', {}, 'Hidden'),
       hidden));
+  if (mfa) mfaSettings(mfa);
   hiddenSection(hidden);
 }
 
@@ -594,9 +599,16 @@ function libraryForm(lib) {
 
 async function adminView() {
   if (!state.user?.isAdmin) { location.hash = '#/'; return; }
-  const [users, invites, scan, sessions, qualities, libraries] = await Promise.all([
-    api('/api/admin/users'), api('/api/admin/invites'), api('/api/admin/scan'), api('/api/admin/sessions'), api('/api/admin/qualities'),
-    api('/api/admin/libraries')]);
+  let users, invites, scan, sessions, qualities, libraries;
+  try {
+    [users, invites, scan, sessions, qualities, libraries] = await Promise.all([
+      api('/api/admin/users'), api('/api/admin/invites'), api('/api/admin/scan'), api('/api/admin/sessions'), api('/api/admin/qualities'),
+      api('/api/admin/libraries')]);
+  } catch (e) {
+    // Admin wants two-step verification first: a check, or setting one up (guided)
+    if (e.data?.mfa) { await adminGate(view, () => { if (location.hash === '#/admin') adminView(); }); return; }
+    throw e;
+  }
 
   const link = h('input', { readonly: true, size: 60 });
   const asAdmin = h('input', { type: 'checkbox' });
@@ -663,7 +675,8 @@ async function adminView() {
     h('h2', {}, 'Users'),
     h('table', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Role'), h('th', { title: 'The best quality this user may stream' }, 'Best quality'), h('th', {}, 'Joined'), h('th', {})),
       users.map(u => h('tr', {},
-        h('td', {}, u.userName, u.lockedOut ? h('span', { class: 'error' }, ' (locked out)') : null),
+        h('td', {}, u.userName, u.lockedOut ? h('span', { class: 'error' }, ' (locked out)') : null,
+          u.mfa ? h('span', { class: 'muted', title: 'Has a passkey or an authenticator app' }, ' 🔑') : null),
         // Your own role is fixed here (another admin can change it), so Admin can't be left without anyone
         h('td', {}, u.userName === state.user.name ? (u.isAdmin ? 'Admin' : 'Viewer') : h('select', { onchange: async e => {
             const admin = e.target.value === 'admin';
@@ -682,6 +695,12 @@ async function adminView() {
         h('td', {}, new Date(u.createdUtc).toLocaleDateString()),
         h('td', { class: 'row' },
           u.lockedOut ? h('button', { class: 'secondary', onclick: async () => { await api(`/api/admin/users/${u.id}/unlock`, { method: 'POST' }); adminView(); } }, 'Unlock') : null,
+          // For someone who lost their passkeys, authenticator and recovery codes
+          u.mfa && u.userName !== state.user.name ? h('button', { class: 'secondary', onclick: async () => {
+            if (!confirm(`Reset ${u.userName}'s two-step verification? Their passkeys, authenticator app and recovery codes stop working` +
+              (u.isAdmin ? ', and they\'ll set it up again the next time they open Admin.' : '.'))) return;
+            try { await api(`/api/admin/users/${u.id}/reset-mfa`, { method: 'POST' }); adminView(); } catch (e) { alert(e.message); }
+          } }, 'Reset two-step') : null,
           u.userName !== state.user.name ? h('button', { class: 'danger', onclick: async () => {
             if (confirm(`Remove ${u.userName}?`)) { await api(`/api/admin/users/${u.id}`, { method: 'DELETE' }); adminView(); }
           } }, 'Remove') : null)))),

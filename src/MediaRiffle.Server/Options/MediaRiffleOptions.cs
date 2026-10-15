@@ -50,9 +50,23 @@ public sealed class GoogleOptions
     public bool Enabled => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret);
 }
 
+/// <summary>Two-step verification (a passkey or an authenticator app's code) for the Admin section.</summary>
+public sealed class AdminMfaOptions
+{
+    /// <summary>
+    /// Admin asks for a passkey or a code first (and has an admin without either set one up). Turn off only to get back
+    /// in when the only admin has lost every way to verify; another admin can instead reset it under Admin → Users.
+    /// </summary>
+    public bool Required { get; set; } = true;
+    /// <summary>How long a check lasts before Admin asks again, in hours.</summary>
+    public int Hours { get; set; } = 12;
+}
+
 public sealed class MediaRiffleOptions
 {
     public const string Section = "MediaRiffle";
+
+    public AdminMfaOptions AdminMfa { get; set; } = new();
 
     public List<LibraryOptions> Libraries { get; set; } = new();
     public TranscodingOptions Transcoding { get; set; } = new();

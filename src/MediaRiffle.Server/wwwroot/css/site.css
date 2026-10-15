@@ -227,3 +227,18 @@ body.has-nowbar { padding-bottom: 76px; }
 button.track-fav { font-size: 18px; }
 button.track-fav.on, button.track-fav.on:hover { color: #f5b301; }
 .listen .my-lists { margin-top: 14px; }
+
+/* Two-step verification: Admin's check, the setup steps, recovery codes */
+.mfa-gate, .mfa-setup { max-width: 760px; }
+.mfa-verify { display: grid; gap: 10px; justify-items: start; }
+.mfa-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.mfa-choices .card { display: grid; gap: 8px; align-content: start; justify-items: start; }
+.mfa-choices h3 { margin: 0; }
+.mfa-totp { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start; }
+/* QR codes scan best dark on white, whatever the theme */
+.mfa-qr { width: 200px; height: 200px; background: #fff; padding: 8px; border-radius: 8px; }
+.mfa-key { font-size: 15px; letter-spacing: .5px; user-select: all; }
+.mfa-codes { display: grid; grid-template-columns: repeat(2, max-content); gap: 6px 28px; padding-left: 1.2em; font-size: 16px; }
+@media (max-width: 640px) {
+  .mfa-totp { grid-template-columns: 1fr; }
+}

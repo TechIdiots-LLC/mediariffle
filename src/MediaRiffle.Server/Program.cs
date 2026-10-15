@@ -57,6 +57,8 @@ builder.Services.AddIdentityCore<AppUser>(o =>
         o.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
         o.Lockout.AllowedForNewUsers = true;
         o.User.RequireUniqueEmail = false;
+        // Passkeys (WebAuthn) are kept in AspNetUserPasskeys, which schema version 3 adds
+        o.Stores.SchemaVersion = IdentitySchemaVersions.Version3;
     })
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>()
@@ -95,7 +97,12 @@ builder.Services.ConfigureApplicationCookie(o =>
 });
 // A sign-in cookie carries the user's roles; it's checked against the database (and its roles refreshed, or the user
 // signed out if removed) every minute instead of every 30, so making someone an admin or a viewer takes effect quickly
-builder.Services.Configure<SecurityStampValidatorOptions>(o => o.ValidationInterval = TimeSpan.FromMinutes(1));
+builder.Services.Configure<SecurityStampValidatorOptions>(o =>
+{
+    o.ValidationInterval = TimeSpan.FromMinutes(1);
+    // The rebuilt cookie keeps when the user last passed two-step verification (Admin wants a recent one)
+    o.OnRefreshingPrincipal = Mfa.KeepMarks;
+});
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("Admin", p => p.RequireRole(Roles.Admin));
 
@@ -177,6 +184,7 @@ app.UseAuthorization();
 app.UseApiAntiforgery();
 
 app.MapAuthEndpoints();
+app.MapMfaEndpoints();
 app.MapAdminEndpoints();
 app.MapLibraryEndpoints();
 app.MapListEndpoints();

@@ -16,6 +16,7 @@ Put your settings in file 2. A complete example:
     "TrustedProxies": [ "127.0.0.1" ],
     "ForwardLimit": 1,
     "Google": { "ClientId": "", "ClientSecret": "" },
+    "AdminMfa": { "Required": true, "Hours": 12 },
     "Libraries": [
       { "Name": "TV Shows", "Kind": "Shows",  "Path": "/mnt/media/Shows" },
       { "Name": "Movies",   "Kind": "Movies", "Path": "/mnt/media/Movies" }
@@ -48,6 +49,8 @@ Put your settings in file 2. A complete example:
 | `Libraries[].Kind` | `Shows` (`Show/Season 01/Show - S01E01 - Title.mkv`), `Movies` (`Movie (1999).mkv`, `Movie/cd1.avi`) or `Music` (`Artist/Album/01 - Title.mp3`, or by tags; see below). |
 | `Libraries[].Path` | The folder: a local path, a mount point (`/mnt/media/Shows`), or on Windows a UNC path (`\\files.example.lan\Media\Shows`). Only files under it are read. |
 | `Google.ClientId`, `Google.ClientSecret` | Turn on **Sign in with Google** (see below). Empty: off. |
+| `AdminMfa.Required` | Admin asks for two-step verification (a passkey or an authenticator code), see below. Set `false` only to get back in when the only admin has lost every way to verify. |
+| `AdminMfa.Hours` | How long a check lasts before Admin asks again. |
 | `Transcoding.FfmpegFolder` | Folder holding `ffmpeg` and `ffprobe`; empty to use `PATH`. |
 | `Transcoding.Encoder` | `Libx264` (CPU), `Nvenc` (NVIDIA), `Qsv` (Intel Quick Sync), `Vaapi` (Intel/AMD on Linux). |
 | `Transcoding.MaxHeight` | Transcodes are scaled down to this many lines. |
@@ -77,6 +80,27 @@ To turn it on:
 
 Behind a reverse proxy, the proxy must be in `TrustedProxies` and send `X-Forwarded-Proto` (and `X-Forwarded-Host`
 if it changes the host name), or MediaRiffle sends Google an `http://` redirect address that doesn't match.
+
+## Two-step verification for Admin
+
+Admin asks for a second step besides the password: a **passkey** (Face ID or Touch ID on an iPhone, iPad or Mac,
+Windows Hello, an Android phone, or a security key) or a 6-digit code from an **authenticator app** (Apple's Passwords
+app, Google Authenticator, Microsoft Authenticator, 1Password, …). A check lasts `AdminMfa.Hours` (12 by default),
+however the admin signed in, Google included. Signing in itself doesn't ask for it, and viewers never see it.
+
+An admin with neither is walked through setting one up the first time they open Admin: confirm the password, make a
+passkey or scan the authenticator's QR code (on an iPhone or Mac, the link opens it straight in the Passwords app),
+then keep the ten **recovery codes**, each good for one check if the passkey or phone is lost. Both can be set up, and
+several passkeys (one per device; on Apple devices one passkey syncs through iCloud Keychain). They're managed under
+**your name → Profile → Two-step verification**; removing one, or making new recovery codes, asks for a check first.
+Five wrong codes in a row lock the account for 15 minutes, as wrong passwords do.
+
+Passkeys need the site's HTTPS address (browsers only make them on secure pages), and MediaRiffle has to see the
+request as HTTPS with the right host name: behind a reverse proxy, see `TrustedProxies` and `X-Forwarded-Proto` above.
+
+**Locked out?** Another admin can clear someone's passkeys, authenticator and recovery codes with **Reset two-step** in
+Admin → Users; they set it up again on their next visit. If you're the only admin, set `"AdminMfa": { "Required": false }`,
+restart, reset it under Profile, and set it back.
 
 ## Libraries and categories
 
