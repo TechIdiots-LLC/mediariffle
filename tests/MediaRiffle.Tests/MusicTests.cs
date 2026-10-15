@@ -137,6 +137,70 @@ public class MusicTests
         Assert.Equal("Singer B", c2.TrackArtist);
     }
 
+    // Hiding an artist hides all their albums' tracks; an album, its tracks; lists hold artists, albums and single tracks
+    [Fact]
+    public async Task MusicCanBeHiddenAndListed()
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        conn.Open();
+        await using var db = new Server.Data.AppDbContext(new DbContextOptionsBuilder<Server.Data.AppDbContext>().UseSqlite(conn).Options);
+        await db.Database.EnsureCreatedAsync();
+        db.Users.Add(new Server.Data.AppUser { Id = "me", UserName = "me" });
+        var lib = new Server.Data.MediaLibrary { Name = "Music", Kind = LibraryKind.Music, Path = "/music" };
+        db.Libraries.Add(lib);
+        await db.SaveChangesAsync();
+        var a1 = new Server.Data.Artist { LibraryId = lib.Id, Name = "A" };
+        var a2 = new Server.Data.Artist { LibraryId = lib.Id, Name = "B" };
+        db.AddRange(a1, a2);
+        await db.SaveChangesAsync();
+        var x1 = new Server.Data.Album { LibraryId = lib.Id, ArtistId = a1.Id, Title = "A1", GroupKey = "a1" };
+        var x2 = new Server.Data.Album { LibraryId = lib.Id, ArtistId = a2.Id, Title = "B1", GroupKey = "b1" };
+        var x3 = new Server.Data.Album { LibraryId = lib.Id, ArtistId = a2.Id, Title = "B2", GroupKey = "b2" };
+        db.AddRange(x1, x2, x3);
+        await db.SaveChangesAsync();
+        Server.Data.MediaFile T(string p, int album) => new()
+            { LibraryId = lib.Id, RelativePath = p, Kind = Server.Data.MediaKind.Track, AlbumId = album, Title = p };
+        var t1 = T("a1/1", x1.Id); var t2 = T("b1/1", x2.Id); var t3 = T("b2/1", x3.Id); var t4 = T("b2/2", x3.Id);
+        db.MediaFiles.AddRange(t1, t2, t3, t4);
+        await db.SaveChangesAsync();
+
+        db.Hidden.AddRange(
+            new Server.Data.HiddenItem { UserId = "me", ArtistId = a1.Id },
+            new Server.Data.HiddenItem { UserId = "me", AlbumId = x2.Id },
+            new Server.Data.HiddenItem { UserId = "me", MediaFileId = t4.Id });
+        db.UserTags.AddRange(
+            new Server.Data.UserTag { UserId = "me", Tag = "Mix", ArtistId = a1.Id },
+            new Server.Data.UserTag { UserId = "me", Tag = "Mix", AlbumId = x2.Id },
+            new Server.Data.UserTag { UserId = "me", Tag = "Mix", MediaFileId = t4.Id });
+        await db.SaveChangesAsync();
+
+        var visible = await Server.Api.HiddenEndpoints.NotHidden(db, "me", db.MediaFiles).Select(f => f.Id).ToListAsync();
+        Assert.Equal([t3.Id], visible);
+
+        var mix = db.UserTags.Where(t => t.UserId == "me" && t.Tag == "Mix");
+        var inMix = await Server.Api.ListEndpoints.FilesIn(db, mix, db.MediaFiles).Select(f => f.Id).OrderBy(x => x).ToListAsync();
+        Assert.Equal(new[] { t1.Id, t2.Id, t4.Id }.Order(), inMix);
+
+        var hidden = await Server.Api.HiddenEndpoints.ListAsync(db, "me");
+        Assert.Equal(new[] { "album", "artist", "track" }, hidden.Select(x => x.Kind).Order());
+        Assert.Contains(hidden, x => x.Kind == "album" && x.Title == "B1" && x.Detail == "B");
+        Assert.Contains(hidden, x => x.Kind == "track" && x.Id == t4.Id && x.Detail == "B2");
+    }
+
+    [Fact]
+    public void CoverArtIsNoticedAndExtractedSmall()
+    {
+        var withCover = ProbeResult.Parse("""
+            { "format": { "format_name": "mp3" }, "streams": [ { "index": 0, "codec_type": "audio", "codec_name": "mp3" },
+              { "index": 1, "codec_type": "video", "codec_name": "png", "disposition": { "attached_pic": 1 } } ] }
+            """);
+        Assert.True(withCover.HasCoverArt);
+        Assert.False(ProbeResult.Parse("""{ "format": {}, "streams": [ { "index": 0, "codec_type": "audio", "codec_name": "mp3" } ] }""").HasCoverArt);
+        var args = ImageService.CoverArguments("in.mp3", "out.jpg");
+        Assert.Contains("0:v:0", args);
+        Assert.Equal("out.jpg", args[^1]);
+    }
+
     [Fact]
     public void ConversionKeepsOnlyTheSoundAndCanSeek()
     {

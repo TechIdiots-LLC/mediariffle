@@ -46,7 +46,7 @@ public static class LibraryEndpoints
             return Results.Ok(new
             {
                 tag, shows = await ShowsIn(db, userId, ids), movies = await MoviesIn(db, userId, ids),
-                artists = await MusicEndpoints.ArtistTiles(db, db.Artists.Where(a => ids.Contains(a.LibraryId))),
+                artists = await MusicEndpoints.ArtistTiles(db, userId, db.Artists.Where(a => ids.Contains(a.LibraryId))),
             });
         });
 
@@ -59,6 +59,7 @@ public static class LibraryEndpoints
             var enabled = catalog.Enabled.Select(l => l.Id).ToHashSet();
             var userId = users.GetUserId(me)!;
             var q = HiddenEndpoints.NotHidden(db, userId, db.MediaFiles.Where(f => f.ProbeError == null && f.ProbeJson != ""));
+            Dictionary<int, DateTime>? playlist = null;
             if (show is { } sid) q = q.Where(f => f.ShowId == sid);
             else if (album is { } alid) q = q.Where(f => f.AlbumId == alid);
             else if (artist is { } arid) q = q.Where(f => db.Albums.Any(a => a.Id == f.AlbumId && a.ArtistId == arid));
@@ -68,7 +69,9 @@ public static class LibraryEndpoints
             {
                 var name = list.Trim();
                 var mine = db.UserTags.Where(t => t.UserId == userId && t.Tag == name);
-                q = q.Where(f => mine.Any(t => (t.ShowId != null && t.ShowId == f.ShowId) || (t.MovieId != null && t.MovieId == f.MovieId)));
+                q = ListEndpoints.FilesIn(db, mine, q);
+                // A playlist (single tracks only) plays in the order its tracks were added
+                playlist = await mine.Where(t => t.MediaFileId != null).ToDictionaryAsync(t => t.MediaFileId!.Value, t => t.CreatedUtc);
             }
             else return Results.BadRequest(new { error = "Say what to play: a tag, a list, a library, a show, an album or an artist." });
 
@@ -89,6 +92,8 @@ public static class LibraryEndpoints
             // first, then disc and track
             var ordered = shuffle == true
                 ? rows.OrderBy(_ => Random.Shared.Next()).ToList()
+                : playlist is not null && rows.Count > 0 && rows.All(r => playlist.ContainsKey(r.Id))
+                ? rows.OrderBy(r => playlist[r.Id]).ToList()
                 : rows.OrderBy(r => r.Show ?? r.Movie ?? r.AlbumArtist ?? r.Title, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(r => r.AlbumYear ?? 0).ThenBy(r => r.Album ?? "", StringComparer.OrdinalIgnoreCase)
                     .ThenBy(r => r.Season ?? 0).ThenBy(r => r.DiscNumber ?? 1).ThenBy(r => r.EpisodeNumber ?? r.TrackNumber ?? int.MaxValue).ThenBy(r => r.PartNumber)

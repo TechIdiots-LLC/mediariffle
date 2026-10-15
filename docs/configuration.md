@@ -144,7 +144,13 @@ Release tags (`1080p`, `x264`, `BluRay`, …) are dropped from titles.
 
 A library of kind **Music** holds songs: MP3, AAC/M4A, FLAC, Ogg/Opus, WAV, WMA, ALAC, AIFF, APE, WavPack. It's browsed
 by artist, then album, then track; **Play all** and **Shuffle** work on a library, an artist, an album or a category,
-and picking a track plays its album from there. Music isn't in Continue watching.
+and picking a track plays its album from there. Music plays in a bar at the bottom of the page and carries on while
+you browse; the bar's cover or title opens **Now playing**, with the queue to jump around in. Music isn't in Continue
+watching.
+
+Artists, albums and single songs go in Favorites and your lists like shows and movies (a song from Now playing, or its
+☆ on the album page); a list of songs is a playlist, played in the order they were added. Artists, albums and songs
+can be hidden like shows and episodes.
 
 Songs are filed by their **tags** (artist, album artist, album, track and disc number, title, year), as written by
 most rippers and taggers. Untagged files are read from their folders and names:
@@ -153,7 +159,7 @@ most rippers and taggers. Untagged files are read from their folders and names:
 Music/
   Nirvana/
     Nevermind/
-      cover.jpg                        (optional album art; folder.jpg also works)
+      cover.jpg                        (optional album art; folder.jpg also works, else the art inside the files)
       01 - Smells Like Teen Spirit.mp3
       02 - In Bloom.mp3
   Pink Floyd/

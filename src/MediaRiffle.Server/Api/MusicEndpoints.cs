@@ -1,7 +1,9 @@
+using System.Security.Claims;
 using MediaRiffle.Server.Data;
 using MediaRiffle.Server.Library;
 using MediaRiffle.Server.Media;
 using MediaRiffle.Server.Options;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace MediaRiffle.Server.Api;
@@ -13,34 +15,47 @@ public static class MusicEndpoints
     {
         var g = app.MapGroup("/api").RequireAuthorization();
 
-        g.MapGet("/libraries/{id:int}/artists", async (int id, LibraryCatalog catalog, AppDbContext db) =>
+        g.MapGet("/libraries/{id:int}/artists", async (int id, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
             catalog.Get(id) is not { Enabled: true, Kind: LibraryKind.Music } ? Results.NotFound()
-                : Results.Ok(await ArtistTiles(db, db.Artists.Where(a => a.LibraryId == id))));
+                : Results.Ok(await ArtistTiles(db, users.GetUserId(me)!, db.Artists.Where(a => a.LibraryId == id))));
 
-        g.MapGet("/artists/{id:int}", async (int id, LibraryCatalog catalog, AppDbContext db) =>
+        g.MapGet("/artists/{id:int}", async (int id, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
         {
             var artist = await db.Artists.FirstOrDefaultAsync(a => a.Id == id);
             if (artist is null || catalog.Get(artist.LibraryId) is not { Enabled: true }) return Results.NotFound();
-            var albums = await AlbumTiles(db, db.Albums.Where(a => a.ArtistId == id));
+            var userId = users.GetUserId(me)!;
+            var albums = await AlbumTiles(db, userId, db.Albums.Where(a => a.ArtistId == id));
             // Albums by others that this artist plays on (a compilation's tracks)
-            var appearsOn = await AlbumTiles(db, db.Albums.Where(a => a.LibraryId == artist.LibraryId && a.ArtistId != id &&
+            var appearsOn = await AlbumTiles(db, userId, db.Albums.Where(a => a.LibraryId == artist.LibraryId && a.ArtistId != id &&
                 db.MediaFiles.Any(f => f.AlbumId == a.Id && f.TrackArtist == artist.Name)));
-            return Results.Ok(new { artist.Id, artist.Name, artist.LibraryId, image = ArtistImage(id), albums, appearsOn });
+            return Results.Ok(new
+            {
+                artist.Id, artist.Name, artist.LibraryId, image = ArtistImage(id), albums, appearsOn,
+                hidden = await db.Hidden.AnyAsync(x => x.UserId == userId && x.ArtistId == id),
+            });
         });
 
-        g.MapGet("/albums/{id:int}", async (int id, LibraryCatalog catalog, AppDbContext db) =>
+        g.MapGet("/albums/{id:int}", async (int id, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
         {
             var album = await db.Albums.FirstOrDefaultAsync(a => a.Id == id);
             if (album is null || catalog.Get(album.LibraryId) is not { Enabled: true }) return Results.NotFound();
+            var userId = users.GetUserId(me)!;
             var artist = await db.Artists.FirstAsync(a => a.Id == album.ArtistId);
             var tracks = await db.MediaFiles.Where(f => f.AlbumId == id)
                 .OrderBy(f => f.DiscNumber ?? 1).ThenBy(f => f.TrackNumber ?? int.MaxValue).ThenBy(f => f.RelativePath).ToListAsync();
+            var hiddenTracks = await HiddenEndpoints.HiddenFiles(db, userId, tracks.Select(t => t.Id));
+            var ids = tracks.Select(t => t.Id).ToList();
+            var favorites = (await db.UserTags.Where(x => x.UserId == userId && x.Tag == UserTag.Favorites && x.MediaFileId != null && ids.Contains(x.MediaFileId.Value))
+                .Select(x => x.MediaFileId!.Value).ToListAsync()).ToHashSet();
             var discs = tracks.Select(t => t.DiscNumber ?? 1).Distinct().Count();
             return Results.Ok(new
             {
                 album.Id, album.Title, album.Year, image = AlbumImage(id),
                 artist = new { artist.Id, artist.Name },
                 duration = tracks.Sum(t => t.DurationSeconds),
+                // This album hidden, or its artist (every album of theirs is, then)
+                hidden = await db.Hidden.AnyAsync(x => x.UserId == userId && x.AlbumId == id),
+                artistHidden = await db.Hidden.AnyAsync(x => x.UserId == userId && x.ArtistId == artist.Id),
                 tracks = tracks.Select(t => new
                 {
                     t.Id, t.Title, duration = t.DurationSeconds,
@@ -48,11 +63,13 @@ public static class MusicEndpoints
                     // The track's own artist, where it isn't the album's (a compilation, a guest)
                     artist = t.TrackArtist is { } ta && !string.Equals(ta, artist.Name, StringComparison.OrdinalIgnoreCase) ? ta : null,
                     playable = t.ProbeError is null && !string.IsNullOrEmpty(t.ProbeJson),
+                    hidden = hiddenTracks.Contains(t.Id),
+                    favorite = favorites.Contains(t.Id),
                 }),
             });
         });
 
-        // One track, for the listening page
+        // One track, for the player
         g.MapGet("/tracks/{id:int}", async (int id, AppDbContext db) =>
         {
             var t = await db.MediaFiles.Where(f => f.Id == id && f.Kind == MediaKind.Track)
@@ -94,48 +111,86 @@ public static class MusicEndpoints
             }
         });
 
-        // Cover art beside the tracks (cover.jpg, folder.jpg); an artist's is in their folder, or their first album's
-        g.MapGet("/images/album/{id:int}", async (int id, AppDbContext db, LibraryFiles files, HttpContext ctx) =>
+        // Cover art: beside the tracks (cover.jpg, folder.jpg), else the picture inside the first track that has one
+        g.MapGet("/images/album/{id:int}", async (int id, AppDbContext db, LibraryFiles files, ImageService images, HttpContext ctx) =>
         {
             var album = await db.Albums.FirstOrDefaultAsync(a => a.Id == id);
-            var art = album is null ? null : ImageService.FolderArt(files.Resolve(album.LibraryId, album.Folder));
-            return Image(ctx, art);
+            if (album is null) return Results.NotFound();
+            return Image(ctx, ImageService.FolderArt(files.Resolve(album.LibraryId, album.Folder)) ?? await EmbeddedCover(db, files, images, id));
         });
 
-        g.MapGet("/images/artist/{id:int}", async (int id, AppDbContext db, LibraryFiles files, HttpContext ctx) =>
+        // An artist's: in their own folder (Artist/Album), else their first album's
+        g.MapGet("/images/artist/{id:int}", async (int id, AppDbContext db, LibraryFiles files, ImageService images, HttpContext ctx) =>
         {
             var albums = await db.Albums.Where(a => a.ArtistId == id).OrderBy(a => a.Year).ThenBy(a => a.Title).ToListAsync();
             foreach (var album in albums)
             {
-                // Artist/Album: the artist's own folder first
                 var parent = album.Folder.Contains('/') ? album.Folder[..album.Folder.LastIndexOf('/')] : null;
                 var art = (parent is null ? null : ImageService.FolderArt(files.Resolve(album.LibraryId, parent)))
                           ?? ImageService.FolderArt(files.Resolve(album.LibraryId, album.Folder));
                 if (art is not null) return Image(ctx, art);
             }
+            foreach (var album in albums)
+                if (await EmbeddedCover(db, files, images, album.Id) is { } cover) return Image(ctx, cover);
             return Results.NotFound();
         });
+    }
+
+    /// <summary>The picture inside the album's first track that has one (by disc and track), or null.</summary>
+    private static async Task<string?> EmbeddedCover(AppDbContext db, LibraryFiles files, ImageService images, int albumId)
+    {
+        var tracks = await db.MediaFiles.Where(f => f.AlbumId == albumId && f.ProbeJson != "")
+            .OrderBy(f => f.DiscNumber ?? 1).ThenBy(f => f.TrackNumber ?? int.MaxValue).ToListAsync();
+        foreach (var t in tracks)
+        {
+            if (!ProbeResult.Parse(t.ProbeJson).HasCoverArt || files.FullPath(t) is not { } path) continue;
+            if (await images.CoverAsync(t.Id, t.ModifiedUtc, path) is { } cover) return cover;
+        }
+        return null;
     }
 
     internal static string AlbumImage(int id) => $"/api/images/album/{id}?v={ImageService.Version}";
     internal static string ArtistImage(int id) => $"/api/images/artist/{id}?v={ImageService.Version}";
 
-    /// <summary>Artists as the browsing pages list them, by name, with how many albums each has.</summary>
-    internal static async Task<List<object>> ArtistTiles(AppDbContext db, IQueryable<Artist> artists) =>
+    /// <summary>Artists as the browsing pages list them, by name, with how many albums each has and whether this user hid them.</summary>
+    internal static async Task<List<object>> ArtistTiles(AppDbContext db, string userId, IQueryable<Artist> artists) =>
         (await artists.OrderBy(a => a.Name)
-            .Select(a => new { a.Id, a.Name, albums = db.Albums.Count(x => x.ArtistId == a.Id) })
-            .ToListAsync()).Select(a => (object)new { a.Id, a.Name, a.albums, image = ArtistImage(a.Id) }).ToList();
+            .Select(a => new
+            {
+                a.Id, a.Name, albums = db.Albums.Count(x => x.ArtistId == a.Id),
+                hidden = db.Hidden.Any(x => x.UserId == userId && x.ArtistId == a.Id),
+            })
+            .ToListAsync()).Select(a => (object)new { a.Id, a.Name, a.albums, a.hidden, image = ArtistImage(a.Id) }).ToList();
 
-    /// <summary>Albums, newest first then by title, with their artist and track count.</summary>
-    internal static async Task<List<object>> AlbumTiles(AppDbContext db, IQueryable<Album> albums) =>
+    /// <summary>Albums, newest first then by title, with their artist and track count, and whether this user hid them (or their artist).</summary>
+    internal static async Task<List<object>> AlbumTiles(AppDbContext db, string userId, IQueryable<Album> albums) =>
         (await albums.OrderByDescending(a => a.Year).ThenBy(a => a.Title)
             .Select(a => new
             {
                 a.Id, a.Title, a.Year,
                 artist = db.Artists.Where(x => x.Id == a.ArtistId).Select(x => x.Name).FirstOrDefault(),
                 tracks = db.MediaFiles.Count(f => f.AlbumId == a.Id),
+                hidden = db.Hidden.Any(x => x.UserId == userId && (x.AlbumId == a.Id || x.ArtistId == a.ArtistId)),
             })
-            .ToListAsync()).Select(a => (object)new { a.Id, a.Title, a.Year, a.artist, a.tracks, image = AlbumImage(a.Id) }).ToList();
+            .ToListAsync()).Select(a => (object)new { a.Id, a.Title, a.Year, a.artist, a.tracks, a.hidden, image = AlbumImage(a.Id) }).ToList();
+
+    /// <summary>Single tracks (a playlist's), in the order given, with their artist and album.</summary>
+    internal static async Task<List<object>> TrackRows(AppDbContext db, string userId, IQueryable<MediaFile> files)
+    {
+        var mine = HiddenEndpoints.NotHidden(db, userId, db.MediaFiles);
+        return (await files
+            .Select(f => new
+            {
+                f.Id, f.Title, duration = f.DurationSeconds, f.AlbumId,
+                artist = f.TrackArtist ?? db.Albums.Where(a => a.Id == f.AlbumId).Join(db.Artists, a => a.ArtistId, x => x.Id, (a, x) => x.Name).FirstOrDefault(),
+                album = db.Albums.Where(a => a.Id == f.AlbumId).Select(a => a.Title).FirstOrDefault(),
+                playable = f.ProbeError == null && f.ProbeJson != "",
+                hidden = !mine.Any(x => x.Id == f.Id),
+            })
+            .ToListAsync())
+            .Select(t => (object)new { t.Id, t.Title, t.duration, t.artist, t.album, t.AlbumId, t.playable, t.hidden, image = t.AlbumId is { } a ? AlbumImage(a) : null })
+            .ToList();
+    }
 
     private static IResult Image(HttpContext ctx, string? path)
     {

@@ -155,6 +155,12 @@ namespace MediaRiffle.Server.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("AlbumId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ArtistId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("TEXT");
 
@@ -173,11 +179,19 @@ namespace MediaRiffle.Server.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AlbumId");
+
+                    b.HasIndex("ArtistId");
+
                     b.HasIndex("MediaFileId");
 
                     b.HasIndex("MovieId");
 
                     b.HasIndex("ShowId");
+
+                    b.HasIndex("UserId", "AlbumId");
+
+                    b.HasIndex("UserId", "ArtistId");
 
                     b.HasIndex("UserId", "MediaFileId");
 
@@ -459,8 +473,17 @@ namespace MediaRiffle.Server.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("AlbumId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ArtistId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("MediaFileId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int?>("MovieId")
                         .HasColumnType("INTEGER");
@@ -479,6 +502,12 @@ namespace MediaRiffle.Server.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AlbumId");
+
+                    b.HasIndex("ArtistId");
+
+                    b.HasIndex("MediaFileId");
 
                     b.HasIndex("MovieId");
 
@@ -643,6 +672,16 @@ namespace MediaRiffle.Server.Data.Migrations
 
             modelBuilder.Entity("MediaRiffle.Server.Data.HiddenItem", b =>
                 {
+                    b.HasOne("MediaRiffle.Server.Data.Album", null)
+                        .WithMany()
+                        .HasForeignKey("AlbumId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MediaRiffle.Server.Data.Artist", null)
+                        .WithMany()
+                        .HasForeignKey("ArtistId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.HasOne("MediaRiffle.Server.Data.MediaFile", null)
                         .WithMany()
                         .HasForeignKey("MediaFileId")
@@ -720,6 +759,21 @@ namespace MediaRiffle.Server.Data.Migrations
 
             modelBuilder.Entity("MediaRiffle.Server.Data.UserTag", b =>
                 {
+                    b.HasOne("MediaRiffle.Server.Data.Album", null)
+                        .WithMany()
+                        .HasForeignKey("AlbumId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MediaRiffle.Server.Data.Artist", null)
+                        .WithMany()
+                        .HasForeignKey("ArtistId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MediaRiffle.Server.Data.MediaFile", null)
+                        .WithMany()
+                        .HasForeignKey("MediaFileId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.HasOne("MediaRiffle.Server.Data.Movie", null)
                         .WithMany()
                         .HasForeignKey("MovieId")

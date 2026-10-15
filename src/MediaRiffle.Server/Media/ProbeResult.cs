@@ -58,6 +58,9 @@ public sealed class ProbeResult
         names.Select(n => Tags.TryGetValue(n, out var v) ? v.Trim() : null).FirstOrDefault(v => !string.IsNullOrEmpty(v));
 
     public ProbeStream? Video => Streams.FirstOrDefault(s => s.Type == StreamType.Video);
+
+    /// <summary>The file carries a picture (cover art, an "attached picture"), which isn't its video.</summary>
+    public bool HasCoverArt { get; init; }
     public IEnumerable<ProbeStream> Audio => Streams.Where(s => s.Type == StreamType.Audio);
     public IEnumerable<ProbeStream> Subtitles => Streams.Where(s => s.Type == StreamType.Subtitle);
 
@@ -72,6 +75,7 @@ public sealed class ProbeResult
         var format = root.TryGetProperty("format", out var f) ? f : default;
         var streams = new List<ProbeStream>();
         var fileTags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        bool cover = false;
         AddTags(fileTags, format);
         if (root.TryGetProperty("streams", out var list) && list.ValueKind == JsonValueKind.Array)
         {
@@ -88,7 +92,7 @@ public sealed class ProbeResult
                 var disposition = s.TryGetProperty("disposition", out var d) ? d : default;
                 var tags = s.TryGetProperty("tags", out var t) ? t : default;
                 // Cover art is stored as a video stream with attached_pic; it isn't the video
-                if (type == StreamType.Video && Int(disposition, "attached_pic") == 1) type = StreamType.Other;
+                if (type == StreamType.Video && Int(disposition, "attached_pic") == 1) { type = StreamType.Other; cover = true; }
                 streams.Add(new ProbeStream(
                     Int(s, "index"), type, Str(s, "codec_name") ?? "unknown", Str(s, "profile"), Str(s, "pix_fmt"),
                     Int(s, "width"), Int(s, "height"), Int(s, "channels"),
@@ -104,6 +108,7 @@ public sealed class ProbeResult
             BitRateKbps = long.TryParse(Str(format, "bit_rate"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var br) ? (int)(br / 1000) : 0,
             Streams = streams,
             Tags = fileTags,
+            HasCoverArt = cover,
         };
     }
 

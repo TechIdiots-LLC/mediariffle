@@ -2,13 +2,15 @@ import { api, refreshCsrf } from './api.js';
 import { h, mount, art, formatTime } from './dom.js';
 import { Player } from './player.js';
 import { startQueue, positionOf, clearQueue } from './queue.js';
-import { Listener, trackRows } from './music.js';
+import { music, nowPlayingView, trackRows } from './music.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
 let state = { setupNeeded: false, user: null };
 let player = null;
 let pageTimer = null;   // a page's auto-refresh, stopped when leaving it
+let leaving = [];       // a page's clean-ups (e.g. no longer following the music player), run when leaving it
+const onLeave = fn => leaving.push(fn);
 
 async function loadState() {
   state = await api('/api/auth/state');
@@ -52,6 +54,7 @@ const routes = [
   [/^#\/album\/(\d+)$/, m => albumView(+m[1])],
   [/^#\/play\/(\d+)$/, m => playView(+m[1])],
   [/^#\/listen\/(\d+)$/, m => listenView(+m[1])],
+  [/^#\/now$/, nowView],
   [/^#\/admin$/, adminView],
   [/^#\/profile$/, profileView],
   [/^#?\/?$/, homeView],
@@ -61,6 +64,7 @@ async function route() {
   closeUserMenu();
   if (player) { player.destroy(); player = null; }
   if (pageTimer) { clearInterval(pageTimer); pageTimer = null; }
+  for (const fn of leaving.splice(0)) fn();
   const hash = location.hash || '#/';
   const open = /^#\/(login|setup|join\/)/.test(hash);
   if (state.setupNeeded && !hash.startsWith('#/setup')) { location.hash = '#/setup'; return; }
@@ -145,10 +149,11 @@ async function hiddenSection(box) {
   let items;
   try { items = await api('/api/hidden'); }
   catch (e) { mount(box, errorBox(e)); return; }
-  const link = i => i.kind === 'show' ? `#/show/${i.id}` : i.kind === 'movie' ? `#/movie/${i.id}` : `#/play/${i.id}`;
-  const label = { show: 'Show', movie: 'Movie', file: 'Episode' };
+  const link = i => ({ show: `#/show/${i.id}`, movie: `#/movie/${i.id}`, artist: `#/artist/${i.id}`, album: `#/album/${i.id}`,
+    track: `#/listen/${i.id}` })[i.kind] ?? `#/play/${i.id}`;
+  const label = { show: 'Show', movie: 'Movie', file: 'Episode', artist: 'Artist', album: 'Album', track: 'Song' };
   mount(box,
-    h('p', { class: 'muted' }, 'Hidden shows, movies and episodes stay listed, greyed out, but are left out of Play all, Shuffle and Continue watching.'),
+    h('p', { class: 'muted' }, 'Hidden shows, movies, episodes, artists, albums and songs stay listed, greyed out, but are left out of Play all, Shuffle and Continue watching.'),
     items.length
       ? h('table', {},
           h('tr', {}, h('th', {}, 'Type'), h('th', {}, 'Title'), h('th', {}, 'Hidden'), h('th', {})),
@@ -173,6 +178,7 @@ function joinView(m) {
 }
 
 async function logout() {
+  music.close(true);
   await api('/api/auth/logout', { method: 'POST' });
   await loadState();
   location.hash = '#/login';
@@ -266,9 +272,11 @@ async function homeView() {
         art(r.file.image, r.file.duration ? r.file.position / r.file.duration : 0),
         h('div', { class: 'name' }, r.show ?? r.file.title),
         h('div', { class: 'sub' }, r.show ? r.file.title : `${formatTime(r.file.position)} of ${formatTime(r.file.duration)}`))))] : null,
-    favorites.shows.length || favorites.movies.length
-      ? [h('div', { class: 'row' }, h('h2', {}, '★ Favorites'), h('a', { href: `#/list/${FAVORITES}` }, 'Play or shuffle →')),
-         h('div', { class: 'grid' }, showTiles(favorites.shows), movieTiles(favorites.movies))] : null,
+    favorites.shows.length || favorites.movies.length || favorites.artists.length || favorites.albums.length || favorites.tracks.length
+      ? [h('div', { class: 'row' }, h('h2', {}, '★ Favorites'), h('a', { href: `#/list/${FAVORITES}` },
+            favorites.tracks.length ? `${favorites.tracks.length} song${favorites.tracks.length === 1 ? '' : 's'}, play or shuffle →` : 'Play or shuffle →')),
+         h('div', { class: 'grid' }, showTiles(favorites.shows), movieTiles(favorites.movies),
+           artistTiles(favorites.artists), albumTiles(favorites.albums, true))] : null,
     myLists.length ? [h('h2', {}, 'My lists'), h('div', { class: 'chips' }, myLists.map(l =>
       h('a', { class: 'chip', href: `#/list/${encodeURIComponent(l.tag)}` }, l.tag, h('span', { class: 'muted' }, ` ${l.items}`))))] : null,
     tags.length ? [h('h2', {}, 'Categories'), h('div', { class: 'chips' }, tags.map(t =>
@@ -318,66 +326,128 @@ async function tagView(tag) {
 
 // ── Music ────────────────────────────────────────────────────────────────────
 
+// Hidden artists and albums stay listed, greyed out, like hidden shows
 function artistTiles(artists) {
-  return artists.map(a => h('a', { class: 'tile', href: `#/artist/${a.id}` },
-    art(a.image, 0, 'music'), h('div', { class: 'name' }, a.name), h('div', { class: 'sub' }, `${a.albums} album${a.albums === 1 ? '' : 's'}`)));
+  return artists.map(a => h('a', { class: 'tile' + (a.hidden ? ' hidden' : ''), href: `#/artist/${a.id}` },
+    art(a.image, 0, 'music'), h('div', { class: 'name' }, a.name),
+    h('div', { class: 'sub' }, a.hidden ? 'Hidden' : `${a.albums} album${a.albums === 1 ? '' : 's'}`)));
 }
 
 function albumTiles(albums, showArtist = false) {
-  return albums.map(a => h('a', { class: 'tile', href: `#/album/${a.id}` },
+  return albums.map(a => h('a', { class: 'tile' + (a.hidden ? ' hidden' : ''), href: `#/album/${a.id}` },
     art(a.image, 0, 'music'), h('div', { class: 'name' }, a.title),
-    h('div', { class: 'sub' }, [showArtist ? a.artist : null, a.year, `${a.tracks} track${a.tracks === 1 ? '' : 's'}`].filter(Boolean).join(' · '))));
+    h('div', { class: 'sub' }, [a.hidden ? 'Hidden' : null, showArtist ? a.artist : null, a.year,
+      `${a.tracks} track${a.tracks === 1 ? '' : 's'}`].filter(Boolean).join(' · '))));
 }
+
+const hiddenNote = noun => h('p', { class: 'muted' }, `You've hidden this ${noun}: it's left out of Play all and Shuffle. Only you see this.`);
 
 async function artistView(id) {
   const a = await api(`/api/artists/${id}`);
-  mount(view,
-    h('div', { class: 'row' }, h('h1', {}, a.name), playButtons({ artist: id }, a.name)),
-    h('div', { class: 'grid' }, albumTiles(a.albums)),
+  const draw = () => mount(view,
+    h('div', { class: 'row' }, h('h1', {}, a.name), playButtons({ artist: id }, a.name, a.hidden),
+      hideButton('artist', id, a.hidden, x => { a.hidden = x; draw(); }, 'artist')),
+    a.hidden ? hiddenNote('artist') : null,
+    listsControl('artist', id),
+    h('div', { class: 'grid' }, albumTiles(a.albums.map(x => ({ ...x, hidden: x.hidden || a.hidden })))),
     a.appearsOn.length ? [h('h2', {}, 'Appears on'), h('div', { class: 'grid' }, albumTiles(a.appearsOn, true))] : null);
+  draw();
+}
+
+// A track's ☆: in or out of Favorites, from an album page
+function trackFavorite(t) {
+  const btn = h('button', { class: 'chip-x track-fav' + (t.favorite ? ' on' : ''), title: t.favorite ? 'Take out of Favorites' : 'Add to Favorites',
+    onclick: async e => {
+      e.preventDefault();
+      try {
+        const tags = await api(`/api/items/track/${t.id}/lists`);
+        const saved = await api(`/api/items/track/${t.id}/lists`, { method: 'PUT',
+          body: { tags: t.favorite ? tags.filter(x => !isFavorites(x)) : [...tags, FAVORITES] } });
+        t.favorite = saved.some(isFavorites);
+        btn.textContent = t.favorite ? '★' : '☆';
+        btn.title = t.favorite ? 'Take out of Favorites' : 'Add to Favorites';
+        btn.classList.toggle('on', t.favorite);
+      } catch (err) { alert(err.message); }
+    } }, t.favorite ? '★' : '☆');
+  return btn;
 }
 
 async function albumView(id) {
   const a = await api(`/api/albums/${id}`);
-  // A track starts the album from there
+  // A track starts the album from there, in the player bar
   const pick = t => startQueue({ album: id }, false, a.title, t.id).catch(e => alert(e.message));
-  mount(view,
-    h('div', { class: 'album-head' },
-      h('div', { class: 'listen-art' }, art(a.image, 0, 'music')),
-      h('div', {},
-        h('h1', {}, a.title),
-        h('p', {}, h('a', { href: `#/artist/${a.artist.id}` }, a.artist.name), a.year ? ` · ${a.year}` : ''),
-        h('p', { class: 'muted' }, `${a.tracks.length} track${a.tracks.length === 1 ? '' : 's'} · ${formatTime(a.duration)}`),
-        playButtons({ album: id }, a.title))),
-    h('div', { class: 'tracks' }, trackRows(a, pick)));
+  let stop = () => { };
+  onLeave(() => stop());
+  const draw = () => {
+    stop();
+    // A hidden album (or artist) greys out every track; otherwise each can be hidden on its own
+    const off = a.hidden || a.artistHidden;
+    const tracks = trackRows({ tracks: a.tracks.map(t => ({ ...t, off })) }, pick, t => off ? null : h('span', { class: 'row track-actions' },
+      trackFavorite(a.tracks.find(x => x.id === t.id)),
+      hideButton('track', t.id, t.hidden, x => { a.tracks.find(y => y.id === t.id).hidden = x; draw(); }, 'track')));
+    stop = tracks.cleanup;
+    mount(view,
+      h('div', { class: 'album-head' },
+        h('div', { class: 'listen-art' }, art(a.image, 0, 'music')),
+        h('div', {},
+          h('h1', {}, a.title),
+          h('p', {}, h('a', { href: `#/artist/${a.artist.id}` }, a.artist.name), a.year ? ` · ${a.year}` : ''),
+          h('p', { class: 'muted' }, `${a.tracks.length} track${a.tracks.length === 1 ? '' : 's'} · ${formatTime(a.duration)}`),
+          h('div', { class: 'row' }, playButtons({ album: id }, a.title, off),
+            a.artistHidden ? null : hideButton('album', id, a.hidden, x => { a.hidden = x; draw(); }, 'album')),
+          a.artistHidden ? h('p', { class: 'muted' }, 'You\'ve hidden this artist. ', h('a', { href: `#/artist/${a.artist.id}` }, 'Unhide them on their page'))
+            : a.hidden ? hiddenNote('album') : null,
+          listsControl('album', id))),
+      tracks.element);
+  };
+  draw();
 }
 
+// A link to a track (a list, Profile → Hidden): played in the player bar, shown on Now playing
 async function listenView(fileId) {
-  let track;
-  try { track = await api(`/api/tracks/${fileId}`); }
+  try { await music.playFile(fileId); }
   catch (e) { if (e.status === 404) { location.replace(`#/play/${fileId}`); return; } throw e; }
-  const l = new Listener(track, positionOf(fileId));
-  player = l;
-  mount(view, l.element());
-  await l.start();
+  location.replace('#/now');
 }
 
-// One of the user's own lists (Favorites among them): the shows and movies they tagged with it
+// Now playing, with the playing track's Favorite and lists (a playlist is a list of tracks)
+function nowView() { onLeave(nowPlayingView(view, t => listsControl('track', t.id, 'This track:'))); }
+
+// One of the user's own lists (Favorites among them): the shows, movies, artists and albums they tagged with it, and
+// its tracks, in the order they were added (a playlist)
 async function listView(tag) {
   const t = await api(`/api/lists/${encodeURIComponent(tag)}`);
   const showGrid = h('div', { class: 'grid' }), movieGrid = h('div', { class: 'grid' });
+  const artistGrid = h('div', { class: 'grid' }), albumGrid = h('div', { class: 'grid' });
   const draw = q => {
-    const match = i => !q || i.title.toLowerCase().includes(q);
+    const match = i => !q || (i.title ?? i.name).toLowerCase().includes(q);
     mount(showGrid, showTiles(t.shows.filter(match)));
     mount(movieGrid, movieTiles(t.movies.filter(match)));
+    mount(artistGrid, artistTiles(t.artists.filter(match)));
+    mount(albumGrid, albumTiles(t.albums.filter(match), true));
   };
   draw('');
-  const empty = !t.shows.length && !t.movies.length;
+  // Its tracks: picking one plays the list from there; × takes it out of the list
+  const remove = async track => {
+    try {
+      const tags = await api(`/api/items/track/${track.id}/lists`);
+      await api(`/api/items/track/${track.id}/lists`, { method: 'PUT', body: { tags: tags.filter(x => x.toLowerCase() !== t.tag.toLowerCase()) } });
+      listView(tag);
+    } catch (e) { alert(e.message); }
+  };
+  const tracks = trackRows({ tracks: t.tracks.map((x, i) => ({ ...x, track: i + 1, artist: [x.artist, x.album].filter(Boolean).join(' · ') })) },
+    x => startQueue({ list: t.tag }, false, t.tag, x.id).catch(e => alert(e.message)),
+    x => h('button', { class: 'chip-x', title: `Take out of ${t.tag}`, onclick: () => remove(x) }, '×'));
+  onLeave(tracks.cleanup);
+  const empty = !t.shows.length && !t.movies.length && !t.artists.length && !t.albums.length && !t.tracks.length;
   mount(view,
     h('div', { class: 'row' }, h('h1', {}, t.favorites ? '★ Favorites' : t.tag), empty ? null : playButtons({ list: t.tag }, t.tag), empty ? null : filterBox(draw)),
-    h('p', { class: 'muted' }, 'Only you see your lists. Add a show or movie to one from its page.'),
+    h('p', { class: 'muted' }, 'Only you see your lists. Add a show, movie, artist or album to one from its page, and a song from Now playing.'),
     t.shows.length ? [h('h2', {}, 'Shows'), showGrid] : null,
     t.movies.length ? [h('h2', {}, 'Movies'), movieGrid] : null,
+    t.artists.length ? [h('h2', {}, 'Artists'), artistGrid] : null,
+    t.albums.length ? [h('h2', {}, 'Albums'), albumGrid] : null,
+    t.tracks.length ? [h('h2', {}, 'Songs'), tracks.element] : null,
     empty ? h('p', {}, 'Nothing in this list.') : null);
 }
 
@@ -439,6 +509,8 @@ async function playView(fileId) {
   const details = await api(`/api/files/${fileId}`);
   // Music (reached from a mixed queue, or an old link) plays on the listening page
   if (details.kind === 'Track') { location.replace(`#/listen/${fileId}`); return; }
+  // A video takes over from the music
+  music.close();
   const p = new Player(details);
   player = p;
   const place = positionOf(fileId);
@@ -652,4 +724,6 @@ addEventListener('hashchange', route);
 loadState()
   // replaceState, not location.hash, so the page isn't routed twice
   .then(() => { if (googleMessage && state.user) history.replaceState(null, '', location.pathname + '#/profile'); })
+  // After a reload, the music that was playing is back in the bar, paused where it was
+  .then(() => { if (state.user && !/^#\/(play|listen)\//.test(location.hash)) music.restore(); })
   .then(route).catch(e => mount(view, errorBox(e)));

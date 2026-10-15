@@ -11,10 +11,16 @@
 - **Music libraries**: a new library kind, browsed by artist, album and track. Songs are filed by their tags (album
   artist, album, disc and track number, year), or by `Artist/Album/01 - Title` folders and names; tracks with
   different artists and no album artist make a "Various Artists" compilation. Play all and Shuffle work on a library,
-  an artist, an album or a category, and picking a track plays the album from there, on a listening page that moves
-  straight on to the next track and shows on the lock screen. MP3, AAC and WAV (and FLAC and Ogg where the browser
-  plays them) are sent as they are; anything else is converted to AAC once and kept. Cover art from `cover.jpg` /
-  `folder.jpg`. See docs/configuration.md.
+  an artist, an album or a category, and picking a track plays the album from there. MP3, AAC and WAV (and FLAC and
+  Ogg where the browser plays them) are sent as they are; anything else is converted to AAC once and kept. Cover art
+  from `cover.jpg` / `folder.jpg`, else the picture inside the files. See docs/configuration.md.
+- **Music keeps playing while you browse**, in a player bar at the bottom of every page (cover, title, previous /
+  play / next, seek, close), on the lock screen and media keys too. **Now playing** shows it bigger, with the queue to
+  jump around in. The playing track is marked on its album page; after a reload the music is back, paused where it
+  was. Starting a video closes it.
+- **Favorites, lists and hiding for music**: artists, albums and single songs go in Favorites and your lists (a
+  song's ☆ on its album page, or its lists on Now playing); a list of songs is a playlist, played in the order they
+  were added, and a song can be taken out with ×. Artists, albums and songs can be hidden like shows and episodes.
 - **Hide what you don't want to see**: a Hide button on a show's or movie's page, on each episode, and while playing.
   Hidden things stay listed, greyed out (Unhide brings them back), but are left out of Play all, Shuffle (categories,
   lists, libraries and shows), Continue watching and the next episode. Only you see what you hid. Profile → Hidden

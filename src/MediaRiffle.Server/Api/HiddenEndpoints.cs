@@ -6,14 +6,18 @@ using Microsoft.EntityFrameworkCore;
 namespace MediaRiffle.Server.Api;
 
 /// <summary>
-/// What each user doesn't want to see: shows, movies or single episodes. They're still listed (greyed out, to unhide
-/// from where they are), but left out of Play all, Shuffle, Continue watching and the next episode. Only that user's.
+/// What each user doesn't want to see: shows, movies, artists, albums, or single episodes and tracks. They're still
+/// listed (greyed out, to unhide from where they are), but left out of Play all, Shuffle, Continue watching and the next
+/// episode. Only that user's.
 /// </summary>
 public static class HiddenEndpoints
 {
     public sealed record HiddenRequest(bool Hidden);
 
-    /// <summary>One hidden thing: Kind is show, movie or file (an episode); Detail says which show and episode.</summary>
+    /// <summary>
+    /// One hidden thing: Kind is show, movie, artist, album, file (an episode) or track; Detail says which show and
+    /// episode, or which artist and album.
+    /// </summary>
     public sealed record HiddenEntry(string Kind, int Id, string Title, string? Detail, DateTime CreatedUtc);
 
     public static void MapHiddenEndpoints(this WebApplication app)
@@ -32,7 +36,9 @@ public static class HiddenEndpoints
             {
                 "show" => (mine.Where(x => x.ShowId == id), await db.Shows.AnyAsync(s => s.Id == id), new HiddenItem { UserId = userId, ShowId = id }),
                 "movie" => (mine.Where(x => x.MovieId == id), await db.Movies.AnyAsync(m => m.Id == id), new HiddenItem { UserId = userId, MovieId = id }),
-                "file" => (mine.Where(x => x.MediaFileId == id), await db.MediaFiles.AnyAsync(f => f.Id == id), new HiddenItem { UserId = userId, MediaFileId = id }),
+                "artist" => (mine.Where(x => x.ArtistId == id), await db.Artists.AnyAsync(a => a.Id == id), new HiddenItem { UserId = userId, ArtistId = id }),
+                "album" => (mine.Where(x => x.AlbumId == id), await db.Albums.AnyAsync(a => a.Id == id), new HiddenItem { UserId = userId, AlbumId = id }),
+                "file" or "track" => (mine.Where(x => x.MediaFileId == id), await db.MediaFiles.AnyAsync(f => f.Id == id), new HiddenItem { UserId = userId, MediaFileId = id }),
                 _ => null,
             };
             if (item is not { Exists: true } it) return Results.NotFound();
@@ -51,32 +57,48 @@ public static class HiddenEndpoints
         var rows = await db.Hidden.Where(x => x.UserId == userId).OrderByDescending(x => x.CreatedUtc)
             .Select(x => new
             {
-                x.ShowId, x.MovieId, x.MediaFileId, x.CreatedUtc,
+                x.ShowId, x.MovieId, x.ArtistId, x.AlbumId, x.MediaFileId, x.CreatedUtc,
                 Show = db.Shows.Where(s => s.Id == x.ShowId).Select(s => s.Title).FirstOrDefault(),
                 Movie = db.Movies.Where(m => m.Id == x.MovieId).Select(m => m.Title).FirstOrDefault(),
+                Artist = db.Artists.Where(a => a.Id == x.ArtistId).Select(a => a.Name).FirstOrDefault(),
+                Album = db.Albums.Where(a => a.Id == x.AlbumId).Select(a => a.Title).FirstOrDefault(),
+                AlbumArtist = db.Albums.Where(a => a.Id == x.AlbumId).Join(db.Artists, a => a.ArtistId, s => s.Id, (a, s) => s.Name).FirstOrDefault(),
                 File = db.MediaFiles.Where(f => f.Id == x.MediaFileId).Select(f => f.Title).FirstOrDefault(),
+                FileKind = db.MediaFiles.Where(f => f.Id == x.MediaFileId).Select(f => (MediaKind?)f.Kind).FirstOrDefault(),
                 Episode = db.MediaFiles.Where(f => f.Id == x.MediaFileId).Select(f => f.EpisodeNumber).FirstOrDefault(),
                 FileShow = db.MediaFiles.Where(f => f.Id == x.MediaFileId)
                     .Join(db.Shows, f => f.ShowId, s => s.Id, (f, s) => s.Title).FirstOrDefault(),
                 Season = db.MediaFiles.Where(f => f.Id == x.MediaFileId)
                     .Join(db.Seasons, f => f.SeasonId, s => s.Id, (f, s) => (int?)s.Number).FirstOrDefault(),
+                TrackArtist = db.MediaFiles.Where(f => f.Id == x.MediaFileId).Select(f => f.TrackArtist).FirstOrDefault(),
+                TrackAlbum = db.MediaFiles.Where(f => f.Id == x.MediaFileId)
+                    .Join(db.Albums, f => f.AlbumId, a => a.Id, (f, a) => a.Title).FirstOrDefault(),
             })
             .ToListAsync();
         return rows.Select(r =>
             r.ShowId is { } sid ? new HiddenEntry("show", sid, r.Show ?? "", null, r.CreatedUtc)
             : r.MovieId is { } mid ? new HiddenEntry("movie", mid, r.Movie ?? "", null, r.CreatedUtc)
+            : r.ArtistId is { } arid ? new HiddenEntry("artist", arid, r.Artist ?? "", null, r.CreatedUtc)
+            : r.AlbumId is { } alid ? new HiddenEntry("album", alid, r.Album ?? "", r.AlbumArtist, r.CreatedUtc)
+            : r.FileKind == MediaKind.Track
+                // e.g. "Nirvana · Nevermind"
+                ? new HiddenEntry("track", r.MediaFileId!.Value, r.File ?? "",
+                    string.Join(" · ", new[] { r.TrackArtist, r.TrackAlbum }.Where(s => !string.IsNullOrEmpty(s))) is { Length: > 0 } td ? td : null,
+                    r.CreatedUtc)
             : new HiddenEntry("file", r.MediaFileId!.Value, r.File ?? "",
                 // e.g. "The Show S01E02"
                 $"{r.FileShow} {(r.Season is { } s ? $"S{s:00}" : "")}{(r.Episode is { } e ? $"E{e:00}" : "")}".Trim() is { Length: > 0 } d ? d : null,
                 r.CreatedUtc)).ToList();
     }
 
-    /// <summary>The files this user hasn't hidden, on their own or with their show or movie.</summary>
+    /// <summary>The files this user hasn't hidden: on their own, or with their show, movie, album or album's artist.</summary>
     public static IQueryable<MediaFile> NotHidden(AppDbContext db, string userId, IQueryable<MediaFile> files)
     {
         var mine = db.Hidden.Where(x => x.UserId == userId);
         return files.Where(f => !mine.Any(x =>
-            x.MediaFileId == f.Id || (x.ShowId != null && x.ShowId == f.ShowId) || (x.MovieId != null && x.MovieId == f.MovieId)));
+            x.MediaFileId == f.Id || (x.ShowId != null && x.ShowId == f.ShowId) || (x.MovieId != null && x.MovieId == f.MovieId) ||
+            (x.AlbumId != null && x.AlbumId == f.AlbumId) ||
+            (x.ArtistId != null && db.Albums.Any(a => a.Id == f.AlbumId && a.ArtistId == x.ArtistId))));
     }
 
     /// <summary>Which of these files this user hid one by one (not counting a hidden show or movie).</summary>
