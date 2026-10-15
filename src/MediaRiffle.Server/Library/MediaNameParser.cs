@@ -6,6 +6,10 @@ public sealed record EpisodeInfo(string Show, int Season, int? Episode, string T
 
 public sealed record MovieInfo(string Title, int? Year, string GroupKey, int Part);
 
+/// <summary>What a music file's path says; any part can be missing.</summary>
+/// <param name="Folder">The album's folder, relative to the library ("" at its root); a CD1/Disc 2 folder is part of it.</param>
+public sealed record TrackInfo(string? Artist, string? Album, int? Disc, int? Track, string Title, string Folder);
+
 /// <summary>
 /// Reads shows, seasons, episodes and movies from paths laid out as the original Tongue expected:
 /// <c>Show/Season 01/Show - S01E02 - Title.mkv</c>, and <c>Movie (1998).mkv</c> or <c>Movie/cd1.avi</c>.
@@ -18,6 +22,54 @@ public static partial class MediaNameParser
     };
 
     public static bool IsVideo(string path) => VideoExtensions.Contains(Path.GetExtension(path));
+
+    public static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp3", ".m4a", ".m4b", ".aac", ".flac", ".ogg", ".oga", ".opus", ".wav", ".wma", ".alac", ".aiff", ".aif", ".ape", ".wv", ".mka",
+    };
+
+    public static bool IsAudio(string path) => AudioExtensions.Contains(Path.GetExtension(path));
+
+    /// <summary>Whether a library of this kind takes the file: audio for Music, video for the others.</summary>
+    public static bool Belongs(string path, Options.LibraryKind kind) =>
+        kind == Options.LibraryKind.Music ? IsAudio(path) : IsVideo(path);
+
+    // "01 - Title", "01. Title", "1-03 Title" (disc 1, track 3), "Artist - 01 - Title"
+    [GeneratedRegex(@"^(?:(?<pre>.+?)\s+-\s+)?(?:(?<d>\d)-)?(?<t>\d{1,3})(?:\s*[-.]\s*|\s+)(?<title>.+)$")]
+    private static partial Regex TrackFile();
+
+    /// <summary>
+    /// A track at <paramref name="relativePath"/> in a Music library, from its folders and file name, for files
+    /// without tags: <c>Artist/Album/01 - Title.mp3</c>. Tags, when a file has them, win over all of this.
+    /// </summary>
+    public static TrackInfo ParseTrack(string relativePath)
+    {
+        var parts = relativePath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var fileName = Path.GetFileNameWithoutExtension(parts[^1]);
+        string? artist = parts.Length >= 3 ? parts[^3] : null;
+        string? album = parts.Length >= 2 ? parts[^2] : null;
+        int? disc = null, track = null;
+        var title = fileName;
+        var folderParts = parts[..^1];
+        // A "CD1" / "Disc 2" folder inside the album folder is a disc, not the album
+        if (album is not null && PartMarker().Match(album) is { Success: true } dm && CleanTitle(album.Remove(dm.Index, dm.Length)).Length == 0)
+        {
+            disc = int.Parse(dm.Groups["n"].Value);
+            album = parts.Length >= 3 ? parts[^3] : null;
+            artist = parts.Length >= 4 ? parts[^4] : null;
+            folderParts = folderParts[..^1];
+        }
+        var m = TrackFile().Match(fileName);
+        if (m.Success)
+        {
+            track = int.Parse(m.Groups["t"].Value);
+            if (m.Groups["d"].Success) disc ??= int.Parse(m.Groups["d"].Value);
+            title = m.Groups["title"].Value;
+            if (artist is null && m.Groups["pre"].Success) artist = m.Groups["pre"].Value;
+        }
+        title = title.Replace('_', ' ').Trim(' ', '-', '.');
+        return new TrackInfo(artist?.Trim(), album?.Trim(), disc, track, title.Length == 0 ? fileName : title, string.Join('/', folderParts));
+    }
 
     [GeneratedRegex(@"[Ss](?<s>\d{1,3})[ ._-]*[Ee](?<e>\d{1,4})")]
     private static partial Regex SxxEyy();

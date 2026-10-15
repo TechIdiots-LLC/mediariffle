@@ -168,3 +168,62 @@ button.icon { min-width: 42px; padding: 8px 10px; font-size: 16px; line-height: 
 button.fav.on { color: #f5b301; border-color: #f5b301; }
 button.chip-x { background: transparent; color: var(--muted); padding: 0 6px; font-size: 16px; line-height: 1; }
 button.chip-x:hover { color: var(--danger); }
+
+/* Music: square covers (a note where there's none), the album page's track list, the listening page */
+.tile .art.music, .listen-art .art { aspect-ratio: 1; }
+.art.music::before { content: "♪"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 48px; color: var(--muted); }
+.art.music img { position: relative; z-index: 1; }
+.listen-art .art { position: relative; overflow: hidden; border-radius: var(--radius); background: var(--border); }
+.listen-art .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.album-head, .listen { display: grid; grid-template-columns: minmax(140px, 260px) 1fr; gap: 20px; align-items: start; margin-bottom: 16px; }
+.tracks { display: grid; gap: 2px; max-width: 900px; }
+.track { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 4px 10px; border-radius: 8px; }
+.track-main { display: grid; grid-template-columns: 2.5em 1fr auto; gap: 10px; padding: 4px 0; color: var(--text); }
+.track-main:hover { text-decoration: none; }
+.track.playing .title { color: var(--accent); font-weight: 600; }
+.track:hover { background: var(--surface); }
+.track .num { text-align: right; }
+.track.hidden .track-main { opacity: .5; cursor: default; }
+.disc { margin: 12px 0 4px 10px; font-weight: 600; }
+@media (max-width: 640px) {
+  .album-head, .listen { grid-template-columns: 1fr; }
+  .album-head .listen-art, .listen .listen-art { max-width: 240px; }
+}
+
+/* The music player bar, on every page while music is loaded */
+.nowbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+  display: grid; grid-template-columns: 48px minmax(0, 1fr) auto minmax(0, 2fr) auto auto; gap: 12px; align-items: center;
+  padding: 8px 16px; background: var(--surface); border-top: 1px solid var(--border); box-shadow: 0 -4px 16px rgba(0, 0, 0, .08);
+}
+.nowbar[hidden] { display: none; }
+body.has-nowbar { padding-bottom: 76px; }
+.np-cover .art { width: 48px; height: 48px; position: relative; overflow: hidden; border-radius: 6px; background: var(--border); }
+.np-cover .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.np-cover .art.music::before { font-size: 20px; }
+.np-info { min-width: 0; color: var(--text); }
+.np-info:hover { text-decoration: none; }
+.np-title, .np-artist, .np-error { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-title { font-weight: 600; }
+.np-artist, .np-error { font-size: 13px; }
+.np-buttons { flex-wrap: nowrap; gap: 6px; }
+.np-buttons button { padding: 6px 10px; }
+.np-play { min-width: 42px; }
+.np-seekbar { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.np-seek { flex: 1; min-width: 0; accent-color: var(--accent); padding: 0; border: 0; background: transparent; }
+.np-time { font-size: 12px; font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: center; }
+.listen .np-seekbar { margin: 12px 0; }
+.np-queue { padding-left: 2em; max-height: 50vh; overflow: auto; }
+.np-queue li { padding: 3px 0; }
+.np-queue li.current a { font-weight: 600; }
+@media (max-width: 640px) {
+  .nowbar { grid-template-columns: 40px minmax(0, 1fr) auto auto auto; gap: 8px; padding: 8px 12px; }
+  .np-cover .art { width: 40px; height: 40px; }
+  .np-seekbar { grid-column: 1 / -1; order: 5; }
+  body.has-nowbar { padding-bottom: 110px; }
+}
+/* A track's ☆ and Hide, beside it on an album page */
+.track-actions { gap: 4px; flex-wrap: nowrap; }
+button.track-fav { font-size: 18px; }
+button.track-fav.on, button.track-fav.on:hover { color: #f5b301; }
+.listen .my-lists { margin-top: 14px; }

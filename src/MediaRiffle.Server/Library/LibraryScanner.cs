@@ -119,10 +119,10 @@ public sealed class LibraryScanner : BackgroundService
         var enumeration = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.Hidden | FileAttributes.System };
         foreach (var path in Directory.EnumerateFiles(root, "*", enumeration))
         {
-            if (!MediaNameParser.IsVideo(path)) continue;
+            if (!MediaNameParser.Belongs(path, lib.Kind)) continue;
             var info = new FileInfo(path);
             // Release "sample" clips aren't the episode or movie
-            if (info.Name.Contains("sample", StringComparison.OrdinalIgnoreCase) && info.Length < 200L * 1024 * 1024) continue;
+            if (lib.Kind != LibraryKind.Music && info.Name.Contains("sample", StringComparison.OrdinalIgnoreCase) && info.Length < 200L * 1024 * 1024) continue;
             onDisk[Path.GetRelativePath(root, path).Replace('\\', '/')] = info;
         }
 
@@ -166,7 +166,8 @@ public sealed class LibraryScanner : BackgroundService
             }
             else failed++;
 
-            if (lib.Kind == LibraryKind.Shows) await FileEpisodeAsync(db, lib, file, ct);
+            if (lib.Kind == LibraryKind.Music) await FileTrackAsync(db, lib, file, ct);
+            else if (lib.Kind == LibraryKind.Shows) await FileEpisodeAsync(db, lib, file, ct);
             else await FileMovieAsync(db, lib, file, ct);
 
             if (isNew) { db.MediaFiles.Add(file); added++; } else updated++;
@@ -181,8 +182,84 @@ public sealed class LibraryScanner : BackgroundService
         await db.Seasons.Where(s => s.Show!.LibraryId == lib.Id && !db.MediaFiles.Any(f => f.SeasonId == s.Id)).ExecuteDeleteAsync(ct);
         await db.Shows.Where(s => s.LibraryId == lib.Id && !db.MediaFiles.Any(f => f.ShowId == s.Id)).ExecuteDeleteAsync(ct);
         await db.Movies.Where(m => m.LibraryId == lib.Id && !db.MediaFiles.Any(f => f.MovieId == m.Id)).ExecuteDeleteAsync(ct);
+        await db.Albums.Where(a => a.LibraryId == lib.Id && !db.MediaFiles.Any(f => f.AlbumId == a.Id)).ExecuteDeleteAsync(ct);
+        await db.Artists.Where(a => a.LibraryId == lib.Id && !db.Albums.Any(x => x.ArtistId == a.Id)).ExecuteDeleteAsync(ct);
         return (added, updated, gone.Count, failed);
     }
+
+    /// <summary>
+    /// Files a music track under its album and the album's artist, from its tags, else its folders and name. An album
+    /// is the tracks in one folder with the same album tag. Without an album artist tag, the album's artist is its
+    /// tracks' artist, or "Various Artists" once they differ.
+    /// </summary>
+    public static async Task FileTrackAsync(AppDbContext db, LibraryInfo lib, MediaFile file, CancellationToken ct)
+    {
+        file.Kind = MediaKind.Track;
+        var fromPath = MediaNameParser.ParseTrack(file.RelativePath);
+        var probe = string.IsNullOrEmpty(file.ProbeJson) ? new ProbeResult() : ProbeResult.Parse(file.ProbeJson);
+
+        var trackArtist = probe.Tag("artist") ?? fromPath.Artist;
+        // Sure of the album's artist from an album artist tag, or from Artist/Album folders on an untagged file
+        var (albumArtist, sure) = probe.Tag("album_artist", "albumartist", "album artist") is { } aa ? (aa, true)
+            : probe.Tag("artist") is { } a ? (a, false)
+            : fromPath.Artist is { } fa ? (fa, true)
+            : ("Unknown artist", false);
+        var albumTitle = probe.Tag("album") ?? fromPath.Album ?? "Unknown album";
+        var groupKey = $"{fromPath.Folder}|{albumTitle.ToLowerInvariant()}";
+
+        var album = await db.Albums.FirstOrDefaultAsync(x => x.LibraryId == lib.Id && x.GroupKey == groupKey, ct);
+        if (album is null)
+        {
+            album = new Album
+            {
+                LibraryId = lib.Id, GroupKey = groupKey, Folder = fromPath.Folder, Title = albumTitle,
+                ArtistId = (await ArtistAsync(db, lib.Id, albumArtist, ct)).Id, ArtistFromAlbumTag = sure,
+            };
+            db.Albums.Add(album);
+        }
+        else if (sure && !album.ArtistFromAlbumTag)
+        {
+            album.ArtistId = (await ArtistAsync(db, lib.Id, albumArtist, ct)).Id;
+            album.ArtistFromAlbumTag = true;
+        }
+        else if (!album.ArtistFromAlbumTag &&
+                 !string.Equals(await db.Artists.Where(x => x.Id == album.ArtistId).Select(x => x.Name).FirstAsync(ct), albumArtist, StringComparison.OrdinalIgnoreCase))
+        {
+            album.ArtistId = (await ArtistAsync(db, lib.Id, Artist.Various, ct)).Id;
+        }
+        album.Year ??= Year(probe.Tag("date", "year", "originaldate"));
+        await db.SaveChangesAsync(ct);
+
+        file.AlbumId = album.Id;
+        file.TrackArtist = trackArtist;
+        file.DiscNumber = LeadingNumber(probe.Tag("disc", "discnumber")) ?? fromPath.Disc;
+        file.TrackNumber = LeadingNumber(probe.Tag("track", "tracknumber")) ?? fromPath.Track;
+        file.Title = probe.Tag("title") ?? fromPath.Title;
+        file.ShowId = null;
+        file.SeasonId = null;
+        file.MovieId = null;
+    }
+
+    private static async Task<Artist> ArtistAsync(AppDbContext db, int libraryId, string name, CancellationToken ct)
+    {
+        var artist = await db.Artists.FirstOrDefaultAsync(a => a.LibraryId == libraryId && a.Name == name, ct);
+        if (artist is not null) return artist;
+        artist = new Artist { LibraryId = libraryId, Name = name };
+        db.Artists.Add(artist);
+        await db.SaveChangesAsync(ct);
+        return artist;
+    }
+
+    /// <summary>"3/12" → 3, "03" → 3; null when it doesn't start with a number.</summary>
+    internal static int? LeadingNumber(string? tag)
+    {
+        var digits = new string((tag ?? "").TrimStart().TakeWhile(char.IsAsciiDigit).ToArray());
+        return digits.Length is > 0 and <= 4 && int.TryParse(digits, out var n) && n > 0 ? n : null;
+    }
+
+    /// <summary>The year in a date tag: "1969", "1969-09-26", "2003-01-01T00:00:00Z".</summary>
+    internal static int? Year(string? tag) =>
+        tag is { Length: >= 4 } && int.TryParse(tag[..4], out var y) && y is > 1000 and < 3000 ? y : null;
 
     private static async Task FileEpisodeAsync(AppDbContext db, LibraryInfo lib, MediaFile file, CancellationToken ct)
     {
@@ -214,6 +291,7 @@ public sealed class LibraryScanner : BackgroundService
         file.EpisodeNumber = ep.Episode;
         file.Title = ep.Title;
         file.MovieId = null;
+        file.AlbumId = null;
     }
 
     private static async Task FileMovieAsync(AppDbContext db, LibraryInfo lib, MediaFile file, CancellationToken ct)
@@ -232,6 +310,7 @@ public sealed class LibraryScanner : BackgroundService
         file.Title = mv.Title;
         file.ShowId = null;
         file.SeasonId = null;
+        file.AlbumId = null;
     }
 }
 

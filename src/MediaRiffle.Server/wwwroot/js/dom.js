@@ -29,13 +29,14 @@ export function formatTime(seconds) {
 }
 
 // The Content Security Policy blocks style="" attributes; styles set through the CSSOM (el.style.x) are allowed
-export function art(src, progress) {
+// `kind` 'music' shows a note where there's no cover art
+export function art(src, progress, kind = null) {
   let bar = null;
   if (progress > 0) {
     bar = h('div', { class: 'bar' });
     bar.style.width = `${Math.min(100, progress * 100).toFixed(1)}%`;
   }
-  return h('div', { class: 'art' },
+  return h('div', { class: kind ? `art ${kind}` : 'art' },
     h('img', { src, alt: '', loading: 'lazy', onerror: e => { e.target.style.visibility = 'hidden'; } }),
     bar);
 }

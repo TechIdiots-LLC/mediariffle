@@ -82,7 +82,35 @@ public sealed class Movie
     public List<MediaFile> Parts { get; set; } = new();
 }
 
-public enum MediaKind { Episode, Movie }
+/// <summary>An artist in a Music library: an album's artist ("Various Artists" for a compilation).</summary>
+public sealed class Artist
+{
+    public const string Various = "Various Artists";
+
+    public int Id { get; set; }
+    public int LibraryId { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// An album in a Music library: the tracks in one folder with the same album tag (or, untagged, the folder itself).
+/// </summary>
+public sealed class Album
+{
+    public int Id { get; set; }
+    public int LibraryId { get; set; }
+    public int ArtistId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public int? Year { get; set; }
+    /// <summary>Groups its tracks: the folder, and the album tag lowercased ("Rock/Abbey Road|abbey road").</summary>
+    public string GroupKey { get; set; } = string.Empty;
+    /// <summary>The folder its tracks are in, relative to the library, for its cover art.</summary>
+    public string Folder { get; set; } = string.Empty;
+    /// <summary>Its artist came from album artist tags (or folders), not guessed from the first track's artist.</summary>
+    public bool ArtistFromAlbumTag { get; set; }
+}
+
+public enum MediaKind { Episode, Movie, Track }
 
 /// <summary>One video file in a library, with what ffprobe found in it.</summary>
 public sealed class MediaFile
@@ -98,6 +126,12 @@ public sealed class MediaFile
     public int? EpisodeNumber { get; set; }
     public int? MovieId { get; set; }
     public int PartNumber { get; set; } = 1;
+
+    /// <summary>A music track's album, disc and track number, and its own artist (on a compilation, not the album's).</summary>
+    public int? AlbumId { get; set; }
+    public int? DiscNumber { get; set; }
+    public int? TrackNumber { get; set; }
+    public string? TrackArtist { get; set; }
 
     public string Title { get; set; } = string.Empty;
     public long Size { get; set; }
@@ -118,9 +152,10 @@ public sealed class MediaFile
 }
 
 /// <summary>
-/// A user's own tag on a show or a movie (exactly one of <see cref="ShowId"/> and <see cref="MovieId"/>): everything a
-/// user tagged the same way is one of their lists, as the admins' library tags are everyone's categories. Favorites is
-/// the list named <see cref="Favorites"/>. Goes with the show or movie, and with the user.
+/// A user's own tag on a show, a movie, an artist, an album or a single track (exactly one of the five ids):
+/// everything a user tagged the same way is one of their lists, as the admins' library tags are everyone's categories;
+/// a list of tracks is a playlist. Favorites is the list named <see cref="Favorites"/>. Goes with what it tags, and with
+/// the user.
 /// </summary>
 public sealed class UserTag
 {
@@ -132,13 +167,17 @@ public sealed class UserTag
     public string Tag { get; set; } = string.Empty;
     public int? ShowId { get; set; }
     public int? MovieId { get; set; }
+    public int? ArtistId { get; set; }
+    public int? AlbumId { get; set; }
+    /// <summary>A single track (music only; an episode is listed with its show).</summary>
+    public int? MediaFileId { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
-/// Something a user doesn't want to see: a show, a movie, or one episode (exactly one of <see cref="ShowId"/>,
-/// <see cref="MovieId"/> and <see cref="MediaFileId"/>). It's still listed, greyed out, but left out of Play all,
-/// Shuffle, Continue watching and the next episode. Only that user is affected.
+/// Something a user doesn't want to see: a show, a movie, an artist, an album, or one episode or track (exactly one of
+/// the ids). It's still listed, greyed out, but left out of Play all, Shuffle, Continue watching and the next episode.
+/// Only that user is affected.
 /// </summary>
 public sealed class HiddenItem
 {
@@ -146,6 +185,8 @@ public sealed class HiddenItem
     public string UserId { get; set; } = string.Empty;
     public int? ShowId { get; set; }
     public int? MovieId { get; set; }
+    public int? ArtistId { get; set; }
+    public int? AlbumId { get; set; }
     public int? MediaFileId { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }

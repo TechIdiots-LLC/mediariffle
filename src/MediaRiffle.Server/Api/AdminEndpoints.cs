@@ -14,7 +14,7 @@ public sealed record InviteRequest(bool IsAdmin, int Days);
 public sealed record QualityCapRequest(string? MaxQuality);
 public sealed record RoleRequest(bool IsAdmin);
 public sealed record LibraryRequest(string Name, Options.LibraryKind Kind, string Path, string? Tags, bool Enabled = true);
-public sealed record PathCheckRequest(string Path);
+public sealed record PathCheckRequest(string Path, Options.LibraryKind Kind = Options.LibraryKind.Shows);
 
 /// <summary>Admin only: invites, users, library scans and the streams running now.</summary>
 public static class AdminEndpoints
@@ -157,7 +157,7 @@ public static class AdminEndpoints
             return Results.Ok();
         });
 
-        // Before saving: can the service account see the folder, and are there videos in it?
+        // Before saving: can the service account see the folder, and are there videos (music, for Music) in it?
         g.MapPost("/libraries/check", async (PathCheckRequest req) =>
         {
             var path = req.Path?.Trim() ?? "";
@@ -172,11 +172,12 @@ public static class AdminEndpoints
                 var opts = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
                 foreach (var f in Directory.EnumerateFiles(path, "*", opts))
                 {
-                    if (!MediaNameParser.IsVideo(f)) continue;
+                    if (!MediaNameParser.Belongs(f, req.Kind)) continue;
                     if (sample.Count < 5) sample.Add(System.IO.Path.GetRelativePath(path, f).Replace('\\', '/'));
                     if (++count >= 1000) break;
                 }
-                return (true, count == 0 ? "The folder is readable but has no video files." : $"Readable: {(count >= 1000 ? "1000+" : count)} video files.", count, sample);
+                var what = req.Kind == Options.LibraryKind.Music ? "music" : "video";
+                return (true, count == 0 ? $"The folder is readable but has no {what} files." : $"Readable: {(count >= 1000 ? "1000+" : count)} {what} files.", count, sample);
             });
             if (await Task.WhenAny(check, Task.Delay(TimeSpan.FromSeconds(15))) != check)
                 return Results.Ok(new { ok = false, message = "No answer within 15 s: is the file server reachable?" });

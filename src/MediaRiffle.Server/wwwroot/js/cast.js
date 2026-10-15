@@ -68,3 +68,75 @@ export function castMedia({ url, contentType, hls, fmp4 = false, title, currentT
   request.autoplay = true;
   session.loadMedia(request).catch(e => console.warn('Cast failed', e));
 }
+
+// ── Music ────────────────────────────────────────────────────────────────────
+
+export function castSession() {
+  try { return cast.framework.CastContext.getInstance().getCurrentSession(); }
+  catch { return null; }
+}
+
+// The Chromecast's player as the page sees it (time, paused, what's playing), and its controls; made once
+let remote = null;
+export function remotePlayer() {
+  if (!remote) {
+    const player = new cast.framework.RemotePlayer();
+    remote = { player, controller: new cast.framework.RemotePlayerController(player) };
+  }
+  return remote;
+}
+
+/**
+ * Hands the Chromecast a queue of tracks (from /api/cast/tracks), playing from `startIndex` at `startTime`. It moves
+ * through them itself, so the music goes on with the phone asleep. Each item carries its track id (customData.id).
+ */
+export function castTracks(tracks, startIndex, startTime = 0) {
+  const session = castSession();
+  if (!session) return Promise.reject(new Error('Not casting'));
+  const items = tracks.map((t, i) => {
+    const info = new chrome.cast.media.MediaInfo(new URL(t.url, location.origin).href, t.contentType);
+    info.streamType = chrome.cast.media.StreamType.BUFFERED;
+    info.duration = t.duration || null;
+    info.customData = { id: t.id };
+    const meta = new chrome.cast.media.MusicTrackMediaMetadata();
+    meta.title = t.title;
+    meta.artist = t.artist ?? '';
+    meta.albumName = t.album ?? '';
+    if (t.track) meta.trackNumber = t.track;
+    meta.images = [new chrome.cast.Image(new URL(t.cover, location.origin).href)];
+    info.metadata = meta;
+    const item = new chrome.cast.media.QueueItem(info);
+    item.autoplay = true;
+    item.preloadTime = 20;
+    if (i === startIndex && startTime > 0) item.startTime = startTime;
+    return item;
+  });
+  const request = new chrome.cast.media.QueueLoadRequest(items);
+  request.startIndex = startIndex;
+  request.repeatMode = chrome.cast.media.RepeatMode.OFF;
+  return new Promise((resolve, reject) => session.getSessionObj().queueLoad(request, resolve, reject));
+}
+
+/** The track id the Chromecast is playing, or null. */
+export function castTrackId() {
+  return remote?.player.mediaInfo?.customData?.id ?? null;
+}
+
+/** Moves the Chromecast's queue to the item for this track id; false when it isn't in what it was given. */
+export function castJumpTo(trackId) {
+  const media = castSession()?.getMediaSession();
+  const item = media?.items?.find(x => x.media?.customData?.id === trackId);
+  if (!item) return false;
+  media.queueJumpToItem(item.itemId, () => { }, e => console.warn('Cast jump failed', e));
+  return true;
+}
+
+/** The Chromecast's next or previous item; false at the end of what it was given. */
+export function castStep(forward) {
+  const media = castSession()?.getMediaSession();
+  if (!media?.items?.length) return false;
+  const i = media.items.findIndex(x => x.itemId === media.currentItemId);
+  if (i < 0 || (forward ? i + 1 >= media.items.length : i === 0)) return false;
+  (forward ? media.queueNext : media.queuePrev).call(media, () => { }, e => console.warn('Cast step failed', e));
+  return true;
+}

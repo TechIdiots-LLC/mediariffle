@@ -73,6 +73,44 @@ public sealed class ImageService(IOptions<MediaRiffleOptions> options, Ffmpeg ff
         }
     }
 
+    /// <summary>
+    /// The cover art inside a music file (an attached picture), as a JPEG at most 800 wide, made once and kept (named by
+    /// the file's modified time, so retagging gives new art); null when there's none or ffmpeg can't read it.
+    /// </summary>
+    public Task<string?> CoverAsync(int fileId, DateTime modifiedUtc, string audioPath)
+    {
+        var output = Path.Combine(options.Value.ImageDirectory, $"cover-{fileId}-{modifiedUtc.Ticks}.jpg");
+        if (File.Exists(output)) return Task.FromResult<string?>(output);
+        return _making.GetOrAdd(output, _ => MakeAsync());
+
+        async Task<string?> MakeAsync()
+        {
+            await _ffmpegSlots.WaitAsync();
+            try
+            {
+                var temp = output + ".tmp.jpg";
+                await ffmpeg.RunAsync(ffmpeg.FfmpegPath, CoverArguments(audioPath, temp), TimeSpan.FromSeconds(30));
+                File.Move(temp, output, overwrite: true);
+                return output;
+            }
+            catch (Exception ex)
+            {
+                log.LogDebug("No cover art in file {Id}: {Error}", fileId, ex.Message);
+                return null;
+            }
+            finally
+            {
+                _ffmpegSlots.Release();
+                _making.TryRemove(output, out _);
+            }
+        }
+    }
+
+    /// <summary>ffmpeg arguments writing a file's attached picture as a JPEG, scaled down to at most 800 wide.</summary>
+    public static List<string> CoverArguments(string input, string output) =>
+        ["-hide_banner", "-loglevel", "error", "-y", "-i", input,
+         "-map", "0:v:0", "-frames:v", "1", "-vf", "scale='min(800,iw)':-2", "-q:v", "3", output];
+
     /// <summary>Drops cached frames, e.g. after a file changed.</summary>
     public void Forget(int fileId)
     {
