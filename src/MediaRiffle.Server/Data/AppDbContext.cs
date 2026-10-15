@@ -30,7 +30,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         b.Entity<MediaFile>().HasOne<MediaLibrary>().WithMany().HasForeignKey(f => f.LibraryId).OnDelete(DeleteBehavior.Cascade);
 
         b.Entity<Show>().HasIndex(s => new { s.LibraryId, s.Folder }).IsUnique();
-        b.Entity<Season>().HasIndex(s => new { s.ShowId, s.Number }).IsUnique();
+        b.Entity<Season>().HasIndex(s => new { s.ShowId, s.Series, s.Number }).IsUnique();
         b.Entity<Movie>().HasIndex(m => new { m.LibraryId, m.GroupKey }).IsUnique();
 
         b.Entity<MediaFile>().HasIndex(f => new { f.LibraryId, f.RelativePath }).IsUnique();

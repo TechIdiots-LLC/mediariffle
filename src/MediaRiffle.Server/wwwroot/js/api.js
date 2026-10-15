@@ -10,7 +10,8 @@ export async function refreshCsrf() {
 }
 
 export class ApiError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+  // `data`: the reply itself (e.g. { mfa: "verify" } when Admin wants two-step verification first)
+  constructor(status, message, data = null) { super(message); this.status = status; this.data = data; }
 }
 
 export async function api(path, { method = 'GET', body, keepalive = false } = {}) {
@@ -32,6 +33,6 @@ export async function api(path, { method = 'GET', body, keepalive = false } = {}
   let data = null;
   try { data = text ? JSON.parse(text) : null; }
   catch { if (r.ok) throw new ApiError(r.status, 'The server sent something unexpected.'); }
-  if (!r.ok) throw new ApiError(r.status, data?.error ?? data?.detail ?? `Request failed (${r.status})`);
+  if (!r.ok) throw new ApiError(r.status, data?.error ?? data?.detail ?? `Request failed (${r.status})`, data);
   return data;
 }

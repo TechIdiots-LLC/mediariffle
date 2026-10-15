@@ -81,6 +81,7 @@ public static class LibraryEndpoints
                     f.Id, f.Title, f.EpisodeNumber, f.PartNumber, f.RelativePath, f.Kind, f.TrackArtist, f.DiscNumber, f.TrackNumber,
                     Show = db.Shows.Where(s => s.Id == f.ShowId).Select(s => s.Title).FirstOrDefault(),
                     Season = db.Seasons.Where(s => s.Id == f.SeasonId).Select(s => (int?)s.Number).FirstOrDefault(),
+                    Series = db.Seasons.Where(s => s.Id == f.SeasonId).Select(s => s.Series).FirstOrDefault(),
                     Movie = db.Movies.Where(m => m.Id == f.MovieId).Select(m => m.Title).FirstOrDefault(),
                     Album = db.Albums.Where(a => a.Id == f.AlbumId).Select(a => a.Title).FirstOrDefault(),
                     AlbumYear = db.Albums.Where(a => a.Id == f.AlbumId).Select(a => a.Year).FirstOrDefault(),
@@ -96,13 +97,13 @@ public static class LibraryEndpoints
                 ? rows.OrderBy(r => playlist[r.Id]).ToList()
                 : rows.OrderBy(r => r.Show ?? r.Movie ?? r.AlbumArtist ?? r.Title, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(r => r.AlbumYear ?? 0).ThenBy(r => r.Album ?? "", StringComparer.OrdinalIgnoreCase)
-                    .ThenBy(r => r.Season ?? 0).ThenBy(r => r.DiscNumber ?? 1).ThenBy(r => r.EpisodeNumber ?? r.TrackNumber ?? int.MaxValue).ThenBy(r => r.PartNumber)
+                    .ThenBy(r => r.Series ?? "", StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Season ?? 0).ThenBy(r => r.DiscNumber ?? 1).ThenBy(r => r.EpisodeNumber ?? r.TrackNumber ?? int.MaxValue).ThenBy(r => r.PartNumber)
                     .ThenBy(r => r.RelativePath, StringComparer.OrdinalIgnoreCase).ToList();
             return Results.Ok(ordered.Take(2000).Select(r => new
             {
                 id = r.Id,
                 title = r.Show is not null
-                    ? $"{r.Show} · {(r.Season is { } s ? $"S{s:00}" : "")}{(r.EpisodeNumber is { } e ? $"E{e:00}" : "")} {r.Title}".Replace("·  ", "· ")
+                    ? $"{r.Show} · {(string.IsNullOrEmpty(r.Series) ? "" : r.Series + " ")}{(r.Season is { } s ? $"S{s:00}" : "")}{(r.EpisodeNumber is { } e ? $"E{e:00}" : "")} {r.Title}".Replace("·  ", "· ")
                     : r.Kind == MediaKind.Track ? $"{r.TrackArtist ?? r.AlbumArtist} · {r.Title}"
                     : r.Movie is not null && r.PartNumber > 1 ? $"{r.Movie} (part {r.PartNumber})" : r.Movie ?? r.Title,
                 // Music plays on the listening page, the rest in the video player
@@ -115,7 +116,9 @@ public static class LibraryEndpoints
             var show = await db.Shows.FirstOrDefaultAsync(s => s.Id == id);
             if (show is null) return Results.NotFound();
             var userId = users.GetUserId(me)!;
-            var seasons = await db.Seasons.Where(s => s.ShowId == id).OrderBy(s => s.Number).ToListAsync();
+            // The show's own seasons first, then each of its other series' (UK, All Stars, …) by name
+            var seasons = (await db.Seasons.Where(s => s.ShowId == id).ToListAsync())
+                .OrderBy(s => s.Series.Length > 0).ThenBy(s => s.Series, StringComparer.OrdinalIgnoreCase).ThenBy(s => s.Number).ToList();
             var files = await db.MediaFiles.Where(f => f.ShowId == id)
                 .OrderBy(f => f.EpisodeNumber ?? int.MaxValue).ThenBy(f => f.RelativePath).ToListAsync();
             var progress = await ProgressFor(db, userId, files.Select(f => f.Id));
@@ -126,7 +129,7 @@ public static class LibraryEndpoints
                 hidden = await db.Hidden.AnyAsync(x => x.UserId == userId && x.ShowId == id),
                 seasons = seasons.Select(s => new
                 {
-                    s.Id, s.Number, s.Title,
+                    s.Id, s.Number, s.Title, s.Series,
                     episodes = files.Where(f => f.SeasonId == s.Id).Select(f => FileSummary(f, progress, hiddenFiles)),
                 }),
             });
@@ -303,9 +306,9 @@ public static class LibraryEndpoints
         {
             var hiddenFiles = db.Hidden.Where(h => h.UserId == userId && h.MediaFileId != null).Select(h => h.MediaFileId);
             var all = await db.MediaFiles.Where(x => x.ShowId == f.ShowId && (x.Id == f.Id || !hiddenFiles.Contains(x.Id)))
-                .Join(db.Seasons, x => x.SeasonId, s => s.Id, (x, s) => new { x.Id, s.Number, Ep = x.EpisodeNumber ?? int.MaxValue, x.RelativePath })
+                .Join(db.Seasons, x => x.SeasonId, s => s.Id, (x, s) => new { x.Id, s.Number, s.Series, Ep = x.EpisodeNumber ?? int.MaxValue, x.RelativePath })
                 .ToListAsync();
-            ordered = all.OrderBy(x => x.Number).ThenBy(x => x.Ep).ThenBy(x => x.RelativePath).Select(x => x.Id).ToList();
+            ordered = all.OrderBy(x => x.Series.Length > 0).ThenBy(x => x.Series, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Number).ThenBy(x => x.Ep).ThenBy(x => x.RelativePath).Select(x => x.Id).ToList();
         }
         else if (f.MovieId is not null)
         {

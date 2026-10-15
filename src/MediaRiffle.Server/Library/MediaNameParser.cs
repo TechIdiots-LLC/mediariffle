@@ -2,7 +2,8 @@ using System.Text.RegularExpressions;
 
 namespace MediaRiffle.Server.Library;
 
-public sealed record EpisodeInfo(string Show, int Season, int? Episode, string Title);
+/// <param name="Series">Another series of the show (a spin-off, a version abroad), or "" for the show's own.</param>
+public sealed record EpisodeInfo(string Show, int Season, int? Episode, string Title, string Series = "");
 
 public sealed record MovieInfo(string Title, int? Year, string GroupKey, int Part);
 
@@ -83,6 +84,10 @@ public static partial class MediaNameParser
     [GeneratedRegex(@"^(?:specials?|extras?)$", RegexOptions.IgnoreCase)]
     private static partial Regex SpecialsFolder();
 
+    // Another series of the show in one of its folders: "UK - Season 01", "All Stars Season 2", "Down Under - S01"
+    [GeneratedRegex(@"^(?<v>.*?[^ ._-])[ ._]*-?[ ._]*(?:(?:season|series|staffel|saison|temporada)[ ._-]*|s(?=\d))(?<n>\d{1,3})$", RegexOptions.IgnoreCase)]
+    private static partial Regex SeriesSeasonFolder();
+
     [GeneratedRegex(@"(?:^|[ ._\-\[(])(?:cd|disc|disk|part|pt)[ ._-]*(?<n>\d{1,2})(?=$|[ ._\-\])])", RegexOptions.IgnoreCase)]
     private static partial Regex PartMarker();
 
@@ -94,7 +99,9 @@ public static partial class MediaNameParser
 
     /// <summary>
     /// An episode at <paramref name="relativePath"/> in a Shows library (<c>Show/[Season]/file</c>), or null for a
-    /// file directly in the library root.
+    /// file directly in the library root. A show's other series (its spin-offs and versions abroad) are told apart
+    /// by their season folders, <c>Show/UK - Season 01/…</c>, or for files loose in the show's folder by a name that
+    /// isn't the show's, <c>Show/drag.race.espana.s01e01.mkv</c>.
     /// </summary>
     public static EpisodeInfo? ParseEpisode(string relativePath)
     {
@@ -104,12 +111,18 @@ public static partial class MediaNameParser
         var fileName = Path.GetFileNameWithoutExtension(parts[^1]);
 
         int? season = null;
+        string series = string.Empty;
         if (parts.Length >= 3)
         {
             var folder = parts[^2];
             var m = SeasonFolder().Match(folder);
             if (m.Success) season = int.Parse(m.Groups["n"].Value);
             else if (SpecialsFolder().IsMatch(folder)) season = 0;
+            else if (SeriesSeasonFolder().Match(folder) is { Success: true } sm)
+            {
+                season = int.Parse(sm.Groups["n"].Value);
+                series = SeriesName(sm.Groups["v"].Value, show);
+            }
         }
 
         int? episode = null;
@@ -122,12 +135,31 @@ public static partial class MediaNameParser
             episode = int.Parse(se.Groups["e"].Value);
             title = CleanTitle(fileName[(se.Index + se.Length)..]);
             if (title.Length == 0) title = $"Episode {episode}";
+            // Loose in the show's folder: named for another series of it ("drag.race.espana…" in "Ru Pauls Drag Race")
+            if (parts.Length == 2) series = SeriesName(CleanTitle(fileName[..se.Index]), show);
         }
         else
         {
             title = CleanTitle(fileName);
         }
-        return new EpisodeInfo(show, season ?? 1, episode, title);
+        return new EpisodeInfo(show, season ?? 1, episode, title, series);
+    }
+
+    /// <summary>
+    /// A series' name, or "" for the show's own: a name that's the show's, or part of it, or has it in it
+    /// ("Office" or "The Office US" in "The Office") is the show itself. A name as a folder spells it is kept; an
+    /// all lower case one (from a file name) gets capitals.
+    /// </summary>
+    public static string SeriesName(string name, string show)
+    {
+        var cleaned = CleanTitle(name);
+        string Letters(string s) => new(s.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+        var n = Letters(cleaned);
+        var s = Letters(show);
+        if (n.Length == 0 || s.Contains(n) || n.Contains(s)) return string.Empty;
+        if (cleaned.Any(char.IsUpper)) return cleaned;
+        // "drag race espana" → "Drag Race Espana"
+        return string.Join(' ', cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
     }
 
     /// <summary>

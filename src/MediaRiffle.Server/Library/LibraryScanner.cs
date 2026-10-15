@@ -174,6 +174,23 @@ public sealed class LibraryScanner : BackgroundService
             await db.SaveChangesAsync(ct);   // per file, so the shows and movies it created are found by the next
         }
 
+        // Episodes filed before the parser knew better (e.g. a show's other series, "UK - Season 01", once merged into
+        // its own seasons) are filed again from their path; the file isn't read again
+        if (lib.Kind == LibraryKind.Shows)
+        {
+            var seasons = await db.Seasons.Where(s => s.Show!.LibraryId == lib.Id).ToDictionaryAsync(s => s.Id, ct);
+            var probed = toProbe.Select(kv => kv.Key).ToHashSet(StringComparer.Ordinal);
+            foreach (var file in known.Values.Where(f => onDisk.ContainsKey(f.RelativePath) && !probed.Contains(f.RelativePath)))
+            {
+                var ep = MediaNameParser.ParseEpisode(file.RelativePath);
+                if (ep is null || (file.SeasonId is { } sid && seasons.TryGetValue(sid, out var s) && s.Series == ep.Series && s.Number == ep.Season))
+                    continue;
+                await FileEpisodeAsync(db, lib, file, ct);
+                await db.SaveChangesAsync(ct);
+                updated++;
+            }
+        }
+
         var gone = known.Values.Where(f => !onDisk.ContainsKey(f.RelativePath)).ToList();
         db.MediaFiles.RemoveRange(gone);
         await db.SaveChangesAsync(ct);
@@ -261,7 +278,7 @@ public sealed class LibraryScanner : BackgroundService
     internal static int? Year(string? tag) =>
         tag is { Length: >= 4 } && int.TryParse(tag[..4], out var y) && y is > 1000 and < 3000 ? y : null;
 
-    private static async Task FileEpisodeAsync(AppDbContext db, LibraryInfo lib, MediaFile file, CancellationToken ct)
+    public static async Task FileEpisodeAsync(AppDbContext db, LibraryInfo lib, MediaFile file, CancellationToken ct)
     {
         file.Kind = MediaKind.Episode;
         var ep = MediaNameParser.ParseEpisode(file.RelativePath);
@@ -279,10 +296,10 @@ public sealed class LibraryScanner : BackgroundService
             db.Shows.Add(show);
             await db.SaveChangesAsync(ct);
         }
-        var season = await db.Seasons.FirstOrDefaultAsync(s => s.ShowId == show.Id && s.Number == ep.Season, ct);
+        var season = await db.Seasons.FirstOrDefaultAsync(s => s.ShowId == show.Id && s.Series == ep.Series && s.Number == ep.Season, ct);
         if (season is null)
         {
-            season = new Season { ShowId = show.Id, Number = ep.Season, Title = ep.Season == 0 ? "Specials" : $"Season {ep.Season}" };
+            season = new Season { ShowId = show.Id, Number = ep.Season, Series = ep.Series, Title = Season.TitleFor(ep.Series, ep.Season) };
             db.Seasons.Add(season);
             await db.SaveChangesAsync(ct);
         }

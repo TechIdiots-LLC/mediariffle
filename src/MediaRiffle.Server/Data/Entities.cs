@@ -7,6 +7,11 @@ public sealed class AppUser : IdentityUser
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     /// <summary>The best quality this user may stream (a Quality.Ladder id), or null for no limit.</summary>
     public string? MaxQuality { get; set; }
+    /// <summary>
+    /// An authenticator app is set up (its key is Identity's authenticator key). Not Identity's TwoFactorEnabled, which
+    /// would make every sign-in ask for a code: two-step verification guards Admin, not signing in.
+    /// </summary>
+    public bool AuthenticatorEnabled { get; set; }
 }
 
 /// <summary>A one-time invitation to create an account. Only the token's SHA-256 is stored.</summary>
@@ -68,7 +73,16 @@ public sealed class Season
     public Show? Show { get; set; }
     /// <summary>0 for specials or a folder without a season number.</summary>
     public int Number { get; set; }
+    /// <summary>Another series of the show ("UK", "All Stars": a spin-off or a version abroad), or "" for the show's own.</summary>
+    public string Series { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
+
+    /// <summary>"Season 2", "Specials", "UK · Season 2".</summary>
+    public static string TitleFor(string series, int number)
+    {
+        var season = number == 0 ? "Specials" : $"Season {number}";
+        return series.Length == 0 ? season : $"{series} · {season}";
+    }
 }
 
 public sealed class Movie
