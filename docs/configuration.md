@@ -162,6 +162,11 @@ Movies/
 ```
 
 `S01E02` and `1x02` episode numbers are both understood; a `Season NN` folder sets the season when the name has none.
+
+A show's other series (spin-offs, versions abroad) can share its folder: a season folder named for one,
+`UK - Season 01`, `All Stars - Season 02`, `Down Under - S01` or `Global All Stars Season 01`, is that series'
+season, and a file loose in the show's folder whose name isn't the show's (`drag.race.espana.s01e01.mkv` in
+`Ru Pauls Drag Race`) is its own series too. The show's page then picks the series first, then its seasons.
 Release tags (`1080p`, `x264`, `BluRay`, …) are dropped from titles.
 
 ## Music

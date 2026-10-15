@@ -431,6 +431,10 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.Property<int>("Number")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Series")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("ShowId")
                         .HasColumnType("INTEGER");
 
@@ -440,7 +444,7 @@ namespace MediaRiffle.Server.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ShowId", "Number")
+                    b.HasIndex("ShowId", "Series", "Number")
                         .IsUnique();
 
                     b.ToTable("Seasons");

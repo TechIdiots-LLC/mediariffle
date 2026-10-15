@@ -9,7 +9,13 @@
   someone's under Admin → Users. Signing in itself is unchanged. See docs/configuration.md.
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- **A show's other series are told apart**: season folders named for another series of the show (`UK - Season 01`,
+  `All Stars - Season 02`, `Down Under - S01`, `Global All Stars Season 01`) used to be merged into the show's own
+  seasons by the episode numbers in the file names. Each is its own series now, and files loose in the show's folder
+  named for another series (`drag.race.espana.s01e01.mkv`) are too. A show with several picks the series first, then
+  its seasons; Play all and the next episode go series by series, the show's own first. Episodes already in the
+  library are filed again at the next scan, without reading the files again.
+- **Episode thumbnails stay in their place**: a frame was shown at its full size and covered the episode's title.
 
 ## 0.5.0
 ### ✨ Features and improvements

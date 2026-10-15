@@ -478,21 +478,35 @@ async function showView(id) {
   const show = await api(`/api/shows/${id}`);
   const list = h('div', { class: 'episodes' });
   const tabs = h('div', { class: 'tabs' });
+  // A show with other series (UK, All Stars, …: "UK - Season 01" folders) picks the series first, then its seasons
+  const series = [...new Set(show.seasons.map(s => s.series))];
+  const seriesTabs = series.length > 1 ? h('div', { class: 'tabs series-tabs' }) : null;
+  const seasonLabel = s => series.length > 1 ? (s.number === 0 ? 'Specials' : `Season ${s.number}`) : s.title;
   let current = null;
   const pick = season => {
     current = season;
+    if (seriesTabs) {
+      for (const b of seriesTabs.children) b.classList.toggle('active', b.dataset.series === season.series);
+      mount(tabs, show.seasons.filter(s => s.series === season.series).map(s => h('button', { 'data-id': s.id, onclick: () => pick(s) }, seasonLabel(s))));
+    }
     for (const b of tabs.children) b.classList.toggle('active', b.dataset.id === String(season.id));
     mount(list, season.episodes.map(e => episodeRow(e, { off: show.hidden, onHide: hidden => { e.hidden = hidden; pick(current); } })));
   };
+  // A series opens on its first season with something unwatched
+  const firstOf = name => {
+    const seasons = show.seasons.filter(s => s.series === name);
+    return seasons.find(s => s.episodes.some(e => !e.finished)) ?? seasons[0];
+  };
   const draw = () => {
-    mount(tabs, show.seasons.map(s => h('button', { 'data-id': s.id, onclick: () => pick(s) }, s.title)));
+    if (seriesTabs) mount(seriesTabs, series.map(name => h('button', { 'data-series': name, onclick: () => pick(firstOf(name)) }, name || show.title)));
+    else mount(tabs, show.seasons.map(s => h('button', { 'data-id': s.id, onclick: () => pick(s) }, s.title)));
     mount(view,
       h('div', { class: 'row' }, h('h1', {}, show.title), playButtons({ show: id }, show.title, show.hidden),
         hideButton('show', id, show.hidden, hidden => { show.hidden = hidden; draw(); }, 'show')),
       show.hidden ? h('p', { class: 'muted' }, 'You\'ve hidden this show: it\'s left out of Play all, Shuffle and Continue watching. Only you see this.') : null,
-      listsControl('show', id), tabs, list);
-    // Open on the season that was open, else the first with something unwatched
-    const first = current ?? show.seasons.find(s => s.episodes.some(e => !e.finished)) ?? show.seasons[0];
+      listsControl('show', id), seriesTabs, tabs, list);
+    // Open on the season that was open, else the show's own first season with something unwatched
+    const first = current ?? firstOf(series[0]) ?? show.seasons[0];
     if (first) pick(first);
   };
   draw();

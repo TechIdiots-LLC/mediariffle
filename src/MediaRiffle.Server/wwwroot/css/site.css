@@ -89,11 +89,17 @@ h2 { font-size: 18px; margin: 24px 0 10px; }
 .tile.hidden .name, .episode.hidden .name { color: var(--muted); }
 .episode.hidden:hover { border-color: var(--border); }
 .hide-btn { padding: 4px 10px; font-size: 13px; }
-.episode .art { aspect-ratio: 16 / 9; border-radius: 6px; }
+/* The frame fills its column (frames are 480 wide or more), cropped to fit, so it never runs under the title */
+.episode .art { aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; position: relative; background: var(--border); }
+.episode .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .episode.watched .name::after { content: " ✓"; color: var(--ok); }
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 .tabs button { background: transparent; color: var(--text); border: 1px solid var(--border); }
 .tabs button.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+/* A show's series (its own, UK, All Stars…) above that series' seasons */
+.series-tabs { margin-bottom: 6px; }
+.series-tabs button { font-weight: 600; }
+.series-tabs + .tabs { padding-left: 12px; border-left: 3px solid var(--accent); }
 
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
