@@ -182,6 +182,7 @@ app.MapLibraryEndpoints();
 app.MapListEndpoints();
 app.MapHiddenEndpoints();
 app.MapMusicEndpoints();
+app.MapMusicCastEndpoints();
 app.MapPlaybackEndpoints();
 app.MapStreamEndpoints();
 app.MapFallbackToFile("index.html");

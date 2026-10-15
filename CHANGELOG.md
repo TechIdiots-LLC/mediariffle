@@ -18,6 +18,10 @@
   play / next, seek, close), on the lock screen and media keys too. **Now playing** shows it bigger, with the queue to
   jump around in. The playing track is marked on its album page; after a reload the music is back, paused where it
   was. Starting a video closes it.
+- **Music on a Chromecast**: the player bar's Cast button sends the queue to the TV, which plays through it itself
+  (on with the phone asleep); the bar and Now playing follow and control it, and stopping casting brings the music
+  back, paused where the TV was. The TV fetches songs and covers from 24-hour links that carry their own key, as it
+  can't sign in. FLAC and Ogg go to it as they are.
 - **Favorites, lists and hiding for music**: artists, albums and single songs go in Favorites and your lists (a
   song's ☆ on its album page, or its lists on Now playing); a list of songs is a playlist, played in the order they
   were added, and a song can be taken out with ×. Artists, albums and songs can be hidden like shows and episodes.

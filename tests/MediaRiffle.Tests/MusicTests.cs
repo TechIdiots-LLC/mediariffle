@@ -187,6 +187,39 @@ public class MusicTests
         Assert.Contains(hidden, x => x.Kind == "track" && x.Id == t4.Id && x.Detail == "B2");
     }
 
+    // A Chromecast's link opens its own track, while it's in date and its user exists; an altered one opens nothing
+    [Fact]
+    public async Task CastLinksOpenOnlyTheirTrackWhileValid()
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        conn.Open();
+        await using var db = new Server.Data.AppDbContext(new DbContextOptionsBuilder<Server.Data.AppDbContext>().UseSqlite(conn).Options);
+        await db.Database.EnsureCreatedAsync();
+        var lib = new Server.Data.MediaLibrary { Name = "Music", Kind = LibraryKind.Music, Path = "/music" };
+        db.Libraries.Add(lib);
+        await db.SaveChangesAsync();
+        var track = new Server.Data.MediaFile { LibraryId = lib.Id, RelativePath = "a.mp3", Kind = Server.Data.MediaKind.Track };
+        db.MediaFiles.Add(track);
+        await db.SaveChangesAsync();
+
+        var keys = new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider();
+        Func<string, Task<bool>> exists = id => Task.FromResult(id == "me");
+        var token = Server.Api.MusicCastEndpoints.Token(keys, track.Id, "me", DateTimeOffset.UtcNow.AddHours(1));
+        string Altered(string t) => t[..^4] + (t[^4] == 'A' ? 'B' : 'A') + t[^3..];
+
+        Assert.Equal(track.Id, (await Server.Api.MusicCastEndpoints.ResolveAsync(token, keys, exists, db))?.Id);
+        Assert.Null(await Server.Api.MusicCastEndpoints.ResolveAsync(Altered(token), keys, exists, db));
+        Assert.Null(await Server.Api.MusicCastEndpoints.ResolveAsync("not-a-token", keys, exists, db));
+        // A removed user's links stop working
+        var theirs = Server.Api.MusicCastEndpoints.Token(keys, track.Id, "gone", DateTimeOffset.UtcNow.AddHours(1));
+        Assert.Null(await Server.Api.MusicCastEndpoints.ResolveAsync(theirs, keys, exists, db));
+        // So do expired ones
+        var old = Server.Api.MusicCastEndpoints.Token(keys, track.Id, "me", DateTimeOffset.UtcNow.AddMinutes(-1));
+        Assert.Null(await Server.Api.MusicCastEndpoints.ResolveAsync(old, keys, exists, db));
+        // Chromecasts play FLAC and Ogg as they are
+        Assert.True(Server.Api.MusicCastEndpoints.Chromecast is { Flac: true, Ogg: true, Opus: true });
+    }
+
     [Fact]
     public void CoverArtIsNoticedAndExtractedSmall()
     {

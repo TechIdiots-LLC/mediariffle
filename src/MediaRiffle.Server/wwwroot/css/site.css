@@ -193,7 +193,7 @@ button.chip-x:hover { color: var(--danger); }
 /* The music player bar, on every page while music is loaded */
 .nowbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
-  display: grid; grid-template-columns: 48px minmax(0, 1fr) auto minmax(0, 2fr) auto; gap: 12px; align-items: center;
+  display: grid; grid-template-columns: 48px minmax(0, 1fr) auto minmax(0, 2fr) auto auto; gap: 12px; align-items: center;
   padding: 8px 16px; background: var(--surface); border-top: 1px solid var(--border); box-shadow: 0 -4px 16px rgba(0, 0, 0, .08);
 }
 .nowbar[hidden] { display: none; }
@@ -217,7 +217,7 @@ body.has-nowbar { padding-bottom: 76px; }
 .np-queue li { padding: 3px 0; }
 .np-queue li.current a { font-weight: 600; }
 @media (max-width: 640px) {
-  .nowbar { grid-template-columns: 40px minmax(0, 1fr) auto auto; gap: 8px; padding: 8px 12px; }
+  .nowbar { grid-template-columns: 40px minmax(0, 1fr) auto auto auto; gap: 8px; padding: 8px 12px; }
   .np-cover .art { width: 40px; height: 40px; }
   .np-seekbar { grid-column: 1 / -1; order: 5; }
   body.has-nowbar { padding-bottom: 110px; }

@@ -94,30 +94,12 @@ public static class MusicEndpoints
         g.MapGet("/tracks/{id:int}/audio", async (int id, bool? flac, bool? ogg, bool? opus, AppDbContext db, LibraryFiles files, AudioService audio, CancellationToken ct) =>
         {
             var f = await db.MediaFiles.FirstOrDefaultAsync(x => x.Id == id && x.Kind == MediaKind.Track, ct);
-            var path = f is null ? null : files.FullPath(f);
-            if (path is null || !File.Exists(path)) return Results.NotFound();
-            if (string.IsNullOrEmpty(f!.ProbeJson)) return Results.Json(new { error = "This file couldn't be read." }, statusCode: 422);
-            var probe = ProbeResult.Parse(f.ProbeJson);
-            if (AudioService.PlaysAsIs(probe, Path.GetExtension(path), new AudioCaps(flac == true, ogg == true, opus == true)))
-                return Results.File(path, AudioService.ContentType(path), enableRangeProcessing: true);
-            try
-            {
-                var converted = await audio.ConvertedAsync(f.Id, f.ModifiedUtc, path).WaitAsync(ct);
-                return Results.File(converted, "audio/mp4", enableRangeProcessing: true);
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
-            {
-                return Results.Json(new { error = "This track couldn't be converted: " + ex.Message }, statusCode: 500);
-            }
+            return f is null ? Results.NotFound() : await AudioAsync(f, new AudioCaps(flac == true, ogg == true, opus == true), files, audio, ct);
         });
 
         // Cover art: beside the tracks (cover.jpg, folder.jpg), else the picture inside the first track that has one
         g.MapGet("/images/album/{id:int}", async (int id, AppDbContext db, LibraryFiles files, ImageService images, HttpContext ctx) =>
-        {
-            var album = await db.Albums.FirstOrDefaultAsync(a => a.Id == id);
-            if (album is null) return Results.NotFound();
-            return Image(ctx, ImageService.FolderArt(files.Resolve(album.LibraryId, album.Folder)) ?? await EmbeddedCover(db, files, images, id));
-        });
+            Image(ctx, await AlbumArtAsync(db, files, images, id)));
 
         // An artist's: in their own folder (Artist/Album), else their first album's
         g.MapGet("/images/artist/{id:int}", async (int id, AppDbContext db, LibraryFiles files, ImageService images, HttpContext ctx) =>
@@ -134,6 +116,36 @@ public static class MusicEndpoints
                 if (await EmbeddedCover(db, files, images, album.Id) is { } cover) return Image(ctx, cover);
             return Results.NotFound();
         });
+    }
+
+    /// <summary>
+    /// A track's sound for a player that plays MP3, AAC, WAV and what <paramref name="caps"/> adds: the file as it is
+    /// when it can, else converted to AAC. Ranges, so the player seeks.
+    /// </summary>
+    internal static async Task<IResult> AudioAsync(MediaFile f, AudioCaps caps, LibraryFiles files, AudioService audio, CancellationToken ct)
+    {
+        var path = files.FullPath(f);
+        if (path is null || !File.Exists(path)) return Results.NotFound();
+        if (string.IsNullOrEmpty(f.ProbeJson)) return Results.Json(new { error = "This file couldn't be read." }, statusCode: 422);
+        if (AudioService.PlaysAsIs(ProbeResult.Parse(f.ProbeJson), Path.GetExtension(path), caps))
+            return Results.File(path, AudioService.ContentType(path), enableRangeProcessing: true);
+        try
+        {
+            var converted = await audio.ConvertedAsync(f.Id, f.ModifiedUtc, path).WaitAsync(ct);
+            return Results.File(converted, "audio/mp4", enableRangeProcessing: true);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+        {
+            return Results.Json(new { error = "This track couldn't be converted: " + ex.Message }, statusCode: 500);
+        }
+    }
+
+    /// <summary>An album's cover: beside its tracks (cover.jpg, folder.jpg), else inside them; null when there's none.</summary>
+    internal static async Task<string?> AlbumArtAsync(AppDbContext db, LibraryFiles files, ImageService images, int albumId)
+    {
+        var album = await db.Albums.FirstOrDefaultAsync(a => a.Id == albumId);
+        if (album is null) return null;
+        return ImageService.FolderArt(files.Resolve(album.LibraryId, album.Folder)) ?? await EmbeddedCover(db, files, images, albumId);
     }
 
     /// <summary>The picture inside the album's first track that has one (by disc and track), or null.</summary>
@@ -192,7 +204,7 @@ public static class MusicEndpoints
             .ToList();
     }
 
-    private static IResult Image(HttpContext ctx, string? path)
+    internal static IResult Image(HttpContext ctx, string? path)
     {
         if (path is null) return Results.NotFound();
         ctx.Response.Headers.CacheControl = "private, max-age=86400";

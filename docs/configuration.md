@@ -174,3 +174,11 @@ it, and the artist's page lists the compilations they appear on.
 A browser plays MP3, AAC and WAV as they are, and FLAC and Ogg where it supports them. Anything else is converted once
 to AAC and kept in `audio` under `DataDirectory` (up to 2 GB; the least recently played go first), so it seeks like
 any file.
+
+**Chromecast**: the player bar has a Cast button (Chrome or Edge, on an HTTPS address, as for video). Casting hands
+the TV the queue from the playing track on (up to 100 songs ahead, and handed the next stretch when it gets there), so
+it carries on with the phone asleep; the bar and Now playing follow the TV and control it. Stopping casting brings the
+music back to the page, paused where the TV was. The TV fetches each song and its cover from links that carry their
+own key (the song and the account, encrypted with the server's keys, good for 24 hours and only while the account
+exists), since it can't send the sign-in cookie; so, as for video, it has to be able to reach the server at the
+address the page uses.
