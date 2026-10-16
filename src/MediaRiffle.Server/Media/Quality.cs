@@ -30,6 +30,26 @@ public static class Quality
     public static QualityLevel? Level(string? id) => Ladder.FirstOrDefault(l => l.Id == id);
 
     /// <summary>
+    /// A user's preference for Auto (Profile → Video quality): "auto" picks by the connection; "high" tries the best
+    /// first (the file as it is, else the top level); "medium" and "low" adapt below a ceiling (720p, 480p), to save data.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Preferences = ["auto", "high", "medium", "low"];
+
+    /// <summary>The ceiling a preference puts on Auto (a level id), or null for none.</summary>
+    public static string? PreferenceCap(string? preference) => preference switch
+    {
+        "medium" => "720",
+        "low" => "480",
+        _ => null,
+    };
+
+    /// <summary>The lower of two caps (level ids, null for none).</summary>
+    public static string? Lower(string? a, string? b) =>
+        Level(a) is not { } la ? (Level(b) is null ? null : b)
+        : Level(b) is not { } lb ? a
+        : la.Height <= lb.Height ? a : b;
+
+    /// <summary>
     /// The quality to use for a request, kept within the user's cap: a capped user asking for Original (or a
     /// better level than allowed) gets the cap. Auto stays Auto (its levels are capped, see <see cref="AdaptiveLevels"/>).
     /// </summary>

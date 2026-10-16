@@ -167,6 +167,18 @@ it's needed again. Seeking in a transcode never restarts the whole stream.
 Admins can cap a user's quality (**Admin → Users → Best quality**), e.g. 720p for someone streaming over a slow
 connection, so one viewer can't use all of the server's upload. A capped user doesn't get Original.
 
+Each user also has a **preference** for how Auto picks, under **Profile → Video quality** (an admin can set it for
+them as their default, under **Admin → Users → Default quality**):
+
+| | Auto then |
+| --- | --- |
+| **Auto** | Picks by the connection, as above. |
+| **High** | Tries the best first: the file as it is when this device plays it, else the top level; steps down only if the connection can't keep up, and back up sooner. |
+| **Medium** | Adapts up to 720p, never the file as it is: less data. |
+| **Low** | Adapts up to 480p: the least data, for slow or metered connections. |
+
+The cap always wins over the preference. Picking a quality in the player's menu overrides both for that device.
+
 ### 4K
 
 A 4K file plays at 4K as it is (Original, or Auto with the connection to spare) on a device that decodes its video:

@@ -47,6 +47,25 @@ function tvHelp() {
 function remember(key, value) { try { localStorage.setItem(key, value); } catch { } }
 function recall(key) { try { return localStorage.getItem(key); } catch { return null; } }
 
+// Full screen is the whole page's (the document), not the player's own: going on to the next one (from the controls, a
+// play queue, a media key or a voice assistant's "next track") builds a new player inside the page, and full screen
+// stays. While it lasts the page is "theater": the player lies over everything (see body.theater in site.css).
+const fullscreenElement = () => document.fullscreenElement ?? document.webkitFullscreenElement ?? null;
+export const inTheater = () => fullscreenElement() === document.documentElement;
+const followTheater = () => document.body.classList.toggle('theater', inTheater());
+document.addEventListener('fullscreenchange', followTheater);
+document.addEventListener('webkitfullscreenchange', followTheater);
+
+function mountFlash(el, text, sub) {
+  el.replaceChildren(h('div', { class: 'flash-title' }, text), sub ? h('div', { class: 'flash-sub' }, sub) : '');
+  el.classList.add('on');
+}
+
+/** Leaves full screen (a page that isn't a player). */
+export function exitTheater() {
+  if (fullscreenElement()) (document.exitFullscreen ?? document.webkitExitFullscreen)?.call(document)?.catch?.(() => {});
+}
+
 export class Player {
   constructor(details) {
     this.details = details;              // GET /api/files/{id}
@@ -65,6 +84,10 @@ export class Player {
     const saved = recall(QUALITY_KEY);
     this.choice = saved === 'auto' || this.qualities.some(q => q.id === saved) ? saved : 'auto';
     this.quality = this.choice === 'auto' ? null : this.choice;   // what's streaming; Auto fills it in
+    // How the user likes Auto to pick (Profile → Video quality, or set by an admin): auto, high, medium or low, and the
+    // ceiling that puts on it (with the admin's cap): a level id, or null
+    this.preference = details.preferredQuality ?? 'auto';
+    this.autoCap = details.autoCap ?? null;
     this.stalls = [];
     this.lastSwitch = 0;
 
@@ -76,7 +99,10 @@ export class Player {
     this.prevBtn = btn('⏮', 'Previous (P)', () => this.previous());
     this.backBtn = btn('↺10', 'Back 10 seconds (←)', () => this.seekBy(-10));
     this.playBtn = h('button', { class: 'icon', title: 'Play / pause (space)', onclick: () => this.togglePlay() }, '▶');
-    this.fwdBtn = btn('30↻', 'Forward 30 seconds (→)', () => this.seekBy(30));
+    this.fwdBtn = btn('10↻', 'Forward 10 seconds (→)', () => this.seekBy(10));
+    // In full screen: hide this one (the page sets onHide) and go on to the next
+    this.hideBtn = h('button', { class: 'secondary full-only', title: 'Hide this and go to the next one',
+      onclick: e => { e.stopPropagation(); this.onHide?.(); } }, '🚫 Hide');
     this.stopBtn = btn('⏹', 'Stop', () => this.stop());
     this.nextBtn = btn('⏭', 'Next (N)', () => this.goNext());
     this.muteBtn = btn('🔊', 'Mute (M)', () => { this.video.muted = !this.video.muted; });
@@ -154,11 +180,12 @@ export class Player {
   // the video and fade out when the mouse is still for a few seconds and not over them, while playing.
   element() {
     this.root = h('div', { class: 'player-wrap', onpointermove: () => this.wake(), onpointerdown: () => this.wake() },
-      h('div', { class: 'player', onclick: () => this.togglePlay(), ondblclick: () => this.fullscreen() }, this.video, this.status),
+      h('div', { class: 'player', onclick: () => this.togglePlay(), ondblclick: () => this.fullscreen() },
+        this.video, this.status, this.flashEl = h('div', { class: 'flash', 'aria-live': 'polite' })),
       this.controls = h('div', { class: 'controls' },
         this.seekBar,
         h('div', { class: 'row' },
-          h('span', { class: 'row transport' }, this.playBtn, this.prevBtn, this.nextBtn, this.backBtn, this.fwdBtn, this.stopBtn),
+          h('span', { class: 'row transport' }, this.playBtn, this.prevBtn, this.nextBtn, this.backBtn, this.fwdBtn, this.stopBtn, this.hideBtn),
           this.time,
           h('span', { class: 'row' }, this.muteBtn, this.volume),
           this.qualitySelect,
@@ -180,7 +207,7 @@ export class Player {
     this.root.classList.remove('idle');
     clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
-      const full = (document.fullscreenElement ?? document.webkitFullscreenElement) === this.root;
+      const full = inTheater();
       if (!full || this.video.paused || this.controls.matches(':hover')) return;
       this.root.classList.add('idle');
     }, 3000);
@@ -218,21 +245,31 @@ export class Player {
   // ── Quality ──────────────────────────────────────────────────────────────
 
   // Auto's first pick: the file as it is when the measured connection has plenty of room for it, else the adaptive
-  // stream (which then follows the connection by itself)
+  // stream (which then follows the connection by itself). The user's preference changes that: High tries the file as it
+  // is first, whatever was measured (the server sends the adaptive stream if it would need converting anyway, and the
+  // checks below step down if the connection can't keep up); Medium and Low stay on the adaptive stream, below their
+  // ceiling.
   async autoStart() {
+    const original = this.qualities.find(q => q.id === 'original');
+    if (this.preference === 'high') return original ? 'original' : 'auto';
     let kbps = this.estimate();
     if (!kbps) kbps = await this.speedTest();
     if (kbps) remember(SPEED_KEY, String(Math.round(kbps)));
-    const original = this.qualities.find(q => q.id === 'original');
+    if (this.underCeiling()) return 'auto';
     return original && original.kbps > 0 && original.kbps * 1.5 <= kbps ? 'original' : 'auto';
   }
+
+  // Medium or Low: Auto stays on the adaptive stream, at or below their ceiling (never the file as it is)
+  underCeiling() { return this.preference === 'medium' || this.preference === 'low'; }
 
   // The connection's speed as last measured (kbit/s), or 0
   estimate() { return +recall(SPEED_KEY) || 0; }
 
-  // The best level that fits a connection of `kbps` with room to spare: where an adaptive stream starts
+  // The best level that fits a connection of `kbps` with room to spare: where an adaptive stream starts. High starts at
+  // the best; a ceiling (Medium, Low, the admin's cap) leaves out the levels above it.
   levelFor(kbps) {
-    const levels = this.qualities.filter(q => q.id !== 'original');
+    const levels = this.qualities.filter(q => q.id !== 'original' && (!this.autoCap || +q.id <= +this.autoCap));
+    if (this.preference === 'high') return levels[0]?.id ?? null;
     if (!kbps) return levels[Math.min(1, levels.length - 1)]?.id ?? null;   // not measured yet: one below the best
     return (levels.find(q => q.kbps * 1.3 <= kbps) ?? levels[levels.length - 1])?.id ?? null;
   }
@@ -271,7 +308,8 @@ export class Player {
   showQuality() {
     const label = this.isAdaptiveAuto() ? this.playingLevel?.label
       : this.qualities.find(q => q.id === this.quality)?.label?.replace(/ \(.*\)$/, '') ?? this.quality;
-    this.autoOption.textContent = this.choice === 'auto' && label ? `Auto (${label})` : 'Auto';
+    const pref = { high: 'High', medium: 'Medium', low: 'Low' }[this.preference];
+    this.autoOption.textContent = `Auto${pref ? ' · ' + pref : ''}${this.choice === 'auto' && label ? ` (${label})` : ''}`;
     if (!this.session) return;
     this.info.textContent = this.session.adaptive
       ? `Transcode${this.playingLevel ? ' · ' + this.playingLevel.label : ''}`
@@ -309,8 +347,9 @@ export class Player {
       return;
     }
     const top = this.hls && this.hls.levels.length && this.hls.currentLevel === this.topLevel();
-    if (original && original.kbps > 0 && this.session.originalMode !== 'Transcode' && top &&
-        est > original.kbps * 1.6 && ahead > 20 && this.stalls.length === 0 && sinceSwitch > 120000) {
+    // Back up to the file as it is: never under a Medium or Low ceiling; sooner for High (best first)
+    if (!this.underCeiling() && original && original.kbps > 0 && this.session.originalMode !== 'Transcode' && top &&
+        est > original.kbps * 1.6 && ahead > 20 && this.stalls.length === 0 && sinceSwitch > (this.preference === 'high' ? 30000 : 120000)) {
       this.lastSwitch = now;
       this.switchTo('original', 'Faster connection: the file as it is');
     }
@@ -511,7 +550,7 @@ export class Player {
       set('pause', () => this.video.pause());
       set('stop', () => this.stop());
       set('seekbackward', d => this.seekBy(-(d.seekOffset || 10)));
-      set('seekforward', d => this.seekBy(d.seekOffset || 30));
+      set('seekforward', d => this.seekBy(d.seekOffset || 10));
       set('previoustrack', () => this.previous());
       set('nexttrack', () => this.goNext());
     } catch { /* no media session */ }
@@ -522,8 +561,19 @@ export class Player {
   }
 
   fullscreen() {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else (this.root.requestFullscreen ?? this.root.webkitRequestFullscreen)?.call(this.root);
+    if (fullscreenElement()) { exitTheater(); return; }
+    const page = document.documentElement;
+    const enter = page.requestFullscreen ?? page.webkitRequestFullscreen;
+    if (enter) enter.call(page);
+    // iPhone Safari: only the video itself goes full screen (its own controls, and it leaves at the next one)
+    else this.video.webkitEnterFullscreen?.();
+  }
+
+  /** A line over the picture for a few seconds (in full screen: what's playing, what's next). */
+  flash(text, sub = null, ms = 4000) {
+    mountFlash(this.flashEl, text, sub);
+    clearTimeout(this.flashTimer);
+    this.flashTimer = setTimeout(() => this.flashEl.classList.remove('on'), ms);
   }
 
   onTime() {

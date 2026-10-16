@@ -2,9 +2,22 @@
 
 ## master
 ### ✨ Features and improvements
-- _...Add new stuff here..._
+- **Full screen stays full screen from one video to the next**: Next, the play queue moving on, a media key or a voice
+  assistant's "next track" (e.g. through Home Assistant) no longer drops out of full screen. Each new one shows its
+  title (and its place in the queue) over the picture for a few seconds, and a queue's countdown to the next one shows
+  there too.
+- **Hide in full screen**: a Hide button in the full-screen controls hides the episode (or movie) for you and goes on
+  to the next one.
+- **Preferred video quality**: each user picks how Auto plays under Profile → Video quality: Auto (by the
+  connection), High (the best first), Medium (up to 720p) or Low (up to 480p, to save data). An admin can set it as a
+  user's default under Admin → Users → Default quality, beside the Best quality cap, which still wins.
+- **A Back button** in the top bar, beside the name (phones and the home-screen app have no browser back to tap): back
+  to the page before, or home when MediaRiffle was opened straight onto this one.
 
 ### 🐞 Bug fixes
+- **Skip back and forward are both 10 seconds** (forward was 30), on the buttons and on media keys.
+- **The volume slider reaches 100%**: sliders were styled like text boxes, so the track ended short and full volume
+  looked like about 90%.
 - **Pages open at the top**: going to a show (or any page) after scrolling another one opened it as far down as the
   last one was scrolled.
 - **Upgrades keep settings left in the program folder**: settings put in the program folder's `appsettings.json`

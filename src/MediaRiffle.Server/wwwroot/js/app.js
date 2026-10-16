@@ -1,6 +1,6 @@
 import { api, refreshCsrf } from './api.js';
 import { h, mount, art, formatTime } from './dom.js';
-import { Player } from './player.js';
+import { Player, inTheater, exitTheater } from './player.js';
 import { startQueue, positionOf, clearQueue } from './queue.js';
 import { music, nowPlayingView, trackRows } from './music.js';
 import { adminGate, mfaSettings } from './mfa.js';
@@ -64,15 +64,44 @@ const routes = [
   [/^#?\/?$/, homeView],
 ];
 
+// ── Back ─────────────────────────────────────────────────────────────────────
+// A Back button in the top bar, as phones and the home-screen app have no browser back to tap. Each page the app opens
+// is numbered in its history entry, so Back can tell going back within the app from leaving it: a page opened first
+// (from a link, or a reload of the home-screen app) has none of ours before it, and Back goes home instead.
+let pageNumber = 0;
+const backButton = document.getElementById('back');
+backButton.addEventListener('click', () => { if (pageNumber > 1) history.back(); else location.hash = '#/'; });
+
+// A page sending us straight on to another (not signed in, a one-part movie, a song link): the new page takes this
+// history entry and its number, so Back neither counts it as a page nor lands back on the one that sent us on
+function forward(hash) {
+  try { history.replaceState({ ...(history.state ?? {}), page: pageNumber }, '', hash); }
+  catch { location.replace(hash); return; }
+  route();   // replaceState doesn't fire hashchange
+}
+
+function numberPage(hash) {
+  const n = history.state?.page;
+  if (typeof n === 'number') pageNumber = n;   // back (or forward) to a page we numbered
+  else {
+    pageNumber += 1;
+    try { history.replaceState({ ...(history.state ?? {}), page: pageNumber }, ''); } catch { }
+  }
+  backButton.hidden = /^#?\/?$/.test(hash) || /^#\/(login|setup|join\/)/.test(hash);
+}
+
 async function route() {
   closeUserMenu();
+  numberPage(location.hash || '#/');
   if (player) { player.destroy(); player = null; }
   if (pageTimer) { clearInterval(pageTimer); pageTimer = null; }
   for (const fn of leaving.splice(0)) fn();
+  // Full screen carries on from one video to the next (see inTheater), and ends on any other page
+  if (!/^#\/play\//.test(location.hash)) exitTheater();
   const hash = location.hash || '#/';
   const open = /^#\/(login|setup|join\/|switch|add-account)/.test(hash);
-  if (state.setupNeeded && !hash.startsWith('#/setup')) { location.hash = '#/setup'; return; }
-  if (!state.user && !open) { location.hash = '#/login'; return; }
+  if (state.setupNeeded && !hash.startsWith('#/setup')) { forward('#/setup'); return; }
+  if (!state.user && !open) { forward('#/login'); return; }
   for (const [re, fn] of routes) {
     const m = hash.match(re);
     if (m) {
@@ -118,9 +147,9 @@ function credentialsForm({ title, intro, button, onSubmit, remember = false, ext
 }
 
 function loginView() {
-  if (state.user) { location.hash = '#/'; return; }
+  if (state.user) { forward('#/'); return; }
   // Accounts already signed in on this device: pick one instead of typing a password
-  if (state.deviceAccounts > 0) { location.replace('#/switch'); return; }
+  if (state.deviceAccounts > 0) { forward('#/switch'); return; }
   signInForm();
 }
 
@@ -148,7 +177,7 @@ function signInForm(userName = '') {
  */
 async function switchView() {
   const accounts = await api('/api/auth/accounts');
-  if (!accounts.length) { location.replace(state.user ? '#/add-account' : '#/login'); return; }
+  if (!accounts.length) { forward(state.user ? '#/add-account' : '#/login'); return; }
   const msg = h('p', { class: 'error' });
   const done = async () => {
     music.close(true);   // the music and its queue were the other account's
@@ -238,6 +267,8 @@ async function profileView() {
     h('div', { class: 'card' },
       h('p', {}, 'Signed in as ', h('strong', {}, account.name), state.user.isAdmin ? ' (admin)' : ''),
       mfa ? [h('h2', {}, 'Two-step verification'), mfa] : null,
+      h('h2', {}, 'Video quality'),
+      qualitySection(account),
       h('h2', {}, 'Switch user PIN'),
       pinSection(account),
       h('h2', {}, 'Google'),
@@ -247,6 +278,38 @@ async function profileView() {
       hidden));
   if (mfa) mfaSettings(mfa);
   hiddenSection(hidden);
+}
+
+// How Auto picks a video's quality: by the connection, best first, or below a ceiling to save data
+const PREFERENCES = [
+  ['auto', 'Auto', 'By the connection: the best it can keep up with, adjusting as it goes.'],
+  ['high', 'High', 'The best first (the file as it is when this device plays it), stepping down only if the connection can\'t keep up.'],
+  ['medium', 'Medium', 'Up to 720p: less data, still sharp on most screens.'],
+  ['low', 'Low', 'Up to 480p: the least data, for slow or metered connections.'],
+];
+
+function preferenceSelect(value, onChange) {
+  return h('select', { onchange: e => onChange(e.target.value) },
+    PREFERENCES.map(([id, label]) => h('option', { value: id, selected: (value ?? 'auto') === id }, label)));
+}
+
+// Profile → Video quality: the user's own preference for Auto (an admin may have set it first), within any cap
+function qualitySection(account) {
+  const note = h('p', { class: 'muted' });
+  const describe = id => {
+    const cap = account.maxQuality ? ` An admin limits you to ${account.maxQuality}p at most.` : '';
+    note.textContent = PREFERENCES.find(p => p[0] === id)[2] + cap +
+      ' Picking a quality in the player overrides this for that video, on that device.';
+  };
+  describe(account.preferredQuality ?? 'auto');
+  const msg = h('span', { class: 'error' });
+  return h('div', {},
+    h('label', { class: 'row' }, 'Auto plays ', preferenceSelect(account.preferredQuality, async value => {
+      msg.textContent = '';
+      try { await api('/api/auth/preferences', { method: 'PUT', body: { quality: value } }); account.preferredQuality = value; describe(value); }
+      catch (e) { msg.textContent = e.message; }
+    }), msg),
+    note);
 }
 
 // A PIN others on a shared device must enter to switch into this account; setting or removing it wants the password
@@ -299,7 +362,7 @@ async function hiddenSection(box) {
 }
 
 function setupView() {
-  if (!state.setupNeeded) { location.hash = '#/'; return; }
+  if (!state.setupNeeded) { forward('#/'); return; }
   credentialsForm({ title: 'Welcome to MediaRiffle', intro: 'Create the admin account. Others join with invite links you make under Admin.',
     button: 'Create admin account',
     onSubmit: (u, p) => api('/api/auth/setup', { method: 'POST', body: { userName: u, password: p } }) });
@@ -540,8 +603,8 @@ async function albumView(id) {
 // A link to a track (a list, Profile → Hidden): played in the player bar, shown on Now playing
 async function listenView(fileId) {
   try { await music.playFile(fileId); }
-  catch (e) { if (e.status === 404) { location.replace(`#/play/${fileId}`); return; } throw e; }
-  location.replace('#/now');
+  catch (e) { if (e.status === 404) { forward(`#/play/${fileId}`); return; } throw e; }
+  forward('#/now');
 }
 
 // Now playing, with the playing track's Favorite and lists (a playlist is a list of tracks)
@@ -643,7 +706,7 @@ async function showView(id) {
 
 async function movieView(id) {
   const movie = await api(`/api/movies/${id}`);
-  if (movie.parts.length === 1 && !movie.hidden) { location.replace(`#/play/${movie.parts[0].id}`); return; }
+  if (movie.parts.length === 1 && !movie.hidden) { forward(`#/play/${movie.parts[0].id}`); return; }
   const draw = () => mount(view,
     h('div', { class: 'row' }, h('h1', {}, movie.title + (movie.year ? ` (${movie.year})` : '')),
       hideButton('movie', id, movie.hidden, hidden => { movie.hidden = hidden; draw(); }, 'movie')),
@@ -656,7 +719,7 @@ async function movieView(id) {
 async function playView(fileId) {
   const details = await api(`/api/files/${fileId}`);
   // Music (reached from a mixed queue, or an old link) plays on the listening page
-  if (details.kind === 'Track') { location.replace(`#/listen/${fileId}`); return; }
+  if (details.kind === 'Track') { forward(`#/listen/${fileId}`); return; }
   // A video takes over from the music
   music.close();
   const p = new Player(details);
@@ -676,8 +739,11 @@ async function playView(fileId) {
       const msg = h('span', {}, `Next in ${left}…`);
       const cancel = h('button', { class: 'secondary', onclick: () => { clearInterval(timer); msg.textContent = 'Stopped.'; cancel.remove(); } }, 'Cancel');
       queueBar.append(msg, cancel);
+      // In full screen the queue bar is out of sight: the countdown shows over the picture
+      const flash = () => { if (inTheater()) p.flash(`Next in ${left}…`, place.next.title, 1500); };
+      flash();
       const timer = setInterval(() => {
-        if (--left > 0) { msg.textContent = `Next in ${left}…`; return; }
+        if (--left > 0) { msg.textContent = `Next in ${left}…`; flash(); return; }
         clearInterval(timer);
         location.hash = `#/play/${place.next.id}`;
       }, 1000);
@@ -695,8 +761,20 @@ async function playView(fileId) {
       : hideButton('file', fileId, details.hidden.file, x => { details.hidden.file = x; drawHide(); }, 'episode'),
     (details.hidden.movie || details.hidden.file) ? h('span', { class: 'muted' }, 'Hidden: left out of Play all, Shuffle and Continue watching.') : null);
   drawHide();
+  // Full screen's Hide: this episode (or movie) is hidden, and the next one plays, still full screen
+  p.onHide = async () => {
+    const kind = details.movieId ? 'movie' : 'file';
+    try { await api(`/api/items/${kind}/${kind === 'movie' ? details.movieId : fileId}/hidden`, { method: 'PUT', body: { hidden: true } }); }
+    catch (e) { p.flash('Couldn\'t hide it', e.message); return; }
+    if (kind === 'movie') details.hidden.movie = true; else details.hidden.file = true;
+    drawHide();
+    if (p.nav.next) p.goNext();
+    else { p.flash('Hidden', 'Nothing after this one'); p.video.pause(); }
+  };
   mount(view, h('h1', {}, details.summary.title), queueBar, p.element(), lists, hideBox,
     h('p', { class: 'muted' }, [details.videoCodec, details.width ? `${details.width}×${details.height}` : null, details.container].filter(Boolean).join(' · ')));
+  // Arriving in full screen (the next one): what this is, for a few seconds, so it's easy to skip on
+  if (inTheater()) p.flash(details.summary.title, place ? `${place.label} · ${place.index + 1} of ${place.count}` : null);
   try { await p.start(); }
   catch (e) { p.status.textContent = e.message; }
 }
@@ -741,7 +819,7 @@ function libraryForm(lib) {
 }
 
 async function adminView() {
-  if (!state.user?.isAdmin) { location.hash = '#/'; return; }
+  if (!state.user?.isAdmin) { forward('#/'); return; }
   let users, invites, scan, sessions, qualities, libraries;
   try {
     [users, invites, scan, sessions, qualities, libraries] = await Promise.all([
@@ -816,7 +894,8 @@ async function adminView() {
       h('p', {}, link),
       h('p', { class: 'muted' }, 'The link works once. Only this page shows it; it isn\'t stored.')),
     h('h2', {}, 'Users'),
-    h('table', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Role'), h('th', { title: 'The best quality this user may stream' }, 'Best quality'), h('th', {}, 'Joined'), h('th', {})),
+    h('table', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Role'), h('th', { title: 'The best quality this user may stream' }, 'Best quality'),
+        h('th', { title: 'How Auto picks for this user; they can change it under Profile' }, 'Default quality'), h('th', {}, 'Joined'), h('th', {})),
       users.map(u => h('tr', {},
         h('td', {}, u.userName, u.lockedOut ? h('span', { class: 'error' }, ' (locked out)') : null,
           u.mfa ? h('span', { class: 'muted', title: 'Has a passkey or an authenticator app' }, ' 🔑') : null),
@@ -835,6 +914,10 @@ async function adminView() {
           } },
           h('option', { value: '', selected: !u.maxQuality }, 'No limit'),
           qualities.map(q => h('option', { value: q.id, selected: u.maxQuality === q.id }, q.label)))),
+        h('td', {}, preferenceSelect(u.preferredQuality, async value => {
+          try { await api(`/api/admin/users/${u.id}/preferred-quality`, { method: 'POST', body: { quality: value } }); }
+          catch (err) { alert(err.message); }
+        })),
         h('td', {}, new Date(u.createdUtc).toLocaleDateString()),
         h('td', { class: 'row' },
           u.lockedOut ? h('button', { class: 'secondary', onclick: async () => { await api(`/api/admin/users/${u.id}/unlock`, { method: 'POST' }); adminView(); } }, 'Unlock') : null,

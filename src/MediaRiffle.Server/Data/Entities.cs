@@ -8,6 +8,11 @@ public sealed class AppUser : IdentityUser
     /// <summary>The best quality this user may stream (a Quality.Ladder id), or null for no limit.</summary>
     public string? MaxQuality { get; set; }
     /// <summary>
+    /// How the user likes Auto to pick (their own choice, within <see cref="MaxQuality"/>): "high", "medium", "low", or
+    /// null for by the connection. See Media.Quality.Preferences.
+    /// </summary>
+    public string? PreferredQuality { get; set; }
+    /// <summary>
     /// An authenticator app is set up (its key is Identity's authenticator key). Not Identity's TwoFactorEnabled, which
     /// would make every sign-in ask for a code: two-step verification guards Admin, not signing in.
     /// </summary>

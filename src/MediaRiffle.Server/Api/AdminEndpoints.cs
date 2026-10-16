@@ -58,10 +58,23 @@ public static class AdminEndpoints
                 list.Add(new
                 {
                     u.Id, u.UserName, u.CreatedUtc, isAdmin = admins.Contains(u.Id), lockedOut = u.LockoutEnd > DateTimeOffset.UtcNow, u.MaxQuality,
+                    preferredQuality = u.PreferredQuality ?? "auto",
                     // Has a passkey or an authenticator app (two-step verification)
                     mfa = await Mfa.IsSetUpAsync(users, u),
                 });
             return list;
+        });
+
+        // How Auto picks for a user (the same preference they can change under Profile): their default, set by an admin
+        g.MapPost("/users/{id}/preferred-quality", async (string id, PreferencesRequest req, UserManager<AppUser> users) =>
+        {
+            var user = await users.FindByIdAsync(id);
+            if (user is null) return Results.NotFound();
+            var q = (req.Quality ?? "auto").Trim().ToLowerInvariant();
+            if (!Quality.Preferences.Contains(q)) return Results.BadRequest(new { error = "Unknown quality preference." });
+            user.PreferredQuality = q == "auto" ? null : q;
+            await users.UpdateAsync(user);
+            return Results.Ok();
         });
 
         // The best quality a user may stream (e.g. "720" for someone on a slow connection), or none for no limit
