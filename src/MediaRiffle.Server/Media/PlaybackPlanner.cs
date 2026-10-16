@@ -39,7 +39,7 @@ public sealed record PlaybackPlan(
     PlaybackMode Mode, ProbeStream? Video, ProbeStream? Audio, ProbeStream? BurnSubtitle, string Reason,
     string Quality = Media.Quality.Original, int TargetHeight = 1080, int TargetVideoKbps = 8000, int AudioKbps = 192,
     SegmentFormat Segments = SegmentFormat.Ts, int StreamKbps = 0, IReadOnlyList<QualityLevel>? Levels = null,
-    bool ToneMap = false)
+    bool ToneMap = false, bool Libplacebo = false)
 {
     public bool IsAdaptive => Levels is { Count: > 0 };
 }
@@ -90,6 +90,8 @@ public static class PlaybackPlanner
             qualityId, height, videoKbps, audioKbps, seg, probe.BitRateKbps);
 
         if (video is null) return Transcode("no video stream");
+        // Dolby Vision 5 has no ordinary picture to send: only converting it (with its Dolby Vision metadata) looks right
+        if (video.IsDolbyVisionOnly) return Transcode($"{video.DolbyVisionLabel} only shows right through a Dolby Vision decoder: converting");
         if (burn is not null) return Transcode("burning in image subtitles");
 
         // The file's own video only when it already fits the picked level (or Original was picked)
@@ -124,6 +126,8 @@ public static class PlaybackPlanner
         var a = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
         bool transcode = plan.Mode == PlaybackMode.Transcode;
         if (transcode && o.Encoder == VideoEncoder.Vaapi) a.AddRange(["-vaapi_device", o.VaapiDevice]);
+        // libplacebo tone-maps on the GPU through Vulkan
+        if (transcode && plan.Libplacebo) a.AddRange(["-init_hw_device", "vulkan"]);
         if (startSeconds > 0) a.AddRange(["-ss", Seconds(startSeconds)]);
         a.AddRange(["-i", input]);
 
@@ -137,7 +141,7 @@ public static class PlaybackPlanner
             }
             else
             {
-                a.AddRange(VideoTranscode(v, plan.BurnSubtitle, plan.TargetHeight, plan.TargetVideoKbps, o, fixedKeyframes: false, plan.ToneMap));
+                a.AddRange(VideoTranscode(v, plan.BurnSubtitle, plan.TargetHeight, plan.TargetVideoKbps, o, fixedKeyframes: false, plan.ToneMap, plan.Libplacebo));
             }
         }
 
@@ -174,13 +178,17 @@ public static class PlaybackPlanner
     /// each segment starts cleanly (<paramref name="fixedKeyframes"/>: for an adaptive stream, where it must).
     /// </summary>
     private static List<string> VideoTranscode(ProbeStream v, ProbeStream? burn, int targetHeight, int kbps, TranscodingOptions o,
-        bool fixedKeyframes, bool toneMap = false)
+        bool fixedKeyframes, bool toneMap = false, bool libplacebo = false)
     {
         var a = new List<string>();
         int height = Math.Min(targetHeight, o.MaxHeight);
         bool scale = v.Height > height;
-        // HDR is scaled down first (less to tone-map), then tone-mapped on the CPU, whatever the encoder
-        var hdr = toneMap && v.IsHdr ? (scale ? $"scale=-2:{height}," : "") + ToneMapFilter(v) + "," : null;
+        // HDR: libplacebo scales and tone-maps in one (on the GPU, applying Dolby Vision's metadata); else it's scaled
+        // down first (less to tone-map), then tone-mapped with zscale on the CPU, whatever the encoder
+        var hdr = !v.IsHdr ? null
+            : libplacebo ? LibplaceboFilter(scale ? height : null) + ","
+            : toneMap ? (scale ? $"scale=-2:{height}," : "") + ToneMapFilter(v) + ","
+            : null;
         var chain = o.Encoder switch
         {
             // VA-API scales on the GPU, after the frames are uploaded to it
@@ -214,6 +222,14 @@ public static class PlaybackPlanner
             _ => ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-maxrate", max, "-bufsize", buf, "-profile:v", "high", "-level:v", level],
         };
     }
+
+    /// <summary>
+    /// HDR (and Dolby Vision, whose metadata it applies) to SDR BT.709 with libplacebo, scaled to <paramref name="height"/>
+    /// on the way when given; software frames in and out, on the Vulkan device (-init_hw_device vulkan).
+    /// </summary>
+    public static string LibplaceboFilter(int? height) =>
+        "libplacebo=" + (height is { } h ? $"w=-2:h={h}:" : "") +
+        "colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=bt.2390:apply_dolbyvision=1:format=yuv420p";
 
     /// <summary>The H.264 level a picture this tall needs: 4.1 up to 1080p, 5.1 for 4K.</summary>
     public static string H264Level(int height) => height > 1088 ? "5.1" : "4.1";
@@ -297,9 +313,10 @@ public static class PlaybackPlanner
         var d = o.SegmentSeconds;
         var a = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
         if (o.Encoder == VideoEncoder.Vaapi) a.AddRange(["-vaapi_device", o.VaapiDevice]);
+        if (plan.Libplacebo) a.AddRange(["-init_hw_device", "vulkan"]);
         // -ss even at 0: the first frame of a run is then always the first one on or after the boundary
         a.AddRange(["-copyts", "-start_at_zero", "-ss", Seconds((double)startSegment * d), "-i", input]);
-        if (plan.Video is { } v) a.AddRange(VideoTranscode(v, plan.BurnSubtitle, level.Height, level.VideoKbps, o, fixedKeyframes: true, plan.ToneMap));
+        if (plan.Video is { } v) a.AddRange(VideoTranscode(v, plan.BurnSubtitle, level.Height, level.VideoKbps, o, fixedKeyframes: true, plan.ToneMap, plan.Libplacebo));
         if (plan.Audio is { } au) a.AddRange(["-map", $"0:{au.Index}", "-c:a", "aac", "-b:a", $"{level.AudioKbps}k", "-ac", "2"]);
         a.AddRange([
             "-sn", "-dn", "-map_metadata", "-1", "-max_muxing_queue_size", "4096",

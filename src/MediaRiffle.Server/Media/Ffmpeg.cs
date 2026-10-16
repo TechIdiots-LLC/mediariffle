@@ -141,6 +141,7 @@ public sealed class Ffmpeg(IOptions<MediaRiffleOptions> options, ILogger<Ffmpeg>
             }
         }
         await CheckToneMappingAsync();
+        await CheckLibplaceboAsync();
         return true;
     }
 
@@ -163,6 +164,37 @@ public sealed class Ffmpeg(IOptions<MediaRiffleOptions> options, ILogger<Ffmpeg>
         }
         catch (Exception ex) { log.LogWarning("Couldn't list ffmpeg's filters: {Error}", ex.Message); }
     }
+
+    /// <summary>
+    /// This ffmpeg has libplacebo and a Vulkan GPU it can run on (found out at start, by trying it on a tiny HDR
+    /// picture), and Transcoding:UseLibplacebo is on. Then HDR is tone-mapped with it, which applies Dolby Vision's
+    /// metadata (the only way to convert Dolby Vision 5 right) and handles HDR10 better than zscale.
+    /// </summary>
+    public bool CanLibplacebo { get; private set; }
+
+    private async Task CheckLibplaceboAsync()
+    {
+        if (!options.Value.Transcoding.ToneMapHdr || !options.Value.Transcoding.UseLibplacebo) return;
+        try
+        {
+            await RunAsync(FfmpegPath, LibplaceboTestArguments, TimeSpan.FromSeconds(30));
+            CanLibplacebo = true;
+            log.LogInformation("HDR and Dolby Vision are tone-mapped with libplacebo (Vulkan)");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or System.ComponentModel.Win32Exception)
+        {
+            log.LogInformation("libplacebo isn't usable here ({Error}); HDR is tone-mapped with zscale, and Dolby Vision 5 " +
+                               "won't convert to the right colours. It needs an ffmpeg with libplacebo and a GPU with Vulkan.", ex.Message);
+        }
+    }
+
+    /// <summary>One frame of a small 10-bit HDR picture through libplacebo on Vulkan, to nowhere.</summary>
+    public static readonly string[] LibplaceboTestArguments =
+    [
+        "-hide_banner", "-v", "error", "-init_hw_device", "vulkan",
+        "-f", "lavfi", "-i", "color=c=gray:s=64x64:d=0.04,format=yuv420p10le,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc",
+        "-vf", "libplacebo=colorspace=bt709:color_primaries=bt709:color_trc=bt709:format=yuv420p", "-frames:v", "1", "-f", "null", "-",
+    ];
 
     /// <summary>Whether ffmpeg's <c>-filters</c> list has this filter (a line like " ..C zscale  V->V  Apply resizing…").</summary>
     public static bool HasFilter(string filterList, string name) =>

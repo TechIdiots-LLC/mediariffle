@@ -28,6 +28,7 @@ Put your settings in file 2. A complete example:
       "VaapiDevice": "/dev/dri/renderD128",
       "MaxHeight": 1080,
       "ToneMapHdr": true,
+      "UseLibplacebo": true,
       "MaxVideoKbps": 8000,
       "MaxSessions": 4,
       "MaxSessionsPerUser": 2,
@@ -58,6 +59,7 @@ Put your settings in file 2. A complete example:
 | `Transcoding.MaxHeight` | Transcodes are scaled down to this many lines. `2160` allows 4K transcodes (see Quality below); 1080 by default. |
 | `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode. Raise it to about `30000` with `MaxHeight` 2160, or the 4K level is held to this. |
 | `Transcoding.ToneMapHdr` | HDR video (HDR10, HLG) that has to be converted is tone-mapped to ordinary colours, so it isn't washed out (see Quality below). `true` by default. |
+| `Transcoding.UseLibplacebo` | Tone-map HDR with libplacebo when this ffmpeg has it and a Vulkan GPU works: better HDR10, and Dolby Vision applied, which Dolby Vision 5 needs (see HDR below). `true` by default. |
 | `Transcoding.MaxSessions` | Remuxes and transcodes running at once, all users together. Direct play doesn't count. |
 | `Transcoding.MaxSessionsPerUser` | A user starting more stops their oldest. |
 | `Transcoding.SegmentSeconds` | Length of a stream segment. Shorter switches level and starts sooner; longer is a little more efficient. |
@@ -201,6 +203,16 @@ browsers handle it themselves (on an HDR screen, or tone-mapped on an ordinary o
 picture simply relabelled. That's done on the CPU with ffmpeg's `zscale` (libzimg) and `tonemap` filters, after
 scaling down, whatever the encoder; the log says at start if this ffmpeg lacks them (the builds linked from
 ffmpeg.org and most Linux packages have them). It takes CPU time, most at 4K; `"ToneMapHdr": false` turns it off.
+
+**libplacebo** does it better when this ffmpeg has it and a GPU with Vulkan works (the log says at start which is
+used): it tone-maps on the GPU, and applies **Dolby Vision**'s metadata. That matters for Dolby Vision **profile 5**
+(as streaming services use, and web rips carry): it has no ordinary picture underneath, so anything but a Dolby Vision
+decoder shows it dark and green or purple. MediaRiffle never sends profile 5 as it is; it converts it, which looks
+right only with libplacebo (without it, the log and the player's info line say so). Profiles 7 and 8 (Blu-ray discs,
+most rips) carry HDR10 underneath and play as HDR10 does. libplacebo comes with gyan.dev's *full* build on Windows
+(`winget install Gyan.FFmpeg`; the *essentials* build `Install-Ffmpeg.ps1` fetches may lack it), BtbN's builds, and
+recent Linux packages; Vulkan comes with current NVIDIA, AMD and Intel drivers. `"UseLibplacebo": false` keeps zscale.
+Not with the `Vaapi` encoder, whose frames go to its own GPU device: there it's zscale.
 
 ## Library layout
 

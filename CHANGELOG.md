@@ -2,7 +2,11 @@
 
 ## master
 ### ✨ Features and improvements
-- _...Add new stuff here..._
+- **Dolby Vision, and better HDR tone mapping with libplacebo**: when the server's ffmpeg has libplacebo and a Vulkan
+  GPU works (checked at start), converted HDR is tone-mapped with it on the GPU, applying Dolby Vision's metadata, and
+  HDR10 looks more natural than with zscale. Dolby Vision profile 5 (streaming services, web rips), which has no
+  ordinary picture underneath and showed dark and green or purple, is never sent as it is any more: it's converted.
+  Profiles 7 and 8 still play as the HDR10 they carry. `Transcoding:UseLibplacebo` turns it off. See docs/configuration.md.
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._

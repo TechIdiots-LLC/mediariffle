@@ -110,9 +110,24 @@ public static partial class PlaybackEndpoints
                 };
             }
 
-            // HDR video that's converted is tone-mapped to ordinary colours (when this ffmpeg can)
-            if (plan.Mode == PlaybackMode.Transcode && plan.Video is { IsHdr: true } && ffmpeg.CanToneMap)
-                plan = plan with { ToneMap = true, Reason = plan.Reason + "; HDR tone-mapped" };
+            // HDR video that's converted is tone-mapped to ordinary colours: with libplacebo when it works here (Dolby
+            // Vision's metadata applied; not with VA-API, whose frames go to its own GPU device), else with zscale
+            if (plan.Mode == PlaybackMode.Transcode && plan.Video is { IsHdr: true } hdr)
+            {
+                if (ffmpeg.CanLibplacebo && t.Encoder != VideoEncoder.Vaapi)
+                    plan = plan with
+                    {
+                        Libplacebo = true,
+                        Reason = plan.Reason + (hdr.DolbyVisionLabel is { } dv ? $"; HDR tone-mapped, {dv} applied" : "; HDR tone-mapped (libplacebo)"),
+                    };
+                else if (ffmpeg.CanToneMap)
+                    plan = plan with
+                    {
+                        ToneMap = true,
+                        Reason = plan.Reason + "; HDR tone-mapped" +
+                                 (hdr.IsDolbyVisionOnly ? $" ({hdr.DolbyVisionLabel}'s colours need an ffmpeg with libplacebo and a Vulkan GPU)" : ""),
+                    };
+            }
 
             var start = req.Start;
             if (start is null)
