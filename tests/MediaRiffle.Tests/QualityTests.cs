@@ -74,3 +74,30 @@ public class QualityTests
     [InlineData("bogus", null, "original")]
     public void UserCap(string? requested, string? cap, string expected) => Assert.Equal(expected, Quality.Clamp(requested, cap));
 }
+
+public class QualityPreferenceTests
+{
+    [Theory]
+    [InlineData("auto", null)]
+    [InlineData("high", null)]
+    [InlineData("medium", "720")]
+    [InlineData("low", "480")]
+    [InlineData(null, null)]
+    public void PreferencesPutACeilingOnAuto(string? preference, string? cap) => Assert.Equal(cap, Quality.PreferenceCap(preference));
+
+    // The admin's cap and the user's preference: the lower wins
+    [Theory]
+    [InlineData(null, null, null)]
+    [InlineData("1080", null, "1080")]
+    [InlineData(null, "720", "720")]
+    [InlineData("480", "720", "480")]
+    [InlineData("1080", "720", "720")]
+    public void TheLowerCapWins(string? admin, string? preference, string? expected) => Assert.Equal(expected, Quality.Lower(admin, preference));
+
+    [Fact]
+    public void MediumAdaptsBelow720()
+    {
+        var levels = Quality.AdaptiveLevels(1080, 1080, Quality.Lower(null, Quality.PreferenceCap("medium")));
+        Assert.Equal(["720", "480", "360"], levels.Select(l => l.Id));
+    }
+}

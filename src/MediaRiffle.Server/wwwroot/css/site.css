@@ -36,9 +36,15 @@ button:disabled { opacity: .5; cursor: default; }
 input, select {
   background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
 }
+/* Sliders (volume, seek) aren't text boxes: with a text box's padding their track ended short of their box, so full
+   volume looked like 90% */
+input[type=range] { padding: 0; border: 0; background: transparent; }
 
 .top { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
 .brand { font-weight: 700; font-size: 18px; color: var(--text); }
+/* Back, beside the name: to the page before (hidden on the home and sign-in pages) */
+.back-btn { background: transparent; color: var(--accent); border: 1px solid var(--border); padding: 6px 10px; }
+.back-btn[hidden] { display: none; }
 #nav { display: flex; gap: 14px; flex-wrap: wrap; flex: 1; }
 #nav .spacer { flex: 1; }
 /* The user name opens a small menu: Profile, Sign out */
@@ -138,23 +144,26 @@ tr.muted td { color: var(--muted); }
 
 .foot { text-align: center; font-size: 12px; padding: 24px 16px; }
 
-/* Full screen: the player and its controls together. The video fills the screen, letterboxed and centred both ways
+/* Full screen ("theater": the whole page is full screen, so the next one keeps it): the player lies over everything
+   and the video fills the screen, letterboxed and centred both ways
    (the page's max-height would leave it at the top, cut off by a TV that overscans). The controls lie over its bottom,
    a margin in from the screen's edges for the same reason, and fade out with the pointer while idle (player.js wake). */
-.player-wrap:fullscreen { position: relative; background: #000; width: 100vw; height: 100vh; }
-.player-wrap:fullscreen .player { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; border-radius: 0; border: 0; }
-.player-wrap:fullscreen video { width: 100%; height: 100%; max-height: none; object-fit: contain; }
-.player-wrap:fullscreen .controls { position: absolute; left: 3vw; right: 3vw; bottom: 3vh; border: 1px solid var(--border); border-radius: var(--radius); opacity: .92; transition: opacity .3s; }
-.player-wrap:fullscreen.idle { cursor: none; }
-.player-wrap:fullscreen.idle .player { cursor: none; }
-.player-wrap:fullscreen.idle .controls { opacity: 0; pointer-events: none; }
-.player-wrap:-webkit-full-screen { position: relative; background: #000; width: 100vw; height: 100vh; }
-.player-wrap:-webkit-full-screen .player { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; border-radius: 0; border: 0; }
-.player-wrap:-webkit-full-screen video { width: 100%; height: 100%; max-height: none; object-fit: contain; }
-.player-wrap:-webkit-full-screen .controls { position: absolute; left: 3vw; right: 3vw; bottom: 3vh; border: 1px solid var(--border); border-radius: var(--radius); opacity: .92; transition: opacity .3s; }
-.player-wrap:-webkit-full-screen.idle { cursor: none; }
-.player-wrap:-webkit-full-screen.idle .player { cursor: none; }
-.player-wrap:-webkit-full-screen.idle .controls { opacity: 0; pointer-events: none; }
+body.theater { overflow: hidden; }
+body.theater .player-wrap { position: fixed; inset: 0; z-index: 100; background: #000; }
+body.theater .player { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; border-radius: 0; border: 0; }
+body.theater .player video { width: 100%; height: 100%; max-height: none; object-fit: contain; }
+body.theater .controls { position: absolute; left: 3vw; right: 3vw; bottom: 3vh; border: 1px solid var(--border); border-radius: var(--radius); opacity: .92; transition: opacity .3s; }
+body.theater .player-wrap.idle, body.theater .player-wrap.idle .player { cursor: none; }
+body.theater .player-wrap.idle .controls { opacity: 0; pointer-events: none; }
+/* Only in full screen: the Hide button (the page has its own below the player otherwise) */
+.full-only { display: none; }
+body.theater .full-only { display: inline-flex; }
+/* What's playing (or next), over the top of the picture for a few seconds */
+.flash { position: absolute; top: 5vh; left: 4vw; max-width: 70%; padding: 12px 18px; border-radius: var(--radius);
+  background: rgba(0, 0, 0, .65); color: #fff; pointer-events: none; opacity: 0; transition: opacity .4s; }
+.flash.on { opacity: 1; }
+.flash-title { font-size: clamp(18px, 2.4vw, 34px); font-weight: 600; }
+.flash-sub { font-size: clamp(13px, 1.4vw, 20px); opacity: .8; margin-top: 2px; }
 .player .spinner:empty { display: none; }
 .player { cursor: pointer; }
 

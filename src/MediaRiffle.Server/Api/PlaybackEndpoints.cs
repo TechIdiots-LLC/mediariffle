@@ -82,7 +82,11 @@ public static partial class PlaybackEndpoints
             if (req.Burn && req.Subtitle is { } sid && SubtitleId().Match(sid) is { Success: true } m && m.Groups["kind"].Value == "s")
                 burn = int.Parse(m.Groups["n"].Value);
             var account = await users.FindByIdAsync(userId);
-            var quality = Media.Quality.Clamp(req.Quality, account?.MaxQuality);
+            // Auto within the user's own preference (Profile → Video quality): Medium and Low adapt below a ceiling, as
+            // well as the admin's cap, and never send the file as it is (Auto trying Original gets the adaptive stream)
+            var autoCap = Media.Quality.Lower(account?.MaxQuality, Media.Quality.PreferenceCap(account?.PreferredQuality));
+            var requested = req.Adaptive && autoCap != account?.MaxQuality ? Media.Quality.Auto : req.Quality;
+            var quality = Media.Quality.Clamp(requested, account?.MaxQuality);
             var caps = new ClientCaps(req.Hevc, req.Hevc10);
             var t = options.Value.Transcoding;
             bool auto = quality == Media.Quality.Auto;
@@ -95,7 +99,7 @@ public static partial class PlaybackEndpoints
             // seeks without restarting). Sent as it is, or copied, it stays one stream.
             if (plan.Video is not null && (auto || plan.Mode == PlaybackMode.Transcode))
             {
-                var all = Media.Quality.AdaptiveLevels(plan.Video.Height, t.MaxHeight, account?.MaxQuality);
+                var all = Media.Quality.AdaptiveLevels(plan.Video.Height, t.MaxHeight, auto || req.Adaptive ? autoCap : account?.MaxQuality);
                 IReadOnlyList<QualityLevel> levels = auto || req.Adaptive ? all
                     : Media.Quality.Level(quality) is { } one ? [one] : [all[0]];
                 plan = plan with

@@ -160,11 +160,15 @@ public static class LibraryEndpoints
             var path = files.FullPath(f);
             var neighbours = await Neighbours(db, userId, f);
             var mine = db.Hidden.Where(x => x.UserId == userId);
-            var cap = Quality.Level((await users.GetUserAsync(me))?.MaxQuality);
+            var account = await users.GetUserAsync(me);
+            var cap = Quality.Level(account?.MaxQuality);
             return Results.Ok(new
             {
                 summary = FileSummary(f, progress),
                 kind = f.Kind.ToString(),
+                // How the user likes Auto to pick (Profile → Video quality), and the ceiling that puts on it
+                preferredQuality = account?.PreferredQuality ?? "auto",
+                autoCap = Quality.Lower(account?.MaxQuality, Quality.PreferenceCap(account?.PreferredQuality)),
                 f.ShowId, f.MovieId,
                 f.Container, f.VideoCodec, f.Width, f.Height, f.ProbeError,
                 bitrateKbps = probe.BitRateKbps,

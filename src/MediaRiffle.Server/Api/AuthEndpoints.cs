@@ -16,6 +16,7 @@ namespace MediaRiffle.Server.Api;
 public sealed record LoginRequest(string UserName, string Password, bool Remember);
 public sealed record SetupRequest(string UserName, string Password);
 public sealed record RegisterRequest(string Invite, string UserName, string Password);
+public sealed record PreferencesRequest(string? Quality);
 
 /// <summary>
 /// Accounts. There's no open sign-up: the first visit creates the admin account, and after that people join
@@ -101,12 +102,28 @@ public static class AuthEndpoints
             return Results.Ok();
         }).RequireRateLimiting("auth");
 
+        // The user's own preference for Auto: auto (by the connection), high (best first), medium (≤720p), low (≤480p)
+        g.MapPut("/preferences", async (PreferencesRequest req, ClaimsPrincipal principal, UserManager<AppUser> users) =>
+        {
+            var user = await users.GetUserAsync(principal);
+            if (user is null) return Results.Unauthorized();
+            var q = (req.Quality ?? "auto").Trim().ToLowerInvariant();
+            if (!Media.Quality.Preferences.Contains(q)) return Results.BadRequest(new { error = "Unknown quality preference." });
+            user.PreferredQuality = q == "auto" ? null : q;
+            await users.UpdateAsync(user);
+            return Results.Ok(new { preferredQuality = q });
+        }).RequireAuthorization();
+
         g.MapGet("/account", async (ClaimsPrincipal principal, UserManager<AppUser> users) =>
         {
             var user = await users.GetUserAsync(principal);
             if (user is null) return Results.Unauthorized();
             var google = (await users.GetLoginsAsync(user)).FirstOrDefault(l => l.LoginProvider == GoogleDefaults.AuthenticationScheme);
-            return Results.Ok(new { name = user.UserName, google = google?.ProviderDisplayName, pin = user.SwitchPinHash is not null });
+            return Results.Ok(new
+            {
+                name = user.UserName, google = google?.ProviderDisplayName, pin = user.SwitchPinHash is not null,
+                preferredQuality = user.PreferredQuality ?? "auto", maxQuality = user.MaxQuality,
+            });
         }).RequireAuthorization();
 
         MapGoogle(g);
