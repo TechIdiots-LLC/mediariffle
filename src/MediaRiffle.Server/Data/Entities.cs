@@ -22,6 +22,11 @@ public sealed class AppUser : IdentityUser
     /// null for none.
     /// </summary>
     public string? SwitchPinHash { get; set; }
+    /// <summary>
+    /// The picture beside the user's name: "emoji:    public string? SwitchPinHash { get; set; }lt;n    public string? SwitchPinHash { get; set; }gt;" (one of the built-in ones), "photo:    public string? SwitchPinHash { get; set; }lt;version    public string? SwitchPinHash { get; set; }gt;" (their own, in the
+    /// data folder's avatars), or null for the built-in one their id picks. See Security.Avatars.
+    /// </summary>
+    public string? Avatar { get; set; }
 }
 
 /// <summary>A one-time invitation to create an account. Only the token's SHA-256 is stored.</summary>
@@ -222,5 +227,7 @@ public sealed class PlaybackProgress
     public int MediaFileId { get; set; }
     public double PositionSeconds { get; set; }
     public bool Finished { get; set; }
+    /// <summary>Taken off Continue watching (its ×); playing it again puts it back. The place is kept either way.</summary>
+    public bool LeftContinue { get; set; }
     public DateTime UpdatedUtc { get; set; }
 }

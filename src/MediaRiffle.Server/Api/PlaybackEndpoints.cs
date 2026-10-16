@@ -195,7 +195,9 @@ public static partial class PlaybackEndpoints
             if (p is null) db.Progress.Add(p = new PlaybackProgress { UserId = userId, MediaFileId = req.FileId });
             p.PositionSeconds = Math.Max(0, req.Position);
             // Into the end credits counts as watched
-            p.Finished = req.Finished ?? (file.DurationSeconds > 0 && req.Position >= file.DurationSeconds * 0.93);
+            p.Finished = req.Finished ?? NearlyDone(req.Position, file.DurationSeconds);
+            // Watching it again puts it back on Continue watching, if its × took it off
+            p.LeftContinue = false;
             p.UpdatedUtc = DateTime.UtcNow;
             await db.SaveChangesAsync();
             return Results.Ok();
@@ -299,6 +301,13 @@ public static partial class PlaybackEndpoints
             return Results.Bytes(vtt, "text/vtt; charset=utf-8");
         });
     }
+
+    /// <summary>
+    /// Stopped at the credits counts as watched: in the last 8%, or the last 3 minutes of anything over 10 minutes
+    /// (a long movie's credits run longer than 8% leaves).
+    /// </summary>
+    public static bool NearlyDone(double position, double duration) =>
+        duration > 0 && (position >= duration * 0.92 || (duration >= 600 && duration - position <= 180));
 
     private static string ContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {

@@ -17,6 +17,7 @@ public static class ListEndpoints
     private const int MaxEntriesPerUser = 10000;
 
     public sealed record ItemListsRequest(List<string>? Tags);
+    public sealed record RenameListRequest(string? Name);
 
     public static void MapListEndpoints(this WebApplication app)
     {
@@ -29,6 +30,41 @@ public static class ListEndpoints
             var rows = await Visible(db, catalog, db.UserTags.Where(t => t.UserId == userId))
                 .GroupBy(t => t.Tag).Select(x => new { tag = x.Key, items = x.Count() }).ToListAsync();
             return rows.OrderBy(r => !IsFavorites(r.tag)).ThenBy(r => r.tag, StringComparer.OrdinalIgnoreCase);
+        });
+
+        // A whole list gone: everything taken off it (nothing leaves the library), including what's in a library that's
+        // switched off, which its page can't show
+        g.MapDelete("/lists/{tag}", async (string tag, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
+        {
+            var userId = users.GetUserId(me);
+            var name = tag.Trim();
+            var removed = await db.UserTags.Where(t => t.UserId == userId && t.Tag == name).ExecuteDeleteAsync();
+            return removed == 0 ? Results.NotFound() : Results.Ok(new { removed });
+        });
+
+        // A new name; onto an existing list's name, the two become one. Favorites keeps its name.
+        g.MapPut("/lists/{tag}", async (string tag, RenameListRequest req, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
+        {
+            var userId = users.GetUserId(me)!;
+            var from = tag.Trim();
+            var to = Clean(req.Name);
+            if (to.Length == 0) return Results.BadRequest(new { error = "Give the list a name." });
+            if (to.Length > UserTag.MaxLength) return Results.BadRequest(new { error = $"A list's name can be at most {UserTag.MaxLength} characters." });
+            if (IsFavorites(from) || IsFavorites(to)) return Results.BadRequest(new { error = "Favorites keeps its name." });
+            var moving = await db.UserTags.Where(t => t.UserId == userId && t.Tag == from).ToListAsync();
+            if (moving.Count == 0) return Results.NotFound();
+            // Joining a list that's there already: its spelling stays, and what's on both is on it once
+            var existing = await db.UserTags.Where(t => t.UserId == userId && t.Tag == to).ToListAsync();
+            var name = existing.FirstOrDefault()?.Tag ?? to;
+            foreach (var t in moving)
+            {
+                var already = existing.Any(e => e.Id != t.Id && e.ShowId == t.ShowId && e.MovieId == t.MovieId &&
+                    e.ArtistId == t.ArtistId && e.AlbumId == t.AlbumId && e.MediaFileId == t.MediaFileId);
+                if (already) db.UserTags.Remove(t);
+                else t.Tag = name;
+            }
+            await db.SaveChangesAsync();
+            return Results.Ok(new { tag = name });
         });
 
         g.MapGet("/lists/{tag}", async (string tag, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>

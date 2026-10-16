@@ -68,6 +68,9 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.Property<bool>("AuthenticatorEnabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Avatar")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("TEXT");
@@ -413,6 +416,9 @@ namespace MediaRiffle.Server.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("Finished")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("LeftContinue")
                         .HasColumnType("INTEGER");
 
                     b.Property<double>("PositionSeconds")

@@ -58,6 +58,7 @@ public static class AdminEndpoints
                 list.Add(new
                 {
                     u.Id, u.UserName, u.CreatedUtc, isAdmin = admins.Contains(u.Id), lockedOut = u.LockoutEnd > DateTimeOffset.UtcNow, u.MaxQuality,
+                    avatar = Avatars.Of(u),
                     preferredQuality = u.PreferredQuality ?? "auto",
                     // Has a passkey or an authenticator app (two-step verification)
                     mfa = await Mfa.IsSetUpAsync(users, u),
@@ -104,13 +105,14 @@ public static class AdminEndpoints
 
         g.MapGet("/qualities", () => Quality.Ladder.Select(l => new { l.Id, l.Label }));
 
-        g.MapDelete("/users/{id}", async (string id, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
+        g.MapDelete("/users/{id}", async (string id, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db, Microsoft.Extensions.Options.IOptions<Options.MediaRiffleOptions> options) =>
         {
             if (users.GetUserId(me) == id) return Results.BadRequest(new { error = "You can't remove your own account." });
             var user = await users.FindByIdAsync(id);
             if (user is null) return Results.NotFound();
             await db.Progress.Where(p => p.UserId == id).ExecuteDeleteAsync();
             await users.DeleteAsync(user);
+            AvatarEndpoints.DeletePhoto(options.Value, id);
             return Results.Ok();
         });
 
@@ -127,6 +129,16 @@ public static class AdminEndpoints
             await users.ResetAuthenticatorKeyAsync(user);
             await users.GenerateNewTwoFactorRecoveryCodesAsync(user, 0);
             return Results.Ok();
+        });
+
+        // Someone who forgot their password: a one-time link (24 hours) to choose a new one. The admin sends it to them
+        // and never knows the password. Not yourself: change yours under Profile.
+        g.MapPost("/users/{id}/password-reset", async (string id, ClaimsPrincipal me, UserManager<AppUser> users, HttpContext ctx) =>
+        {
+            if (users.GetUserId(me) == id) return Results.BadRequest(new { error = "Change your own password under Profile." });
+            var user = await users.FindByIdAsync(id);
+            if (user is null) return Results.NotFound();
+            return Results.Ok(new { link = await PasswordEndpoints.ResetLinkAsync(users, user, ctx.Request) });
         });
 
         g.MapPost("/users/{id}/unlock", async (string id, UserManager<AppUser> users) =>

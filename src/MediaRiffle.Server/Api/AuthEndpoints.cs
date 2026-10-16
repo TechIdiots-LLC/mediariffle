@@ -32,15 +32,16 @@ public static class AuthEndpoints
         {
             // The account in use stays at the top of this device's list, with its stamp as it is now (it changes with
             // e.g. setting up two-step verification, which would otherwise make switching back ask for the password)
-            if (user.Identity?.IsAuthenticated == true && await AccountSwitchEndpoints.IsKeptAsync(ctx) && await users.GetUserAsync(user) is { } me)
+            var me = user.Identity?.IsAuthenticated == true ? await users.GetUserAsync(user) : null;
+            if (me is not null && await AccountSwitchEndpoints.IsKeptAsync(ctx))
                 await DeviceAccounts.RememberAsync(ctx, users, me);
             return new
             {
                 version = Version,
                 setupNeeded = !await users.Users.AnyAsync(),
                 google = options.Value.Google.Enabled,
-                user = user.Identity?.IsAuthenticated == true
-                    ? new { name = user.Identity.Name, isAdmin = user.IsInRole(Roles.Admin) }
+                user = me is not null
+                    ? new { name = me.UserName, isAdmin = user.IsInRole(Roles.Admin), avatar = Avatars.Of(me) }
                     : null,
                 // Other accounts signed in on this device, for Switch user
                 deviceAccounts = DeviceAccounts.Read(ctx).Count,
@@ -122,6 +123,7 @@ public static class AuthEndpoints
             return Results.Ok(new
             {
                 name = user.UserName, google = google?.ProviderDisplayName, pin = user.SwitchPinHash is not null,
+                avatar = Avatars.Of(user),
                 preferredQuality = user.PreferredQuality ?? "auto", maxQuality = user.MaxQuality,
             });
         }).RequireAuthorization();

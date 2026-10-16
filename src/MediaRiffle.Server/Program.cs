@@ -71,6 +71,8 @@ builder.Services.AddIdentityCore<AppUser>(o =>
     .AddEntityFrameworkStores<AppDbContext>()
     .AddSignInManager()
     .AddDefaultTokenProviders();
+// Password reset links (Admin → Users) last a day; one use, as using one changes the account's security stamp
+builder.Services.Configure<DataProtectionTokenProviderOptions>(o => o.TokenLifespan = PasswordEndpoints.ResetLinkLifetime);
 
 var authentication = builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme);
 authentication.AddIdentityCookies();
@@ -201,6 +203,8 @@ app.UseApiAntiforgery();
 app.MapAuthEndpoints();
 app.MapMfaEndpoints();
 app.MapAccountSwitchEndpoints();
+app.MapPasswordEndpoints();
+app.MapAvatarEndpoints();
 app.MapAdminEndpoints();
 app.MapLibraryEndpoints();
 app.MapListEndpoints();

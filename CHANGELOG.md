@@ -2,10 +2,22 @@
 
 ## master
 ### ✨ Features and improvements
-- _...Add new stuff here..._
+- **Change your password** under Profile → Password (the current one first, and with two-step verification set up, a
+  passkey or code too; your other devices are signed out, this one stays signed in).
+- **Password reset links**: Admin → Users → Reset password makes a one-time link (good for 24 hours) for someone who
+  forgot theirs; they open it and choose a new password, so the admin never knows it. It signs them out everywhere
+  else and lifts a lockout.
+- **Profile pictures**: everyone starts with a built-in cartoon picture (a llama, a sloth, a taco, …) their account
+  picks, and can choose another or use their own photo (cropped and shrunk in the browser; iPhone photos work) under
+  Profile. It shows beside your name, under Switch user, and in Admin → Users.
+- **Delete or rename a list**: on a list's page, Delete list takes everything off it at once (it all stays in the
+  library), and Rename gives it a new name (an existing list's name puts the two together). Favorites can be cleared.
+- **Take something off Continue watching**: an × on each one there. It isn't hidden: the place is kept, and watching
+  it again puts it back.
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- **Stopping at the credits counts as watched**: the last 8%, or the last 3 minutes of anything over 10 minutes (a
+  long movie's credits ran past the old 7%), so those don't linger in Continue watching; ones saved before drop off too.
 
 ## 0.6.0
 ### ✨ Features and improvements

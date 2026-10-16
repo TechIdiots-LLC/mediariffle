@@ -3,7 +3,8 @@ import { h, mount, art, formatTime } from './dom.js';
 import { Player, inTheater, exitTheater } from './player.js';
 import { startQueue, positionOf, clearQueue } from './queue.js';
 import { music, nowPlayingView, trackRows } from './music.js';
-import { adminGate, mfaSettings } from './mfa.js';
+import { avatarEl, BUILT_IN, photoToJpeg } from './avatar.js';
+import { adminGate, mfaSettings, askCheck } from './mfa.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
@@ -27,7 +28,7 @@ function renderNav() {
     h('span', { class: 'spacer' }),
     state.user.isAdmin ? h('a', { href: '#/admin' }, 'Admin') : null,
     h('details', { class: 'usermenu' },
-      h('summary', {}, state.user.name),
+      h('summary', {}, avatarEl(state.user.avatar, 'sm', state.user.name), ' ', state.user.name),
       h('div', { class: 'menu' },
         h('a', { href: '#/profile' }, 'Profile'),
         h('a', { href: '#/switch' }, 'Switch user'),
@@ -46,6 +47,7 @@ const routes = [
   [/^#\/login$/, loginView],
   [/^#\/setup$/, setupView],
   [/^#\/join\/([\w-]+)$/, joinView],
+  [/^#\/reset\/([^/]+)\/(.+)$/, m => resetView(decodeURIComponent(m[1]), m[2])],
   [/^#\/logout$/, logout],
   [/^#\/switch$/, switchView],
   [/^#\/add-account(?:\/(.+))?$/, m => signInForm(m[1] ? decodeURIComponent(m[1]) : '')],
@@ -89,7 +91,7 @@ function numberPage(hash) {
   }
   // The player's page uses the screen's width (a large or 4K screen gets a large picture); the others keep theirs
   document.body.classList.toggle('play-page', /^#\/play\//.test(hash));
-  backButton.hidden =/^#?\/?$/.test(hash) || /^#\/(login|setup|join\/)/.test(hash);
+  backButton.hidden = /^#?\/?$/.test(hash) || /^#\/(login|setup|join\/|reset\/)/.test(hash);
 }
 
 async function route() {
@@ -101,7 +103,7 @@ async function route() {
   // Full screen carries on from one video to the next (see inTheater), and ends on any other page
   if (!/^#\/play\//.test(location.hash)) exitTheater();
   const hash = location.hash || '#/';
-  const open = /^#\/(login|setup|join\/|switch|add-account)/.test(hash);
+  const open = /^#\/(login|setup|join\/|reset\/|switch|add-account)/.test(hash);
   if (state.setupNeeded && !hash.startsWith('#/setup')) { forward('#/setup'); return; }
   if (!state.user && !open) { forward('#/login'); return; }
   for (const [re, fn] of routes) {
@@ -222,7 +224,7 @@ async function switchView() {
         const card = h('div', { class: 'card account' + (a.current ? ' current' : '') });
         card.append(
           h('button', { class: 'account-main', onclick: () => pick(a, card) },
-            h('span', { class: 'avatar' }, (a.name[0] ?? '?').toUpperCase()),
+            avatarEl(a.avatar, 'md', a.name),
             h('span', { class: 'account-name' }, a.name,
               h('span', { class: 'muted' }, [a.current ? ' · signed in' : null, a.admin ? ' · admin' : null, a.pin ? ' · 🔒 PIN' : null,
                 a.expired ? ' · sign in again' : null].filter(Boolean).join(''))),
@@ -267,8 +269,11 @@ async function profileView() {
   mount(view,
     h('h1', {}, 'Profile'),
     h('div', { class: 'card' },
+      pictureSection(account),
       h('p', {}, 'Signed in as ', h('strong', {}, account.name), state.user.isAdmin ? ' (admin)' : ''),
       mfa ? [h('h2', {}, 'Two-step verification'), mfa] : null,
+      h('h2', {}, 'Password'),
+      passwordSection(),
       h('h2', {}, 'Video quality'),
       qualitySection(account),
       h('h2', {}, 'Switch user PIN'),
@@ -375,6 +380,111 @@ function joinView(m) {
     onSubmit: (u, p) => api('/api/auth/register', { method: 'POST', body: { invite: m[1], userName: u, password: p } }) });
 }
 
+// An admin's password reset link: a new password (twice), then signed in with it
+function resetView(userId, token) {
+  const pass = h('input', { type: 'password', autocomplete: 'new-password', required: true, minlength: 10 });
+  const again = h('input', { type: 'password', autocomplete: 'new-password', required: true, minlength: 10 });
+  const keep = h('input', { type: 'checkbox', checked: true });
+  const msg = h('p', { class: 'error' });
+  mount(view, h('form', { class: 'form card', onsubmit: async e => {
+      e.preventDefault();
+      msg.textContent = '';
+      if (pass.value !== again.value) { msg.textContent = 'The two passwords aren\'t the same.'; return; }
+      try {
+        await api('/api/auth/reset-password', { method: 'POST', body: { userId, token, password: pass.value, remember: keep.checked } });
+        music.close(true);   // anything playing was whoever was signed in here before
+        await loadState();
+        location.hash = '#/';
+      } catch (err) { msg.textContent = err.message; }
+    } },
+    h('h1', {}, 'Choose a new password'),
+    h('p', { class: 'muted' }, 'An admin sent you this link. It works once, for 24 hours.'),
+    h('label', {}, 'New password', pass),
+    h('label', {}, 'New password again', again),
+    h('p', { class: 'muted' }, 'At least 10 characters.'),
+    h('label', { class: 'row' }, keep, 'Keep me signed in'),
+    h('button', { type: 'submit' }, 'Set password and sign in'),
+    msg));
+  pass.focus();
+}
+
+// Profile → picture: the current one, the built-in ones to pick from, or a photo (cropped and shrunk here first)
+function pictureSection(account) {
+  const box = h('div', { class: 'picture-section' });
+  const msg = h('p', { class: 'error' });
+  const done = async avatar => {
+    account.avatar = avatar;
+    // The menu's picture follows
+    state.user.avatar = avatar;
+    renderNav();
+    draw();
+  };
+  const pick = async n => {
+    msg.textContent = '';
+    try { done(await api('/api/auth/avatar', { method: 'PUT', body: { emoji: n } })); } catch (e) { msg.textContent = e.message; }
+  };
+  const file = h('input', { type: 'file', accept: 'image/*', hidden: true, onchange: async () => {
+    msg.textContent = '';
+    const f = file.files[0];
+    file.value = '';
+    if (!f) return;
+    try { done(await api('/api/auth/avatar/photo', { method: 'POST', body: await photoToJpeg(f) })); }
+    catch (e) { msg.textContent = e.message || 'That picture couldn\'t be used.'; }
+  } });
+  const draw = () => mount(box,
+    h('div', { class: 'row' },
+      avatarEl(account.avatar, 'lg', account.name),
+      h('div', { class: 'picture-actions' },
+        h('button', { class: 'secondary', onclick: () => file.click() }, account.avatar?.photo ? 'Change photo' : 'Use a photo'),
+        account.avatar?.photo ? h('button', { class: 'secondary', onclick: async () => {
+          try { done(await api('/api/auth/avatar', { method: 'DELETE' })); } catch (e) { msg.textContent = e.message; }
+        } }, 'Remove photo') : null),
+      file),
+    h('div', { class: 'avatar-grid', role: 'listbox', 'aria-label': 'Pictures' },
+      BUILT_IN.map(([, what], n) => h('button', {
+        class: 'avatar-choice' + (!account.avatar?.photo && account.avatar?.emoji === n ? ' chosen' : ''),
+        title: what, 'aria-label': what, onclick: () => pick(n),
+      }, avatarEl({ emoji: n }, 'md')))),
+    msg);
+  draw();
+  return box;
+}
+
+// Profile → Password: the current one, then the new one twice. Other devices are signed out; this one stays.
+function passwordSection() {
+  const current = h('input', { type: 'password', autocomplete: 'current-password', required: true });
+  const pass = h('input', { type: 'password', autocomplete: 'new-password', required: true, minlength: 10 });
+  const again = h('input', { type: 'password', autocomplete: 'new-password', required: true, minlength: 10 });
+  const msg = h('p', { class: 'error' });
+  // With two-step verification set up, the server wants a check with it first: asked for here, then it carries on
+  const check = h('div');
+  const change = () => api('/api/auth/password', { method: 'POST', body: { current: current.value, new: pass.value } });
+  const form = h('form', { class: 'password-form', onsubmit: async e => {
+      e.preventDefault();
+      msg.className = 'error';
+      msg.textContent = '';
+      if (pass.value !== again.value) { msg.textContent = 'The two new passwords aren\'t the same.'; return; }
+      try {
+        try { await change(); }
+        catch (err) {
+          if (err.data?.mfa !== 'verify') throw err;
+          await askCheck(check);
+          await change();
+        }
+        form.reset();
+        msg.className = 'ok';
+        msg.textContent = 'Password changed. Your other devices will need to sign in again.';
+      } catch (err) { msg.textContent = err.message; }
+    } },
+    check,
+    h('label', {}, 'Current password', current),
+    h('label', {}, 'New password', pass),
+    h('label', {}, 'New password again', again),
+    h('div', { class: 'row' }, h('button', { type: 'submit' }, 'Change password'), h('span', { class: 'muted' }, 'At least 10 characters.')),
+    msg);
+  return form;
+}
+
 // Signs out the account in use (taking it off this device); others still signed in here are offered next
 async function logout() {
   music.close(true);
@@ -466,11 +576,19 @@ async function homeView() {
     api('/api/lists'), api(`/api/lists/${FAVORITES}`)]);
   const myLists = lists.filter(l => !isFavorites(l.tag));
   mount(view,
-    recent.length ? [h('h2', {}, 'Continue watching'), h('div', { class: 'grid' }, recent.map(r =>
-      h('a', { class: 'tile', href: `#/play/${r.file.id}` },
+    recent.length ? [h('h2', {}, 'Continue watching'), h('div', { class: 'grid' }, recent.map(r => {
+      // ×: off this list (not hidden: the place is kept, and watching it again brings it back)
+      const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}` },
         art(r.file.image, r.file.duration ? r.file.position / r.file.duration : 0),
+        h('button', { class: 'tile-x', title: 'Remove from Continue watching', 'aria-label': 'Remove from Continue watching',
+          onclick: async e => {
+            e.preventDefault(); e.stopPropagation();
+            try { await api(`/api/continue/${r.file.id}`, { method: 'DELETE' }); tile.remove(); } catch (err) { alert(err.message); }
+          } }, '×'),
         h('div', { class: 'name' }, r.show ?? r.file.title),
-        h('div', { class: 'sub' }, r.show ? r.file.title : `${formatTime(r.file.position)} of ${formatTime(r.file.duration)}`))))] : null,
+        h('div', { class: 'sub' }, r.show ? r.file.title : `${formatTime(r.file.position)} of ${formatTime(r.file.duration)}`));
+      return tile;
+    }))] : null,
     favorites.shows.length || favorites.movies.length || favorites.artists.length || favorites.albums.length || favorites.tracks.length
       ? [h('div', { class: 'row' }, h('h2', {}, '★ Favorites'), h('a', { href: `#/list/${FAVORITES}` },
             favorites.tracks.length ? `${favorites.tracks.length} song${favorites.tracks.length === 1 ? '' : 's'}, play or shuffle →` : 'Play or shuffle →')),
@@ -640,7 +758,19 @@ async function listView(tag) {
   onLeave(tracks.cleanup);
   const empty = !t.shows.length && !t.movies.length && !t.artists.length && !t.albums.length && !t.tracks.length;
   mount(view,
-    h('div', { class: 'row' }, h('h1', {}, t.favorites ? '★ Favorites' : t.tag), empty ? null : playButtons({ list: t.tag }, t.tag), empty ? null : filterBox(draw)),
+    h('div', { class: 'row' }, h('h1', {}, t.favorites ? '★ Favorites' : t.tag), empty ? null : playButtons({ list: t.tag }, t.tag), empty ? null : filterBox(draw),
+      // Rename (two lists by one name become one) or delete the whole list; Favorites can be cleared, not renamed
+      t.favorites ? null : h('button', { class: 'secondary', onclick: async () => {
+        const name = prompt('A new name for this list (an existing list\'s name puts the two together):', t.tag)?.trim();
+        if (!name || name === t.tag) return;
+        try { const r = await api(`/api/lists/${encodeURIComponent(t.tag)}`, { method: 'PUT', body: { name } }); location.replace(`#/list/${encodeURIComponent(r.tag)}`); }
+        catch (e) { alert(e.message); }
+      } }, 'Rename'),
+      h('button', { class: 'secondary', onclick: async () => {
+        if (!confirm(t.favorites ? 'Take everything out of Favorites?' : `Delete the list "${t.tag}"? What's on it stays in the library.`)) return;
+        try { await api(`/api/lists/${encodeURIComponent(t.tag)}`, { method: 'DELETE' }); location.hash = '#/'; }
+        catch (e) { alert(e.message); }
+      } }, t.favorites ? 'Clear favorites' : 'Delete list')),
     h('p', { class: 'muted' }, 'Only you see your lists. Add a show, movie, artist or album to one from its page, and a song from Now playing.'),
     t.shows.length ? [h('h2', {}, 'Shows'), showGrid] : null,
     t.movies.length ? [h('h2', {}, 'Movies'), movieGrid] : null,
@@ -835,6 +965,19 @@ async function adminView() {
 
   const link = h('input', { readonly: true, size: 60 });
   const asAdmin = h('input', { type: 'checkbox' });
+  // A password reset link just made, to copy and send (it isn't stored, so it shows only here, once)
+  const resetBox = h('div');
+  const showResetLink = (name, url) => {
+    const input = h('input', { readonly: true, size: 60, value: url });
+    mount(resetBox, h('div', { class: 'card reset-link' },
+      h('p', {}, `Send ${name} this link to choose a new password. It works once, for 24 hours.`),
+      h('div', { class: 'row' }, input,
+        h('button', { class: 'secondary', onclick: async e => {
+          try { await navigator.clipboard.writeText(url); e.target.textContent = 'Copied ✓'; } catch { input.select(); }
+        } }, 'Copy'),
+        h('button', { class: 'chip-x', title: 'Close', onclick: () => mount(resetBox) }, '×'))));
+    input.select();
+  };
   const days = h('input', { type: 'number', min: 1, max: 30, value: 7, size: 3 });
   const makeInvite = async () => {
     const r = await api('/api/admin/invites', { method: 'POST', body: { isAdmin: asAdmin.checked, days: +days.value } });
@@ -896,10 +1039,11 @@ async function adminView() {
       h('p', {}, link),
       h('p', { class: 'muted' }, 'The link works once. Only this page shows it; it isn\'t stored.')),
     h('h2', {}, 'Users'),
+    resetBox,
     h('table', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Role'), h('th', { title: 'The best quality this user may stream' }, 'Best quality'),
         h('th', { title: 'How Auto picks for this user; they can change it under Profile' }, 'Default quality'), h('th', {}, 'Joined'), h('th', {})),
       users.map(u => h('tr', {},
-        h('td', {}, u.userName, u.lockedOut ? h('span', { class: 'error' }, ' (locked out)') : null,
+        h('td', { class: 'user-cell' }, avatarEl(u.avatar, 'sm', u.userName), ' ', u.userName, u.lockedOut ? h('span', { class: 'error' }, ' (locked out)') : null,
           u.mfa ? h('span', { class: 'muted', title: 'Has a passkey or an authenticator app' }, ' 🔑') : null),
         // Your own role is fixed here (another admin can change it), so Admin can't be left without anyone
         h('td', {}, u.userName === state.user.name ? (u.isAdmin ? 'Admin' : 'Viewer') : h('select', { onchange: async e => {
@@ -923,6 +1067,11 @@ async function adminView() {
         h('td', {}, new Date(u.createdUtc).toLocaleDateString()),
         h('td', { class: 'row' },
           u.lockedOut ? h('button', { class: 'secondary', onclick: async () => { await api(`/api/admin/users/${u.id}/unlock`, { method: 'POST' }); adminView(); } }, 'Unlock') : null,
+          // A one-time link for them to choose a new password (shown above the table, to send them)
+          u.userName !== state.user.name ? h('button', { class: 'secondary', onclick: async () => {
+            try { showResetLink(u.userName, (await api(`/api/admin/users/${u.id}/password-reset`, { method: 'POST' })).link); }
+            catch (e) { alert(e.message); }
+          } }, 'Reset password') : null,
           // For someone who lost their passkeys, authenticator and recovery codes
           u.mfa && u.userName !== state.user.name ? h('button', { class: 'secondary', onclick: async () => {
             if (!confirm(`Reset ${u.userName}'s two-step verification? Their passkeys, authenticator app and recovery codes stop working` +

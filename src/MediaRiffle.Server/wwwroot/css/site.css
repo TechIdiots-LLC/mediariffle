@@ -263,8 +263,6 @@ button.track-fav.on, button.track-fav.on:hover { color: #f5b301; }
 .account.current { border-color: var(--accent); }
 .account-main { display: flex; align-items: center; gap: 12px; background: transparent; color: var(--text); padding: 6px; text-align: left; }
 .account-main:hover .account-name { color: var(--accent); }
-.avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex: none;
-  background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: 18px; }
 .account-name { font-weight: 600; }
 .account-pin { grid-column: 1 / -1; padding: 0 6px 6px 58px; }
 
@@ -289,3 +287,34 @@ body.theater .controls { font-size: clamp(14px, 0.9vw, 24px); }
   .controls .settings { width: 100%; }
   .controls .settings select { flex: 1 1 0; min-width: 0; max-width: none; }
 }
+
+/* Profile → Password, and an admin's reset link to send */
+.password-form { display: grid; gap: 8px; max-width: 360px; }
+.password-form label { display: grid; gap: 4px; }
+.reset-link { margin-bottom: 10px; }
+.reset-link input { flex: 1 1 320px; min-width: 0; }
+
+/* Continue watching: a × on each, over the picture's corner (always there on touch screens, on hover otherwise) */
+.tile.continue { position: relative; }
+.tile-x { position: absolute; top: 6px; right: 6px; z-index: 2; width: 30px; height: 30px; padding: 0; border-radius: 50%;
+  background: rgba(0, 0, 0, .6); color: #fff; font-size: 18px; line-height: 1; display: grid; place-items: center; }
+.tile-x:hover { background: var(--danger); }
+@media (hover: hover) {
+  .tile.continue .tile-x { opacity: 0; transition: opacity .15s; }
+  .tile.continue:hover .tile-x, .tile.continue .tile-x:focus-visible { opacity: 1; }
+}
+
+/* Profile pictures: a circle, a photo or a built-in picture on its colour, in three sizes */
+.avatar { display: inline-grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden; object-fit: cover;
+  vertical-align: middle; line-height: 1; user-select: none; background: var(--border); }
+.avatar-sm { width: 26px; height: 26px; font-size: 16px; }
+.avatar-md { width: 44px; height: 44px; font-size: 26px; }
+.avatar-lg { width: 96px; height: 96px; font-size: 58px; }
+.usermenu > summary { display: inline-flex; align-items: center; gap: 6px; }
+.user-cell { white-space: nowrap; }
+.picture-section { display: grid; gap: 12px; margin-bottom: 8px; }
+.picture-actions { display: grid; gap: 6px; }
+.avatar-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.avatar-choice { background: transparent; padding: 3px; border: 2px solid transparent; border-radius: 50%; }
+.avatar-choice:hover { border-color: var(--border); }
+.avatar-choice.chosen { border-color: var(--accent); }
