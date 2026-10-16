@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.5.1
+### ✨ Features and improvements
 - **Switch user**: everyone signed in on a device (with "Keep me signed in") is listed under your name → Switch user
   and on the sign-in page, to switch between without a password, like Google accounts or Netflix profiles. Add another
   account from there; sign out one or all. An account can ask for a PIN before others switch into it (Profile → Switch
@@ -19,6 +26,9 @@
   `Transcoding:ToneMapHdr` turns it off. See docs/configuration.md.
 
 ### 🐞 Bug fixes
+- 4K transcodes and HDR tone mapping ([!8](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/8)) (@acalcutt)
+- Switch user: accounts signed in on a device, with an optional PIN ([!7](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/7)) (@acalcutt)
+- Admin two-step verification (passkeys / authenticator app), and shows with several series ([!5](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/5)) (@acalcutt)
 - **A show's other series are told apart**: season folders named for another series of the show (`UK - Season 01`,
   `All Stars - Season 02`, `Down Under - S01`, `Global All Stars Season 01`) used to be merged into the show's own
   seasons by the episode numbers in the file names. Each is its own series now, and files loose in the show's folder
