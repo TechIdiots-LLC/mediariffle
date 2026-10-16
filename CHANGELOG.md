@@ -2,8 +2,8 @@
 
 ## master
 ### ✨ Features and improvements
-- **Change your password** under Profile → Password (the current one first; your other devices are signed out, this
-  one stays signed in).
+- **Change your password** under Profile → Password (the current one first, and with two-step verification set up, a
+  passkey or code too; your other devices are signed out, this one stays signed in).
 - **Password reset links**: Admin → Users → Reset password makes a one-time link (good for 24 hours) for someone who
   forgot theirs; they open it and choose a new password, so the admin never knows it. It signs them out everywhere
   else and lifts a lockout.

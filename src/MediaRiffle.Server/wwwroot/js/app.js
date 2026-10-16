@@ -4,7 +4,7 @@ import { Player, inTheater, exitTheater } from './player.js';
 import { startQueue, positionOf, clearQueue } from './queue.js';
 import { music, nowPlayingView, trackRows } from './music.js';
 import { avatarEl, BUILT_IN, photoToJpeg } from './avatar.js';
-import { adminGate, mfaSettings } from './mfa.js';
+import { adminGate, mfaSettings, askCheck } from './mfa.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
@@ -456,17 +456,27 @@ function passwordSection() {
   const pass = h('input', { type: 'password', autocomplete: 'new-password', required: true, minlength: 10 });
   const again = h('input', { type: 'password', autocomplete: 'new-password', required: true, minlength: 10 });
   const msg = h('p', { class: 'error' });
+  // With two-step verification set up, the server wants a check with it first: asked for here, then it carries on
+  const check = h('div');
+  const change = () => api('/api/auth/password', { method: 'POST', body: { current: current.value, new: pass.value } });
   const form = h('form', { class: 'password-form', onsubmit: async e => {
       e.preventDefault();
       msg.className = 'error';
+      msg.textContent = '';
       if (pass.value !== again.value) { msg.textContent = 'The two new passwords aren\'t the same.'; return; }
       try {
-        await api('/api/auth/password', { method: 'POST', body: { current: current.value, new: pass.value } });
+        try { await change(); }
+        catch (err) {
+          if (err.data?.mfa !== 'verify') throw err;
+          await askCheck(check);
+          await change();
+        }
         form.reset();
         msg.className = 'ok';
         msg.textContent = 'Password changed. Your other devices will need to sign in again.';
       } catch (err) { msg.textContent = err.message; }
     } },
+    check,
     h('label', {}, 'Current password', current),
     h('label', {}, 'New password', pass),
     h('label', {}, 'New password again', again),

@@ -13,7 +13,8 @@ public sealed record ResetPasswordRequest(string UserId, string Token, string Pa
 /// <summary>
 /// Passwords: a user changes their own (Profile → Password), and an admin makes a one-time reset link for someone who
 /// forgot theirs (Admin → Users), which that person opens to choose a new one, so the admin never knows it. Either
-/// way the account's other sign-ins end (its security stamp changes); a reset also lifts a lockout.
+/// way the account's other sign-ins end (its security stamp changes); a reset also lifts a lockout. Changing one's own
+/// wants a two-step check too, when the account has two-step verification.
 /// </summary>
 public static class PasswordEndpoints
 {
@@ -27,6 +28,10 @@ public static class PasswordEndpoints
         {
             var user = await users.GetUserAsync(me);
             if (user is null) return Results.Unauthorized();
+            // With two-step verification set up, a check with it just now as well: the password alone (phished, or used
+            // elsewhere) and a signed-in session mustn't be enough to lock the owner out
+            if (await Mfa.IsSetUpAsync(users, user) && !Mfa.IsFresh(me, Mfa.ChangeLifetime))
+                return Results.Json(new { error = "Confirm it's you first.", mfa = "verify" }, statusCode: StatusCodes.Status403Forbidden);
             if (await users.IsLockedOutAsync(user))
                 return Results.Json(new { error = "Too many wrong tries; try again in 15 minutes." }, statusCode: 423);
             if (!await users.CheckPasswordAsync(user, req.Current ?? ""))

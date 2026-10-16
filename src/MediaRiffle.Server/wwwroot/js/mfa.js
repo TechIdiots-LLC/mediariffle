@@ -219,6 +219,17 @@ function recoveryCodes(list, onDone, doneLabel = 'Continue') {
  * In place of Admin until this session has verified: a check, or (nothing set up yet) the guided setup. `onDone` opens
  * Admin.
  */
+/**
+ * Asks for a check with a passkey or code the user already has, in `box` (something the server wants one for first,
+ * such as changing the password); resolves once it's passed, and the box empties again.
+ */
+export async function askCheck(box) {
+  const s = await status();
+  return new Promise(resolve => mount(box, h('div', { class: 'card' },
+    h('h3', {}, 'Confirm it\'s you with a passkey or code you already have'),
+    verifyBox(s, () => { mount(box); resolve(); }))));
+}
+
 export async function adminGate(view, onDone) {
   const s = await status();
   if (!s.required || s.verified) { onDone(); return; }
