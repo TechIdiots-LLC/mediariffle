@@ -112,7 +112,8 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--bord
 
 /* Player */
 .player { position: relative; background: #000; border-radius: var(--radius); overflow: hidden; }
-.player video { width: 100%; max-height: calc(100vh - 170px); display: block; background: #000; }
+/* As tall as the screen allows with the controls in view; dvh, as iPhone Safari counts its toolbars in vh */
+.player video { width: 100%; max-height: calc(100vh - 190px); max-height: calc(100dvh - 190px); display: block; background: #000; }
 .player .spinner { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; pointer-events: none; font-size: 14px; }
 .controls { display: grid; gap: 8px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--radius) var(--radius); }
 .controls .seek { width: 100%; }
@@ -155,9 +156,6 @@ body.theater .player video { width: 100%; height: 100%; max-height: none; object
 body.theater .controls { position: absolute; left: 3vw; right: 3vw; bottom: 3vh; border: 1px solid var(--border); border-radius: var(--radius); opacity: .92; transition: opacity .3s; }
 body.theater .player-wrap.idle, body.theater .player-wrap.idle .player { cursor: none; }
 body.theater .player-wrap.idle .controls { opacity: 0; pointer-events: none; }
-/* Only in full screen: the Hide button (the page has its own below the player otherwise) */
-.full-only { display: none; }
-body.theater .full-only { display: inline-flex; }
 /* What's playing (or next), over the top of the picture for a few seconds */
 .flash { position: absolute; top: 5vh; left: 4vw; max-width: 70%; padding: 12px 18px; border-radius: var(--radius);
   background: rgba(0, 0, 0, .65); color: #fff; pointer-events: none; opacity: 0; transition: opacity .4s; }
@@ -169,7 +167,7 @@ body.theater .full-only { display: inline-flex; }
 
 /* Transport buttons and volume */
 .transport { gap: 4px; }
-button.icon { min-width: 42px; padding: 8px 10px; font-size: 16px; line-height: 1; }
+button.icon { min-width: 2.6em; padding: .5em .6em; font-size: 1.07em; line-height: 1; }
 .volume { width: 90px; accent-color: var(--accent); }
 .controls .seek { accent-color: var(--accent); }
 
@@ -269,3 +267,25 @@ button.track-fav.on, button.track-fav.on:hover { color: #f5b301; }
   background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: 18px; }
 .account-name { font-weight: 600; }
 .account-pin { grid-column: 1 / -1; padding: 0 6px 6px 58px; }
+
+/* The player from a phone to a 4K screen. Its page isn't held to the others' 1400px: the picture grows to fill the
+   screen's height (16:9, controls in view), so a large screen gets a large picture; never narrower than before. The
+   controls' text grows a little with the screen (buttons are sized in em), to stay readable on a TV. */
+body.play-page main { max-width: max(1400px, calc((100dvh - 210px) * 16 / 9)); }
+.controls { font-size: clamp(14px, 0.3vw + 10px, 20px); }
+.controls-row { row-gap: 8px; }
+.controls .settings, .controls .screens, .controls .sound { gap: 6px; }
+body.theater .controls { font-size: clamp(14px, 0.9vw, 24px); }
+@media (max-width: 640px) {
+  /* A phone: the picture edge to edge, the controls in whole groups (settings on a row of their own, sharing it) */
+  body.play-page main { padding: 8px 0; }
+  body.play-page main > :not(.player-wrap) { margin-left: 8px; margin-right: 8px; }
+  body.play-page main > h1 { font-size: 19px; }
+  .player { border-radius: 0; }
+  .controls { border-radius: 0; border-left: 0; border-right: 0; padding: 8px; }
+  .controls .transport { gap: 2px; }
+  .controls button.icon { min-width: 2.3em; padding: .45em .4em; }
+  .controls .time { min-width: 0; font-size: 13px; }
+  .controls .settings { width: 100%; }
+  .controls .settings select { flex: 1 1 0; min-width: 0; max-width: none; }
+}

@@ -87,7 +87,9 @@ function numberPage(hash) {
     pageNumber += 1;
     try { history.replaceState({ ...(history.state ?? {}), page: pageNumber }, ''); } catch { }
   }
-  backButton.hidden = /^#?\/?$/.test(hash) || /^#\/(login|setup|join\/)/.test(hash);
+  // The player's page uses the screen's width (a large or 4K screen gets a large picture); the others keep theirs
+  document.body.classList.toggle('play-page', /^#\/play\//.test(hash));
+  backButton.hidden =/^#?\/?$/.test(hash) || /^#\/(login|setup|join\/)/.test(hash);
 }
 
 async function route() {
@@ -773,8 +775,8 @@ async function playView(fileId) {
   };
   mount(view, h('h1', {}, details.summary.title), queueBar, p.element(), lists, hideBox,
     h('p', { class: 'muted' }, [details.videoCodec, details.width ? `${details.width}×${details.height}` : null, details.container].filter(Boolean).join(' · ')));
-  // Arriving in full screen (the next one): what this is, for a few seconds, so it's easy to skip on
-  if (inTheater()) p.flash(details.summary.title, place ? `${place.label} · ${place.index + 1} of ${place.count}` : null);
+  // Arriving in full screen, or from a queue (the next one): what this is, for a few seconds, so it's easy to skip on
+  if (inTheater() || place) p.flash(details.summary.title, place ? `${place.label} · ${place.index + 1} of ${place.count}` : null);
   try { await p.start(); }
   catch (e) { p.status.textContent = e.message; }
 }
