@@ -77,10 +77,18 @@ async function route() {
     const m = hash.match(re);
     if (m) {
       try { await fn(m); } catch (e) { mount(view, errorBox(e)); }
+      toTop(hash);
       return;
     }
   }
   mount(view, h('p', {}, 'Page not found. ', h('a', { href: '#/' }, 'Home')));
+  toTop(hash);
+}
+
+// A new page starts at the top: the page isn't reloaded, so the browser would keep where the last one was scrolled to
+// (half way down a show, after scrolling a library). Not when the page sent us on (a redirect renders the next one).
+function toTop(hash) {
+  if ((location.hash || '#/') === hash) window.scrollTo(0, 0);
 }
 
 // ── Accounts ─────────────────────────────────────────────────────────────────
