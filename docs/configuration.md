@@ -81,6 +81,23 @@ To turn it on:
 Behind a reverse proxy, the proxy must be in `TrustedProxies` and send `X-Forwarded-Proto` (and `X-Forwarded-Host`
 if it changes the host name), or MediaRiffle sends Google an `http://` redirect address that doesn't match.
 
+## Switch user
+
+Several people can share one device (a family computer, a TV's browser) and switch between their accounts without
+typing passwords, as with Google accounts or Netflix profiles: **your name → Switch user** lists the accounts signed
+in on this device. The sign-in page shows them too ("Who's watching?"), with **Add another account** for someone new.
+Each account keeps its own favorites, lists, hidden things and watch positions.
+
+- Only sign-ins with **Keep me signed in** are listed, for 14 days after they were last used (as the sign-in itself
+  lasts). An account whose password changed, or whose two-step verification an admin reset, asks for its password again.
+- **Sign out** signs out the account in use and takes it off the device, then offers the others; **Sign out of all**
+  clears the device. **×** takes one account off.
+- An account's owner can set a **PIN** (4–8 digits) under **Profile → Switch user PIN**, so others on a shared device
+  can't switch into it; setting or removing it asks for the password. Wrong PINs count toward the account's lockout.
+- Switching to an admin doesn't open Admin: it still asks for its own two-step check.
+
+The list is a cookie on the device, encrypted with the server's keys, holding the accounts' ids and security stamps.
+
 ## Two-step verification for Admin
 
 Admin asks for a second step besides the password: a **passkey** (Face ID or Touch ID on an iPhone, iPad or Mac,

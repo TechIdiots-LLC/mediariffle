@@ -94,6 +94,8 @@ builder.Services.ConfigureApplicationCookie(o =>
     // An API answers 401/403 instead of redirecting to a login page
     o.Events.OnRedirectToLogin = c => { c.Response.StatusCode = StatusCodes.Status401Unauthorized; return Task.CompletedTask; };
     o.Events.OnRedirectToAccessDenied = c => { c.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
+    // Every sign-in keeps this device's list of accounts (Switch user) up to date, stamp included
+    o.Events.OnSigningIn = DeviceAccounts.OnSigningIn;
 });
 // A sign-in cookie carries the user's roles; it's checked against the database (and its roles refreshed, or the user
 // signed out if removed) every minute instead of every 30, so making someone an admin or a viewer takes effect quickly
@@ -185,6 +187,7 @@ app.UseApiAntiforgery();
 
 app.MapAuthEndpoints();
 app.MapMfaEndpoints();
+app.MapAccountSwitchEndpoints();
 app.MapAdminEndpoints();
 app.MapLibraryEndpoints();
 app.MapListEndpoints();
