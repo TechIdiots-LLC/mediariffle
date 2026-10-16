@@ -15,6 +15,29 @@ import { castAvailable, castMedia, onCastChange, isCasting } from './cast.js';
 const QUALITY_KEY = 'mediariffle.quality';
 const SPEED_KEY = 'mediariffle.kbps';
 
+// hls.js's segment loader, told how long each segment of an adaptive stream waited for the server's ffmpeg
+// (X-Encode-Wait). That time is left out of its measure of the connection: otherwise a level just started (ffmpeg
+// seeking and warming up) looks like a slow connection and one ffmpeg has run ahead on like a fast one, and Auto
+// switches back and forth. Hands on how fast that level's ffmpeg is going (X-Encode-Speed, video seconds a second).
+function encoderAwareLoader(Hls, onSpeed) {
+  return class extends Hls.DefaultConfig.loader {
+    load(context, config, callbacks) {
+      super.load(context, config, { ...callbacks, onSuccess: (response, stats, ctx, details) => {
+        const header = name => details?.getResponseHeader?.(name) ?? details?.headers?.get?.(name) ?? null;
+        const wait = Number(header('X-Encode-Wait')) || 0;
+        if (wait > 0) {
+          for (const st of new Set([stats, ctx?.frag?.stats])) {
+            if (st?.loading?.start) st.loading.start = Math.min(st.loading.start + wait, st.loading.first || st.loading.end);
+          }
+        }
+        const speed = parseFloat(header('X-Encode-Speed'));
+        if (Number.isFinite(speed)) onSpeed(ctx?.frag?.level, speed);
+        callbacks.onSuccess(response, stats, ctx, details);
+      } });
+    }
+  };
+}
+
 // What this browser decodes besides H.264, so the server can send x265 files as they are
 function decoderCaps() {
   const mse = window.ManagedMediaSource || window.MediaSource;
@@ -249,6 +272,9 @@ export class Player {
     this.playingSince = null;
     this.stalls = [];
     this.aheadSamples = [];
+    this.encodeSpeeds = new Map();   // adaptive level index → its ffmpeg's latest speed
+    this.slowLevels = new Map();     // levels ffmpeg couldn't keep up with → when that was seen
+    this.levelSince = 0;
     this.seekBar.max = String(Math.max(1, Math.floor(this.duration())));
     this.showQuality();
     this.attach(s);
@@ -361,6 +387,7 @@ export class Player {
       }
       return;
     }
+    this.capLevels(now);
     const top = this.hls && this.hls.levels.length && this.hls.currentLevel === this.topLevel();
     // Back up to the file as it is: never under a Medium or Low ceiling; sooner for High (best first)
     if (!this.underCeiling() && original && original.kbps > 0 && this.session.originalMode !== 'Transcode' && top &&
@@ -368,6 +395,26 @@ export class Player {
       this.lastSwitch = now;
       this.switchTo('original', 'Faster connection: the file as it is');
     }
+  }
+
+  // Auto never steps up to a level the server's ffmpeg has been seen making slower than it plays (it would stall,
+  // step down, and try again, over and over); that's tried again after 10 minutes, as the server's load changes.
+  // It also stays on a level 20 s before stepping up from it. Stepping down isn't held back.
+  capLevels(now) {
+    const levels = this.hls?.levels.length ?? 0;
+    if (!levels) return;
+    const cur = this.hls.currentLevel;
+    // Under 1.1: not enough ahead of playing to make up for a hiccup (the file server busy, a hard scene)
+    if (cur > 0 && this.encodeSpeeds.get(cur) < 1.1) {
+      this.slowLevels.set(cur, now);
+      this.encodeSpeeds.delete(cur);
+    }
+    for (const [l, t] of this.slowLevels) if (now - t > 600000) this.slowLevels.delete(l);
+    let cap = levels - 1;
+    for (const l of this.slowLevels.keys()) cap = Math.min(cap, l - 1);
+    if (cur >= 0 && now - this.levelSince < 20000) cap = Math.min(cap, cur);
+    const want = cap >= levels - 1 ? -1 : Math.max(0, cap);
+    if (this.hls.autoLevelCapping !== want) this.hls.autoLevelCapping = want;
   }
 
   // hls.js's index of the best level (it orders levels by bitrate, lowest first)
@@ -412,8 +459,12 @@ export class Player {
         startPosition: s.adaptive ? (s.seekTo || 0) : 0, maxBufferLength: 60, backBufferLength: 90,
         // Its bandwidth estimate starts from the last one measured here, so the first level fits the connection
         ...(est ? { abrEwmaDefaultEstimate: est * 1000 } : {}),
+        // Steps up only with plenty of room, judged over a longer stretch, so a few quick segments don't move it
+        abrEwmaFastVoD: 4, abrEwmaSlowVoD: 15, abrBandWidthUpFactor: 0.5,
+        ...(s.adaptive ? { fLoader: encoderAwareLoader(Hls, (level, speed) => { if (level >= 0) this.encodeSpeeds.set(level, speed); }) } : {}),
       });
       this.hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
+        this.levelSince = performance.now();
         const name = this.hls?.levels[data.level]?.name;
         this.playingLevel = s.levels?.find(l => l.id === name) ?? null;
         this.showQuality();

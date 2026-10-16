@@ -9,13 +9,24 @@ public enum StreamType { Video, Audio, Subtitle, Other }
 public sealed record ProbeStream(
     int Index, StreamType Type, string Codec, string? Profile, string? PixelFormat,
     int Width, int Height, int Channels, string? Language, string? Title, bool IsDefault, bool IsForced,
-    string? ColorTransfer = null, string? ColorPrimaries = null)
+    string? ColorTransfer = null, string? ColorPrimaries = null, int? DolbyVisionProfile = null, int? DolbyVisionCompatibility = null)
 {
     /// <summary>
     /// HDR video: HDR10 / HDR10+ / Dolby Vision's base layer (PQ, "smpte2084") or HLG ("arib-std-b67"). Converted to
     /// ordinary (SDR) H.264 it needs tone mapping, or it looks washed out.
     /// </summary>
-    public bool IsHdr => Type == StreamType.Video && ColorTransfer is "smpte2084" or "arib-std-b67";
+    public bool IsHdr => Type == StreamType.Video && (ColorTransfer is "smpte2084" or "arib-std-b67" || IsDolbyVisionOnly);
+
+    /// <summary>
+    /// Dolby Vision without an ordinary picture underneath (profile 5, compatibility 0: Dolby's own IPT-PQ colours, as
+    /// streaming services use). Anything but a Dolby Vision decoder shows it dark and green or purple, so it's never sent
+    /// as it is: converting it right takes libplacebo, which applies the file's Dolby Vision metadata. Profiles 7 and 8
+    /// carry HDR10 (or HLG, or SDR) underneath, which plays anywhere those do.
+    /// </summary>
+    public bool IsDolbyVisionOnly => DolbyVisionProfile == 5 || (DolbyVisionProfile is not null && DolbyVisionCompatibility == 0);
+
+    /// <summary>"Dolby Vision 8.1", "Dolby Vision 5", or null.</summary>
+    public string? DolbyVisionLabel => DolbyVisionProfile is { } p ? $"Dolby Vision {p}{(DolbyVisionCompatibility is { } c and > 0 ? $".{c}" : "")}" : null;
 
     /// <summary>Text subtitles can be turned into WebVTT; image ones (PGS, DVD) can only be burned into the video.</summary>
     public bool IsTextSubtitle => Type == StreamType.Subtitle &&
@@ -100,12 +111,13 @@ public sealed class ProbeResult
                 var tags = s.TryGetProperty("tags", out var t) ? t : default;
                 // Cover art is stored as a video stream with attached_pic; it isn't the video
                 if (type == StreamType.Video && Int(disposition, "attached_pic") == 1) { type = StreamType.Other; cover = true; }
+                var dv = type == StreamType.Video ? DolbyVision(s) : null;
                 streams.Add(new ProbeStream(
                     Int(s, "index"), type, Str(s, "codec_name") ?? "unknown", Str(s, "profile"), Str(s, "pix_fmt"),
                     Int(s, "width"), Int(s, "height"), Int(s, "channels"),
                     Str(tags, "language"), Str(tags, "title"),
                     Int(disposition, "default") == 1, Int(disposition, "forced") == 1,
-                    Str(s, "color_transfer"), Str(s, "color_primaries")));
+                    Str(s, "color_transfer"), Str(s, "color_primaries"), dv?.Profile, dv?.Compatibility));
             }
         }
         return new ProbeResult
@@ -118,6 +130,16 @@ public sealed class ProbeResult
             Tags = fileTags,
             HasCoverArt = cover,
         };
+    }
+
+    // A stream's Dolby Vision configuration record (ffprobe's side_data_list), or null when it has none
+    private static (int Profile, int Compatibility)? DolbyVision(JsonElement stream)
+    {
+        if (!stream.TryGetProperty("side_data_list", out var list) || list.ValueKind != JsonValueKind.Array) return null;
+        foreach (var sd in list.EnumerateArray())
+            if (Str(sd, "side_data_type") == "DOVI configuration record")
+                return (Int(sd, "dv_profile"), Int(sd, "dv_bl_signal_compatibility_id"));
+        return null;
     }
 
     // A tag already set (from the container) is kept

@@ -2,10 +2,17 @@
 
 ## master
 ### ✨ Features and improvements
-- _...Add new stuff here..._
+- **Dolby Vision, and better HDR tone mapping with libplacebo**: when the server's ffmpeg has libplacebo and a Vulkan
+  GPU works (checked at start), converted HDR is tone-mapped with it on the GPU, applying Dolby Vision's metadata, and
+  HDR10 looks more natural than with zscale. Dolby Vision profile 5 (streaming services, web rips), which has no
+  ordinary picture underneath and showed dark and green or purple, is never sent as it is any more: it's converted.
+  Profiles 7 and 8 still play as the HDR10 they carry. `Transcoding:UseLibplacebo` turns it off. See docs/configuration.md.
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- **Auto quality settles down**: it kept switching levels on files the server converts at only a little faster than
+  they play (4K HDR, often). Waiting for ffmpeg to make a segment no longer counts as a slow connection, Auto no longer
+  steps up to a level ffmpeg can't keep up with (it tries again after 10 minutes), steps up only with plenty of room,
+  and stays on a level 20 s before stepping up from it. Safari's own player and a Chromecast pick levels as before.
 
 ## 0.6.1
 ### ✨ Features and improvements

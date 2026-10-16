@@ -99,3 +99,60 @@ public class UhdHdrTests
         Assert.Equal("bt2020", probe.Video.ColorPrimaries);
     }
 }
+
+public class DolbyVisionTests
+{
+    private static ProbeResult Probe(int? profile, int? compat, string transfer = "smpte2084") => ProbeResult.Parse($$"""
+        { "format": { "format_name": "matroska,webm", "duration": "7200", "bit_rate": "40000000" },
+          "streams": [ { "index": 0, "codec_type": "video", "codec_name": "hevc", "profile": "Main 10", "pix_fmt": "yuv420p10le",
+                         "width": 3840, "height": 2160, "color_transfer": "{{transfer}}", "color_primaries": "bt2020"
+                         {{(profile is null ? "" : $$""", "side_data_list": [ { "side_data_type": "DOVI configuration record", "dv_profile": {{profile}}, "dv_bl_signal_compatibility_id": {{compat}} } ]""")}} },
+                       { "index": 1, "codec_type": "audio", "codec_name": "aac", "channels": 2 } ] }
+        """);
+
+    [Fact]
+    public void TheProfileIsReadFromFfprobe()
+    {
+        var p8 = Probe(8, 1).Video!;
+        Assert.Equal(8, p8.DolbyVisionProfile);
+        Assert.Equal("Dolby Vision 8.1", p8.DolbyVisionLabel);
+        Assert.False(p8.IsDolbyVisionOnly);   // HDR10 underneath
+        var p5 = Probe(5, 0, transfer: "unknown").Video!;
+        Assert.True(p5.IsDolbyVisionOnly);
+        Assert.True(p5.IsHdr);                // even with no PQ transfer said
+        Assert.Null(Probe(null, null).Video!.DolbyVisionLabel);
+    }
+
+    [Fact]
+    public void Profile5IsNeverSentAsItIs()
+    {
+        var hevcDevice = new ClientCaps(Hevc: true, Hevc10: true);
+        Assert.Equal(PlaybackMode.Transcode, PlaybackPlanner.Decide(Probe(5, 0), ".mkv", null, null, null, hevcDevice).Mode);
+        // Profile 8.1 plays as the HDR10 it carries
+        Assert.Equal(PlaybackMode.Remux, PlaybackPlanner.Decide(Probe(8, 1), ".mkv", null, null, null, hevcDevice).Mode);
+    }
+
+    [Fact]
+    public void LibplaceboTonemapsAndScalesInOneOnVulkan()
+    {
+        var plan = new PlaybackPlan(PlaybackMode.Transcode, Probe(5, 0).Video, null, null, "test",
+            Levels: [Quality.Level("1080")!], Libplacebo: true);
+        var args = PlaybackPlanner.SegmentArguments(plan, Quality.Level("1080")!, "/m/a.mkv", 0, new TranscodingOptions { Encoder = VideoEncoder.Nvenc });
+        Assert.Equal("vulkan", args[args.IndexOf("-init_hw_device") + 1]);
+        Assert.True(args.IndexOf("-init_hw_device") < args.IndexOf("-i"));
+        var vf = args[args.IndexOf("-vf") + 1];
+        Assert.StartsWith("libplacebo=w=-2:h=1080:", vf);
+        Assert.Contains("apply_dolbyvision=1", vf);
+        Assert.DoesNotContain("zscale", vf);
+        Assert.Equal("bt709", args[args.IndexOf("-color_trc") + 1]);
+    }
+
+    [Fact]
+    public void WithoutLibplaceboNoVulkanDeviceIsAsked()
+    {
+        var plan = new PlaybackPlan(PlaybackMode.Transcode, Probe(8, 1).Video, null, null, "test", Levels: [Quality.Level("1080")!], ToneMap: true);
+        var args = PlaybackPlanner.SegmentArguments(plan, Quality.Level("1080")!, "/m/a.mkv", 0, new TranscodingOptions());
+        Assert.DoesNotContain("-init_hw_device", args);
+        Assert.Contains("zscale", args[args.IndexOf("-vf") + 1]);
+    }
+}

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
 using MediaRiffle.Server.Data;
@@ -110,9 +111,24 @@ public static partial class PlaybackEndpoints
                 };
             }
 
-            // HDR video that's converted is tone-mapped to ordinary colours (when this ffmpeg can)
-            if (plan.Mode == PlaybackMode.Transcode && plan.Video is { IsHdr: true } && ffmpeg.CanToneMap)
-                plan = plan with { ToneMap = true, Reason = plan.Reason + "; HDR tone-mapped" };
+            // HDR video that's converted is tone-mapped to ordinary colours: with libplacebo when it works here (Dolby
+            // Vision's metadata applied; not with VA-API, whose frames go to its own GPU device), else with zscale
+            if (plan.Mode == PlaybackMode.Transcode && plan.Video is { IsHdr: true } hdr)
+            {
+                if (ffmpeg.CanLibplacebo && t.Encoder != VideoEncoder.Vaapi)
+                    plan = plan with
+                    {
+                        Libplacebo = true,
+                        Reason = plan.Reason + (hdr.DolbyVisionLabel is { } dv ? $"; HDR tone-mapped, {dv} applied" : "; HDR tone-mapped (libplacebo)"),
+                    };
+                else if (ffmpeg.CanToneMap)
+                    plan = plan with
+                    {
+                        ToneMap = true,
+                        Reason = plan.Reason + "; HDR tone-mapped" +
+                                 (hdr.IsDolbyVisionOnly ? $" ({hdr.DolbyVisionLabel}'s colours need an ffmpeg with libplacebo and a Vulkan GPU)" : ""),
+                    };
+            }
 
             var start = req.Start;
             if (start is null)
@@ -231,9 +247,12 @@ public static partial class PlaybackEndpoints
         {
             var m = AdaptiveSegmentName().Match(segment);
             if (!m.Success || sessions.Get(sessionId) is not { Plan.IsAdaptive: true } s) return Results.NotFound();
-            var file = await sessions.SegmentAsync(s, level, int.Parse(m.Groups[1].Value), ct);
-            if (file is null || !File.Exists(file)) return Results.NotFound();
+            var made = await sessions.SegmentAsync(s, level, int.Parse(m.Groups[1].Value), ct);
+            if (made.File is not { } file || !File.Exists(file)) return Results.NotFound();
             ctx.Response.Headers.CacheControl = "private, max-age=3600";
+            // For the player's level picking: time spent waiting for ffmpeg isn't the connection being slow
+            ctx.Response.Headers["X-Encode-Wait"] = made.WaitMs.ToString(CultureInfo.InvariantCulture);
+            if (made.Speed is { } speed) ctx.Response.Headers["X-Encode-Speed"] = speed.ToString("0.00", CultureInfo.InvariantCulture);
             return Results.File(file, "video/mp2t");
         });
 

@@ -64,6 +64,39 @@ internal sealed class SegmentEncoder(int level, int startSegment, string directo
     public void AddError(string line) { lock (_errors) { if (_errors.Length < 8000) _errors.AppendLine(line); } }
     public string Errors { get { lock (_errors) return _errors.ToString(); } }
 
+    /// <summary>Where it had got to (seconds of video) and when (Environment.TickCount64), over the last 10 s or so.</summary>
+    private readonly Queue<(long Ms, double Out)> _progress = new();
+
+    /// <summary>A line of ffmpeg's -progress output; out_time_us is how far it has written.</summary>
+    public void Progress(string line)
+    {
+        if (!line.StartsWith("out_time_us=", StringComparison.Ordinal) || !long.TryParse(line.AsSpan(12), out var us) || us <= 0) return;
+        long now = Environment.TickCount64;
+        lock (_progress)
+        {
+            _progress.Enqueue((now, us / 1e6));
+            while (_progress.Count > 2 && now - _progress.Peek().Ms > 10_000) _progress.Dequeue();
+        }
+    }
+
+    /// <summary>
+    /// Seconds of video made per second lately: under 1, it falls behind playing. Null until it has written for a few
+    /// seconds, so starting up (seeking, the first frames) doesn't count. Measured to now, so a stall pulls it down.
+    /// </summary>
+    public double? Speed
+    {
+        get
+        {
+            lock (_progress)
+            {
+                if (_progress.Count < 2) return null;
+                var first = _progress.Peek();
+                double span = (Environment.TickCount64 - first.Ms) / 1000.0;
+                return span < 3 ? null : (_progress.Last().Out - first.Out) / span;
+            }
+        }
+    }
+
     /// <summary>Adds the segments ffmpeg has finished since the last look (its list.csv gets a line per finished one).</summary>
     public void Collect(StreamSession s)
     {
@@ -95,6 +128,13 @@ internal sealed class SegmentEncoder(int level, int startSegment, string directo
         }
     }
 }
+
+/// <summary>
+/// A segment of an adaptive stream: its file (null when it couldn't be made), how long the request waited for ffmpeg
+/// to make it, and how fast that level's ffmpeg is going (seconds of video a second), when known. The player keeps
+/// the wait out of its measure of the connection, and doesn't pick a level ffmpeg can't keep up with.
+/// </summary>
+public sealed record SegmentResult(string? File, int WaitMs = 0, double? Speed = null);
 
 public sealed class SessionLimitException(string message) : Exception(message);
 
@@ -205,22 +245,24 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
     /// <summary>
     /// Segment <paramref name="segment"/> of level <paramref name="level"/>: the file, once made. Made already, it's
     /// there; coming soon from the ffmpeg running for that level, it's waited for; otherwise that ffmpeg is replaced
-    /// by one making this level from this segment on (one ffmpeg per stream). Null when it couldn't be made.
+    /// by one making this level from this segment on (one ffmpeg per stream). File is null when it couldn't be made.
     /// </summary>
-    public async Task<string?> SegmentAsync(StreamSession s, int level, int segment, CancellationToken ct)
+    public async Task<SegmentResult> SegmentAsync(StreamSession s, int level, int segment, CancellationToken ct)
     {
-        if (!s.Plan.IsAdaptive || level < 0 || level >= s.Plan.Levels!.Count || segment < 0 || segment >= s.SegmentCount) return null;
+        if (!s.Plan.IsAdaptive || level < 0 || level >= s.Plan.Levels!.Count || segment < 0 || segment >= s.SegmentCount) return new(null);
+        Stopwatch? waiting = null;   // started when it has to be made
         s.LastRequestedSegment = segment;
-        if (s.Segments.TryGetValue((level, segment), out var done)) return done;
+        if (s.Segments.TryGetValue((level, segment), out var done)) return Made(done);
 
+        waiting = Stopwatch.StartNew();
         SegmentEncoder? mine;
         await s.EncoderLock.WaitAsync(ct);
         try
         {
-            if (!_sessions.ContainsKey(s.Id)) return null;   // stopped meanwhile
+            if (!_sessions.ContainsKey(s.Id)) return new(null);   // stopped meanwhile
             var e = s.Encoder;
             e?.Collect(s);
-            if (s.Segments.TryGetValue((level, segment), out done)) return done;
+            if (s.Segments.TryGetValue((level, segment), out done)) return Made(done);
             bool coming = e is { Process.HasExited: false } && e.Level == level &&
                           segment >= e.StartSegment && segment <= Math.Max(e.Latest, e.StartSegment - 1) + WaitAhead;
             mine = coming ? e! : StartEncoder(s, level, segment);
@@ -232,17 +274,21 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
         {
             ct.ThrowIfCancellationRequested();
             mine.Collect(s);
-            if (s.Segments.TryGetValue((level, segment), out done)) return done;
+            if (s.Segments.TryGetValue((level, segment), out done)) return Made(done);
             // Replaced (the player switched level or seeked meanwhile), or ffmpeg ended without it
             if (s.Encoder != mine || mine.Process.HasExited)
             {
                 mine.Collect(s);
-                return s.Segments.GetValueOrDefault((level, segment));
+                return Made(s.Segments.GetValueOrDefault((level, segment)));
             }
             s.LastAccessUtc = DateTime.UtcNow;   // a slow encode isn't an idle viewer
             await Task.Delay(100, ct);
         }
-        return null;
+        return new(null);
+
+        // With how long it was waited for, and how fast this level's ffmpeg is going (when it's the one running)
+        SegmentResult Made(string? file) => new(file, (int)(waiting?.ElapsedMilliseconds ?? 0),
+            s.Encoder is { Level: var l, Process.HasExited: false } now && l == level ? now.Speed : null);
     }
 
     /// <summary>Replaces the session's ffmpeg with one making <paramref name="level"/> from <paramref name="segment"/> on. Under EncoderLock.</summary>
@@ -258,6 +304,7 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
         var e = new SegmentEncoder(level, segment, dir, p);
         p.ErrorDataReceived += (_, a) => { if (a.Data is { Length: > 0 } line) e.AddError(line); };
+        p.OutputDataReceived += (_, a) => { if (a.Data is { Length: > 0 } line) e.Progress(line); };
         p.Exited += (_, _) =>
         {
             // Killed on purpose (replaced, stopped) isn't news; ffmpeg failing on its own is
@@ -267,7 +314,7 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
         };
         p.Start();
         p.BeginErrorReadLine();
-        p.StandardOutput.Close();
+        p.BeginOutputReadLine();
         s.Encoder = e;
         log.LogInformation("Session {Id}: {Level} from {Start}s", s.Id, lvl.Label, segment * s.SegmentSeconds);
         return e;

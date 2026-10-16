@@ -35,6 +35,11 @@ public sealed class TranscodingOptions
     /// the zscale filter (libzimg), as most builds have; costs CPU time.
     /// </summary>
     public bool ToneMapHdr { get; set; } = true;
+    /// <summary>
+    /// Tone-map HDR with libplacebo when this ffmpeg has it and a Vulkan GPU works (checked at start): better HDR10, and
+    /// Dolby Vision's metadata applied, which Dolby Vision 5 needs to look right. Off: zscale (with ToneMapHdr).
+    /// </summary>
+    public bool UseLibplacebo { get; set; } = true;
     /// <summary>Peak video bitrate of a transcode, in kbit/s.</summary>
     public int MaxVideoKbps { get; set; } = 8000;
     /// <summary>Streams transcoding or remuxing at once, across all users; more are refused until one ends.</summary>

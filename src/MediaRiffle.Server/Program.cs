@@ -152,7 +152,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 builder.Services.AddCors(o => o.AddPolicy("stream", p =>
     // The stream URLs carry their own unguessable session id instead of a cookie, so a Chromecast (another
     // origin) can fetch them; nothing else is shared
-    p.AllowAnyOrigin().WithMethods("GET", "HEAD").WithHeaders("Range").WithExposedHeaders("Content-Range", "Accept-Ranges", "Content-Length")));
+    p.AllowAnyOrigin().WithMethods("GET", "HEAD").WithHeaders("Range").WithExposedHeaders("Content-Range", "Accept-Ranges", "Content-Length", "X-Encode-Wait", "X-Encode-Speed")));
 
 // Enums by name in the API ("Shows", not 0)
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
