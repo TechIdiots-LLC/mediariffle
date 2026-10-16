@@ -49,6 +49,8 @@ public static class MfaEndpoints
                 setUp = user.AuthenticatorEnabled || passkeys.Count > 0,
                 verified = Mfa.IsFresh(me, TimeSpan.FromHours(Math.Max(1, o.Hours))),
                 passwordConfirmed = Mfa.PasswordConfirmed(me),
+                // Recent enough to add or remove a method (see Mfa.ChangeLifetime)
+                verifiedForChanges = Mfa.IsFresh(me, Mfa.ChangeLifetime),
             });
         });
 
@@ -223,7 +225,8 @@ public static class MfaEndpoints
     }
 
     /// <summary>
-    /// The user, if they may change how they verify: with something set up, after a recent check; with nothing yet, after
+    /// The user, if they may change how they verify: with something set up, after a check with it in the last
+    /// <see cref="Mfa.ChangeLifetime"/> (not just the one that keeps Admin open); with nothing yet, after
     /// confirming their password (or a check) — else a 403 saying which (<c>mfa</c> = "verify" or "password").
     /// <paramref name="removing"/>: taking something away (or new recovery codes) always wants a recent check.
     /// </summary>
@@ -232,7 +235,8 @@ public static class MfaEndpoints
     {
         var user = await users.GetUserAsync(me);
         if (user is null) return (null, Results.Unauthorized());
-        if (Mfa.IsFresh(me, TimeSpan.FromHours(Math.Max(1, options.Value.AdminMfa.Hours)))) return (user, null);
+        // Adding or removing a method wants a check with one already set up, just now, not the one that keeps Admin open
+        if (Mfa.IsFresh(me, Mfa.ChangeLifetime)) return (user, null);
         if (!removing && !await Mfa.IsSetUpAsync(users, user) && Mfa.PasswordConfirmed(me)) return (user, null);
         var setUp = await Mfa.IsSetUpAsync(users, user);
         return (null, Results.Json(new

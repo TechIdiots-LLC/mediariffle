@@ -250,14 +250,14 @@ export async function mfaSettings(box) {
   // Changing things wants a recent check: ask for one, then do it. requireCheck asks before starting something that
   // takes several steps, rather than partway through
   const requireCheck = async () => {
-    if (!(await status()).verified) throw Object.assign(new Error('Confirm it\'s you first.'), { data: { mfa: 'verify' } });
+    if (!(await status()).verifiedForChanges) throw Object.assign(new Error('Confirm it\'s you first.'), { data: { mfa: 'verify' } });
   };
   const withCheck = fn => async () => {
     msg.textContent = '';
     try { await fn(); }
     catch (e) {
       if (e.data?.mfa === 'verify') {
-        mount(check, h('div', { class: 'card' }, h('h3', {}, 'Confirm it\'s you first'),
+        mount(check, h('div', { class: 'card' }, h('h3', {}, 'Confirm it\'s you with a passkey or code you already have'),
           verifyBox(await status(), async () => { mount(check); try { await fn(); } catch (err) { msg.textContent = err.message; } })));
       } else if (!cancelled(e)) msg.textContent = e.message;
     }
