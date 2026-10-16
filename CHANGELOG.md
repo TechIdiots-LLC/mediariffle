@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.6.1
+### ✨ Features and improvements
 - **Change your password** under Profile → Password (the current one first, and with two-step verification set up, a
   passkey or code too; your other devices are signed out, this one stays signed in).
 - **Password reset links**: Admin → Users → Reset password makes a one-time link (good for 24 hours) for someone who
@@ -16,6 +23,7 @@
   it again puts it back.
 
 ### 🐞 Bug fixes
+- Passwords ([!16](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/16)) (@acalcutt)
 - **Stopping at the credits counts as watched**: the last 8%, or the last 3 minutes of anything over 10 minutes (a
   long movie's credits ran past the old 7%), so those don't linger in Continue watching; ones saved before drop off too.
 
