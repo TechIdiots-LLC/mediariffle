@@ -9,7 +9,10 @@
   Profiles 7 and 8 still play as the HDR10 they carry. `Transcoding:UseLibplacebo` turns it off. See docs/configuration.md.
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- **Auto quality settles down**: it kept switching levels on files the server converts at only a little faster than
+  they play (4K HDR, often). Waiting for ffmpeg to make a segment no longer counts as a slow connection, Auto no longer
+  steps up to a level ffmpeg can't keep up with (it tries again after 10 minutes), steps up only with plenty of room,
+  and stays on a level 20 s before stepping up from it. Safari's own player and a Chromecast pick levels as before.
 
 ## 0.6.1
 ### ✨ Features and improvements

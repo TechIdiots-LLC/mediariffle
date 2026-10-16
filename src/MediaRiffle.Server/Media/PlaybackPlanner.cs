@@ -311,7 +311,8 @@ public static class PlaybackPlanner
     public static List<string> SegmentArguments(PlaybackPlan plan, QualityLevel level, string input, int startSegment, TranscodingOptions o)
     {
         var d = o.SegmentSeconds;
-        var a = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
+        // -progress: how far it has got, twice a second on stdout, for its speed (see SegmentEncoder)
+        var a = new List<string> { "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-y" };
         if (o.Encoder == VideoEncoder.Vaapi) a.AddRange(["-vaapi_device", o.VaapiDevice]);
         if (plan.Libplacebo) a.AddRange(["-init_hw_device", "vulkan"]);
         // -ss even at 0: the first frame of a run is then always the first one on or after the boundary

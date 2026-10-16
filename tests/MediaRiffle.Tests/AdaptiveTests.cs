@@ -93,6 +93,16 @@ public class AdaptiveTests
     }
 
     [Fact]
+    public void SegmentArgumentsReportProgress()
+    {
+        // Its speed (out_time_us on stdout) is what keeps Auto off levels ffmpeg can't keep up with
+        var args = PlaybackPlanner.SegmentArguments(Plan(V(1920, 1080), A(), "720"), Quality.Level("720")!, "/m/a.mkv", 0, new TranscodingOptions());
+        Assert.Equal("pipe:1", args[args.IndexOf("-progress") + 1]);
+        Assert.Contains("-nostats", args);
+        Assert.True(args.IndexOf("-progress") < args.IndexOf("-i"));
+    }
+
+    [Fact]
     public void SegmentArgumentsAtZeroStillSeek()
     {
         var args = PlaybackPlanner.SegmentArguments(Plan(V(1920, 1080), A(), "720"), Quality.Level("720")!, "/m/a.mkv", 0, new TranscodingOptions());
