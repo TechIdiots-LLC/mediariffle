@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.6.2
+### ✨ Features and improvements
 - **Dolby Vision, and better HDR tone mapping with libplacebo**: when the server's ffmpeg has libplacebo and a Vulkan
   GPU works (checked at start), converted HDR is tone-mapped with it on the GPU, applying Dolby Vision's metadata, and
   HDR10 looks more natural than with zscale. Dolby Vision profile 5 (streaming services, web rips), which has no
@@ -9,6 +16,7 @@
   Profiles 7 and 8 still play as the HDR10 they carry. `Transcoding:UseLibplacebo` turns it off. See docs/configuration.md.
 
 ### 🐞 Bug fixes
+- Dolby vision ([!18](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/18)) (@acalcutt)
 - **Auto quality settles down**: it kept switching levels on files the server converts at only a little faster than
   they play (4K HDR, often). Waiting for ffmpeg to make a segment no longer counts as a slow connection, Auto no longer
   steps up to a level ffmpeg can't keep up with (it tries again after 10 minutes), steps up only with plenty of room,
