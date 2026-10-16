@@ -1,0 +1,8 @@
+#!/bin/sh
+# Before an upgrade replaces /opt/mediariffle: settings someone put in the program folder's appsettings.json would go
+# with it, so it's saved; postinst carries them into /etc/mediariffle/appsettings.json with the new version.
+set -e
+if [ "$1" = "upgrade" ] && [ -f /opt/mediariffle/appsettings.json ] && [ -d /var/lib/mediariffle ]; then
+    cp /opt/mediariffle/appsettings.json /var/lib/mediariffle/appsettings.from-program-folder.json
+fi
+exit 0

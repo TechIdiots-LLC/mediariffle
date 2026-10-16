@@ -2,7 +2,8 @@
 
 MediaRiffle reads, in order (later wins):
 
-1. `appsettings.json` next to the program (defaults; replaced on every upgrade, don't edit it there)
+1. `appsettings.json` next to the program (logging only; replaced on every upgrade, so don't put settings there. If
+   some are there anyway, the installers carry them into file 2 on the next upgrade, and the log warns at start)
 2. `/etc/mediariffle/appsettings.json` on Linux, `%ProgramData%\MediaRiffle\appsettings.json` on Windows
 3. Environment variables, with `__` for nesting: `MediaRiffle__Transcoding__Encoder=Vaapi`
 

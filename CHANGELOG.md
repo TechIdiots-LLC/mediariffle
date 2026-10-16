@@ -7,6 +7,12 @@
 ### 🐞 Bug fixes
 - **Pages open at the top**: going to a show (or any page) after scrolling another one opened it as far down as the
   last one was scrolled.
+- **Upgrades keep settings left in the program folder**: settings put in the program folder's `appsettings.json`
+  (rather than `%ProgramData%\MediaRiffle\appsettings.json` or `/etc/mediariffle/appsettings.json`) were lost when an
+  upgrade replaced it. The Windows installer, the `.deb` and `install.sh` now save it first, and the new version
+  carries whatever wasn't a default (Google sign-in, trusted proxies, …) into the settings file, which wins where it
+  set something itself (backed up first). That file no longer lists the defaults, and the log warns at start about
+  settings left there.
 
 ## 0.5.1
 ### ✨ Features and improvements

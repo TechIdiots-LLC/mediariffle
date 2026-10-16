@@ -120,6 +120,13 @@ Section "${APP_NAME} service (required)" SecApp
 
   !insertmacro StopService
 
+  ; Settings someone put in the program folder's appsettings.json would go with the old files: saved here, and carried
+  ; into %ProgramData%\MediaRiffle\appsettings.json by the new version below
+  Delete "$TEMP\mediariffle-old-appsettings.json"
+  ${If} ${FileExists} "$INSTDIR\appsettings.json"
+    CopyFiles /SILENT "$INSTDIR\appsettings.json" "$TEMP\mediariffle-old-appsettings.json"
+  ${EndIf}
+
   ; Upgrade: let the installed version remove its own files first. /UPGRADE keeps the service and registration.
   IfFileExists "$INSTDIR\uninstall.exe" 0 +3
     ExecWait '"$INSTDIR\uninstall.exe" /S /UPGRADE _?=$INSTDIR'
@@ -159,6 +166,11 @@ Section "${APP_NAME} service (required)" SecApp
   IfFileExists "$APPDATA\MediaRiffle\appsettings.json" +3 0
     SetOutPath "$APPDATA\MediaRiffle"
     File "/oname=appsettings.json" "${CONFIG_TEMPLATE}"
+  ${If} ${FileExists} "$TEMP\mediariffle-old-appsettings.json"
+    nsExec::ExecToLog '"$INSTDIR\${APP_EXE}" --carry-settings "$TEMP\mediariffle-old-appsettings.json"'
+    Pop $0
+    Delete "$TEMP\mediariffle-old-appsettings.json"
+  ${EndIf}
   nsExec::ExecToLog 'icacls "$APPDATA\MediaRiffle" /grant "${SERVICE_ACCOUNT}:(OI)(CI)M"'
   Pop $0
   SetOutPath "$INSTDIR"
