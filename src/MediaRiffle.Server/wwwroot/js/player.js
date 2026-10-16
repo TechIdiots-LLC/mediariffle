@@ -56,6 +56,17 @@ const followTheater = () => document.body.classList.toggle('theater', inTheater(
 document.addEventListener('fullscreenchange', followTheater);
 document.addEventListener('webkitfullscreenchange', followTheater);
 
+// Whether this browser lets a page set a video's volume: iOS keeps it at 1 (the hardware buttons set it)
+let volumeCheck = null;
+function volumeWorks() {
+  if (volumeCheck === null) {
+    const v = document.createElement('video');
+    v.volume = 0.5;
+    volumeCheck = v.volume === 0.5;
+  }
+  return volumeCheck;
+}
+
 function mountFlash(el, text, sub) {
   el.replaceChildren(h('div', { class: 'flash-title' }, text), sub ? h('div', { class: 'flash-sub' }, sub) : '');
   el.classList.add('on');
@@ -100,14 +111,15 @@ export class Player {
     this.backBtn = btn('↺10', 'Back 10 seconds (←)', () => this.seekBy(-10));
     this.playBtn = h('button', { class: 'icon', title: 'Play / pause (space)', onclick: () => this.togglePlay() }, '▶');
     this.fwdBtn = btn('10↻', 'Forward 10 seconds (→)', () => this.seekBy(10));
-    // In full screen: hide this one (the page sets onHide) and go on to the next
-    this.hideBtn = h('button', { class: 'secondary full-only', title: 'Hide this and go to the next one',
+    // Hide this one (the page sets onHide) and go on to the next, in or out of full screen
+    this.hideBtn = h('button', { class: 'secondary', title: 'Hide this and go to the next one',
       onclick: e => { e.stopPropagation(); this.onHide?.(); } }, '🚫 Hide');
     this.stopBtn = btn('⏹', 'Stop', () => this.stop());
     this.nextBtn = btn('⏭', 'Next (N)', () => this.goNext());
     this.muteBtn = btn('🔊', 'Mute (M)', () => { this.video.muted = !this.video.muted; });
+    // iPhone and iPad ignore a page's volume (it's the hardware buttons'): no slider there, just Mute
     this.volume = h('input', { type: 'range', class: 'volume', min: 0, max: 1, step: 0.05, title: 'Volume (↑ ↓)',
-      oninput: () => { this.video.volume = +this.volume.value; this.video.muted = false; } });
+      hidden: !volumeWorks(), oninput: () => { this.video.volume = +this.volume.value; this.video.muted = false; } });
     this.setNavigation(this.nav);
     const savedVolume = +recall('mediariffle.volume');
     this.video.volume = recall('mediariffle.volume') !== null && savedVolume >= 0 && savedVolume <= 1 ? savedVolume : 1;
@@ -184,17 +196,20 @@ export class Player {
         this.video, this.status, this.flashEl = h('div', { class: 'flash', 'aria-live': 'polite' })),
       this.controls = h('div', { class: 'controls' },
         this.seekBar,
-        h('div', { class: 'row' },
+        // In groups, so a narrow screen wraps them whole: playing, time and sound; the picture's settings; screens
+        h('div', { class: 'row controls-row' },
           h('span', { class: 'row transport' }, this.playBtn, this.prevBtn, this.nextBtn, this.backBtn, this.fwdBtn, this.stopBtn, this.hideBtn),
           this.time,
-          h('span', { class: 'row' }, this.muteBtn, this.volume),
-          this.qualitySelect,
-          this.details.audio.length > 1 ? this.audioSelect : null,
-          this.details.subtitles.length > 0 ? this.subSelect : null,
-          this.castSlot,
-          this.airplayBtn,
-          h('button', { class: 'secondary', onclick: () => this.fullscreen() }, 'Full screen'),
-          h('button', { class: 'secondary', title: 'Ways to watch on a TV', onclick: () => this.tvHelp.toggleAttribute('hidden') }, 'On a TV…'),
+          h('span', { class: 'row sound' }, this.muteBtn, this.volume),
+          h('span', { class: 'row settings' },
+            this.qualitySelect,
+            this.details.audio.length > 1 ? this.audioSelect : null,
+            this.details.subtitles.length > 0 ? this.subSelect : null),
+          h('span', { class: 'row screens' },
+            this.castSlot,
+            this.airplayBtn,
+            h('button', { class: 'secondary', title: 'Full screen (F)', onclick: () => this.fullscreen() }, '⛶ Full screen'),
+            h('button', { class: 'secondary', title: 'Ways to watch on a TV', onclick: () => this.tvHelp.toggleAttribute('hidden') }, 'On a TV…')),
           this.info,
           this.next),
         this.tvHelp = tvHelp()));

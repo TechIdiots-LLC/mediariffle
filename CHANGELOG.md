@@ -6,8 +6,14 @@
   assistant's "next track" (e.g. through Home Assistant) no longer drops out of full screen. Each new one shows its
   title (and its place in the queue) over the picture for a few seconds, and a queue's countdown to the next one shows
   there too.
-- **Hide in full screen**: a Hide button in the full-screen controls hides the episode (or movie) for you and goes on
-  to the next one.
+- **Hide from the player**: a Hide button in the player's controls (full screen or not) hides the episode (or movie)
+  for you and goes on to the next one. Coming from a play queue, the title and its place in the queue show over the
+  picture for a few seconds, full screen or not.
+- **The player fits the screen, from a phone to 4K**: on a large screen the picture grows to fill its height (the
+  player's page isn't held to 1400px wide any more), and the controls' text grows a little to stay readable. On a phone
+  the picture runs edge to edge, the controls wrap in tidy groups (quality, audio and subtitles on a row of their own),
+  and the height is right in iPhone Safari (its toolbars are no longer counted). iPhone and iPad, which only take the
+  volume from their buttons, show just Mute.
 - **Preferred video quality**: each user picks how Auto plays under Profile → Video quality: Auto (by the
   connection), High (the best first), Medium (up to 720p) or Low (up to 480p, to save data). An admin can set it as a
   user's default under Admin → Users → Default quality, beside the Best quality cap, which still wins.
