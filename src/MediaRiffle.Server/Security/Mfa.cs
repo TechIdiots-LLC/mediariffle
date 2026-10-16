@@ -20,6 +20,11 @@ public static class Mfa
     public const string PasswordClaim = "mediariffle:password";
     /// <summary>How long a confirmed password lets someone set up their first passkey or authenticator.</summary>
     public static readonly TimeSpan PasswordLifetime = TimeSpan.FromMinutes(15);
+    /// <summary>
+    /// How recent a check must be to change how one verifies (add or remove a passkey or the authenticator, new recovery
+    /// codes): a check with something already set up, just before, not the hours-old one that keeps Admin open.
+    /// </summary>
+    public static readonly TimeSpan ChangeLifetime = TimeSpan.FromMinutes(10);
 
     private static readonly string[] Marks = [VerifiedClaim, PasswordClaim];
 

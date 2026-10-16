@@ -112,7 +112,9 @@ An admin with neither is walked through setting one up the first time they open 
 passkey or scan the authenticator's QR code (on an iPhone or Mac, the link opens it straight in the Passwords app),
 then keep the ten **recovery codes**, each good for one check if the passkey or phone is lost. Both can be set up, and
 several passkeys (one per device; on Apple devices one passkey syncs through iCloud Keychain). They're managed under
-**your name → Profile → Two-step verification**; removing one, or making new recovery codes, asks for a check first.
+**your name → Profile → Two-step verification**; adding or removing one, or making new recovery codes, asks for a
+check with one you already have (a passkey, an authenticator code or a recovery code) in the last 10 minutes, not just
+the one that keeps Admin open.
 Five wrong codes in a row lock the account for 15 minutes, as wrong passwords do.
 
 Passkeys need the site's HTTPS address (browsers only make them on secure pages), and MediaRiffle has to see the

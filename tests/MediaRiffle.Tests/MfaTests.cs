@@ -23,6 +23,17 @@ public class MfaTests
         Assert.False(Mfa.IsFresh(With(Mfa.PasswordClaim, now), TimeSpan.FromHours(12), now));
     }
 
+    // A check keeps Admin open for hours, but adding or removing a method wants one from the last few minutes
+    [Fact]
+    public void ChangingMethodsWantsAJustNowCheck()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var anHourAgo = With(Mfa.VerifiedClaim, now.AddHours(-1));
+        Assert.True(Mfa.IsFresh(anHourAgo, TimeSpan.FromHours(12), now));
+        Assert.False(Mfa.IsFresh(anHourAgo, Mfa.ChangeLifetime, now));
+        Assert.True(Mfa.IsFresh(With(Mfa.VerifiedClaim, now.AddMinutes(-5)), Mfa.ChangeLifetime, now));
+    }
+
     [Fact]
     public void AConfirmedPasswordLastsAQuarterHour()
     {

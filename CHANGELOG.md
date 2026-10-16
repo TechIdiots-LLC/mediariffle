@@ -13,6 +13,9 @@
   carries whatever wasn't a default (Google sign-in, trusted proxies, …) into the settings file, which wins where it
   set something itself (backed up first). That file no longer lists the defaults, and the log warns at start about
   settings left there.
+- **Adding a two-step method asks for one you have**: with a passkey or authenticator set up, adding another (or
+  removing one, or new recovery codes) wants a check with an existing one in the last 10 minutes; the hours-old check
+  that keeps Admin open was enough before, so a session left open could add its own passkey.
 
 ## 0.5.1
 ### ✨ Features and improvements
