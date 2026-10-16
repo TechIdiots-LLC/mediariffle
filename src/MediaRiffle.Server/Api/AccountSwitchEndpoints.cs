@@ -37,6 +37,7 @@ public static class AccountSwitchEndpoints
                 list.Add(new
                 {
                     id = user.Id, name = user.UserName, current = user.Id == currentId,
+                    avatar = Avatars.Of(user),
                     pin = user.SwitchPinHash is not null, expired = !valid && user.Id != currentId,
                     admin = await users.IsInRoleAsync(user, Roles.Admin),
                 });

@@ -109,6 +109,8 @@ public sealed class MediaRiffleOptions
 
     public string TranscodeDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "transcode");
     public string ImageDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "images");
+    /// <summary>Users' own profile pictures.</summary>
+    public string AvatarDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "avatars");
     /// <summary>Music converted for browsers that can't play the file itself (kept, oldest dropped past a size).</summary>
     public string AudioDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "audio");
     public string KeysDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "keys");

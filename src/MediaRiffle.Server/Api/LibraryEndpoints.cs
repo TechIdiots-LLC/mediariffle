@@ -193,15 +193,27 @@ public static class LibraryEndpoints
         });
 
         // Started but not finished, newest first: the home page's "Continue watching" (leaving out what the user hid)
+        // Off Continue watching (its ×), without hiding it: the place is kept, and playing it again puts it back
+        g.MapDelete("/continue/{fileId:int}", async (int fileId, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
+        {
+            var userId = users.GetUserId(me)!;
+            await db.Progress.Where(p => p.UserId == userId && p.MediaFileId == fileId)
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.LeftContinue, true));
+            return Results.Ok();
+        });
+
         g.MapGet("/continue", async (ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
         {
             var userId = users.GetUserId(me)!;
             // Songs aren't resumed: only episodes and movies
             var visible = HiddenEndpoints.NotHidden(db, userId, db.MediaFiles.Where(f => f.Kind != MediaKind.Track));
-            var recent = await db.Progress.Where(p => p.UserId == userId && !p.Finished && p.PositionSeconds > 30 && visible.Any(f => f.Id == p.MediaFileId))
-                .OrderByDescending(p => p.UpdatedUtc).Take(20).ToListAsync();
+            var recent = await db.Progress.Where(p => p.UserId == userId && !p.Finished && !p.LeftContinue && p.PositionSeconds > 30 && visible.Any(f => f.Id == p.MediaFileId))
+                .OrderByDescending(p => p.UpdatedUtc).Take(60).ToListAsync();
             var ids = recent.Select(p => p.MediaFileId).ToList();
             var fileRows = await db.MediaFiles.Where(f => ids.Contains(f.Id)).ToDictionaryAsync(f => f.Id);
+            // Stopped at the credits (saved before that counted as watched) isn't something to continue
+            recent = recent.Where(p => fileRows.TryGetValue(p.MediaFileId, out var f) && !PlaybackEndpoints.NearlyDone(p.PositionSeconds, f.DurationSeconds))
+                .Take(20).ToList();
             var showNames = await db.Shows.Where(s => fileRows.Values.Select(f => f.ShowId).Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Title);
             var progress = recent.ToDictionary(p => p.MediaFileId);
             return recent.Where(p => fileRows.ContainsKey(p.MediaFileId)).Select(p =>

@@ -16,14 +16,16 @@ export class ApiError extends Error {
 
 export async function api(path, { method = 'GET', body, keepalive = false } = {}) {
   const headers = { 'Accept': 'application/json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  // A Blob (a picture) goes as it is, with its own type; anything else as JSON
+  const raw = body instanceof Blob;
+  if (body !== undefined) headers['Content-Type'] = raw ? (body.type || 'application/octet-stream') : 'application/json';
   if (method !== 'GET') {
     if (!csrf) await refreshCsrf();
     headers['X-CSRF-TOKEN'] = csrf;
   }
   const r = await fetch(path, {
     method, headers, credentials: 'same-origin', keepalive,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
   });
   if (r.status === 401 && !path.startsWith('/api/auth/')) {
     location.hash = '#/login';
