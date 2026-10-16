@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.6.0
+### ✨ Features and improvements
 - **Full screen stays full screen from one video to the next**: Next, the play queue moving on, a media key or a voice
   assistant's "next track" (e.g. through Home Assistant) no longer drops out of full screen. Each new one shows its
   title (and its place in the queue) over the picture for a few seconds, and a queue's countdown to the next one shows
@@ -21,6 +28,11 @@
   to the page before, or home when MediaRiffle was opened straight onto this one.
 
 ### 🐞 Bug fixes
+- Player: Hide outside full screen too; fits the screen from a phone to 4K ([!14](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/14)) (@acalcutt)
+- Player: full screen across videos, Hide, preferred quality; a Back button ([!13](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/13)) (@acalcutt)
+- Two-step: adding a method asks for one you already have ([!12](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/12)) (@acalcutt)
+- Upgrades keep settings left in the program folder ([!11](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/11)) (@acalcutt)
+- Scroll top ([!10](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/10)) (@acalcutt)
 - **Skip back and forward are both 10 seconds** (forward was 30), on the buttons and on media keys.
 - **The volume slider reaches 100%**: sliders were styled like text boxes, so the track ended short and full volume
   looked like about 90%.
