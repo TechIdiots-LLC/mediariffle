@@ -5,7 +5,8 @@
 //
 // The .deb (an ar archive of debian-binary, control.tar.gz and data.tar.gz): /opt/mediariffle (the program),
 // /lib/systemd/system/mediariffle.service, /etc/mediariffle/appsettings.json (a conffile, so upgrades keep the admin's
-// edits); deploy/linux/debian/{postinst,prerm,postrm} create the service user and data folder and run the service.
+// edits); deploy/linux/debian/{preinst,postinst,prerm,postrm} create the service user and data folder, run the service,
+// and carry settings left in the old program folder into the settings file on an upgrade.
 //
 // The .tar.gz, for other systemd distributions: <name>/app/ (the program), install.sh, mediariffle.service and a
 // starting appsettings.json, where <name> is the file name without .tar.gz. Run from the repository root.
@@ -101,7 +102,7 @@ var control = TarGz(tar =>
 {
     AddFile(tar, "control", Encoding.UTF8.GetBytes(controlText), Plain);
     AddFile(tar, "conffiles", Encoding.UTF8.GetBytes("/etc/mediariffle/appsettings.json\n"), Plain);
-    foreach (var script in new[] { "postinst", "prerm", "postrm" })
+    foreach (var script in new[] { "preinst", "postinst", "prerm", "postrm" })
         AddFile(tar, script, Lf(Path.Combine(deploy, "debian", script)), Exe);
 });
 

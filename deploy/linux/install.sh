@@ -25,6 +25,13 @@ install -d -o mediariffle -g mediariffle -m 0750 /var/lib/mediariffle
 install -d -m 0755 /etc/mediariffle
 
 systemctl stop mediariffle.service 2>/dev/null || true
+# Settings someone put in the program folder's appsettings.json would go with it: saved, and carried into
+# /etc/mediariffle/appsettings.json by the new version below
+old_settings=""
+if [ -f /opt/mediariffle/appsettings.json ]; then
+    old_settings="$(mktemp)"
+    cp /opt/mediariffle/appsettings.json "$old_settings"
+fi
 rm -rf /opt/mediariffle
 mkdir -p /opt/mediariffle
 cp -R "$here/app/." /opt/mediariffle/
@@ -35,6 +42,11 @@ chmod 0755 /opt/mediariffle/MediaRiffle.Server
 
 if [ ! -f /etc/mediariffle/appsettings.json ]; then
     install -m 0640 -o root -g mediariffle "$here/appsettings.json" /etc/mediariffle/appsettings.json
+fi
+if [ -n "$old_settings" ]; then
+    /opt/mediariffle/MediaRiffle.Server --carry-settings "$old_settings" || true
+    rm -f "$old_settings"
+    chown root:mediariffle /etc/mediariffle/appsettings.json; chmod 0640 /etc/mediariffle/appsettings.json
 fi
 install -m 0644 "$here/mediariffle.service" /etc/systemd/system/mediariffle.service
 systemctl daemon-reload

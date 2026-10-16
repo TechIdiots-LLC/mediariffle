@@ -11,6 +11,11 @@ if [ "$1" = "configure" ]; then
         usermod -aG render mediariffle || true
     fi
     install -d -o mediariffle -g mediariffle -m 0750 /var/lib/mediariffle
+    # Settings the old version's program folder had (saved by preinst), into the settings file that stays
+    if [ -f /var/lib/mediariffle/appsettings.from-program-folder.json ]; then
+        /opt/mediariffle/MediaRiffle.Server --carry-settings /var/lib/mediariffle/appsettings.from-program-folder.json || true
+        rm -f /var/lib/mediariffle/appsettings.from-program-folder.json
+    fi
     chown root:mediariffle /etc/mediariffle/appsettings.json
     chmod 0640 /etc/mediariffle/appsettings.json
 

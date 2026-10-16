@@ -13,6 +13,19 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
+// Settings live outside the program folder, so an upgrade (replacing the published files) can't overwrite them:
+// /etc/mediariffle/appsettings.json on Linux, %ProgramData%\MediaRiffle\appsettings.json on Windows.
+// Environment variables (MediaRiffle__Libraries__0__Path=…) still override both.
+var systemConfig = OperatingSystem.IsWindows()
+    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "MediaRiffle", "appsettings.json")
+    : "/etc/mediariffle/appsettings.json";
+var programFolderConfig = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+
+// An upgrade: the installer saved the old program folder's appsettings.json; settings someone put there go into the
+// settings file that stays, then this exits (see SettingsCarryOver)
+if (args.Length == 2 && args[0] == SettingsCarryOver.Argument)
+    return SettingsCarryOver.Run(args[1], programFolderConfig, systemConfig);
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Runs as a systemd service on Linux and under IIS (ASP.NET Core Module) or as a Windows service on Windows
@@ -23,12 +36,6 @@ builder.Host.UseWindowsService();
 if (OperatingSystem.IsWindows())
     builder.Services.Configure<Microsoft.Extensions.Logging.EventLog.EventLogSettings>(s => { s.SourceName = "MediaRiffle"; s.LogName = "Application"; });
 
-// Settings live outside the program folder, so an upgrade (replacing the published files) can't overwrite them:
-// /etc/mediariffle/appsettings.json on Linux, %ProgramData%\MediaRiffle\appsettings.json on Windows.
-// Environment variables (MediaRiffle__Libraries__0__Path=…) still override both.
-var systemConfig = OperatingSystem.IsWindows()
-    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "MediaRiffle", "appsettings.json")
-    : "/etc/mediariffle/appsettings.json";
 builder.Configuration.AddJsonFile(systemConfig, optional: true, reloadOnChange: false);
 builder.Configuration.AddEnvironmentVariables();
 
@@ -160,6 +167,12 @@ builder.Services.AddSingleton<LibraryFiles>();
 
 var app = builder.Build();
 
+// Settings in the program folder's appsettings.json are replaced at the next upgrade (the installers carry them over,
+// but the place for them is the settings file): say which, and where they belong
+if (SettingsCarryOver.OwnSettings(programFolderConfig) is { Count: > 0 } misplaced)
+    app.Logger.LogWarning("{File} sets {Settings}. That file is replaced on every upgrade: move them to {SettingsFile}.",
+        programFolderConfig, string.Join(", ", misplaced), systemConfig);
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -199,3 +212,4 @@ app.MapStreamEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();
+return 0;
