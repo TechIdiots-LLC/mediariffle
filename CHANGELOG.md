@@ -5,7 +5,8 @@
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- **Pages open at the top**: going to a show (or any page) after scrolling another one opened it as far down as the
+  last one was scrolled.
 
 ## 0.5.1
 ### ✨ Features and improvements
