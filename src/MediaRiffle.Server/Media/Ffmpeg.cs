@@ -140,6 +140,31 @@ public sealed class Ffmpeg(IOptions<MediaRiffleOptions> options, ILogger<Ffmpeg>
                 return false;
             }
         }
+        await CheckToneMappingAsync();
         return true;
     }
+
+    /// <summary>
+    /// This ffmpeg can tone-map HDR to SDR (it has zscale, from libzimg, and tonemap) and it's turned on
+    /// (Transcoding:ToneMapHdr). Found out at start, by <see cref="CheckAsync"/>.
+    /// </summary>
+    public bool CanToneMap { get; private set; }
+
+    private async Task CheckToneMappingAsync()
+    {
+        if (!options.Value.Transcoding.ToneMapHdr) return;
+        try
+        {
+            var filters = Encoding.UTF8.GetString(await RunAsync(FfmpegPath, ["-hide_banner", "-filters"], TimeSpan.FromSeconds(10)));
+            CanToneMap = HasFilter(filters, "zscale") && HasFilter(filters, "tonemap");
+            if (!CanToneMap)
+                log.LogWarning("This ffmpeg has no zscale filter (libzimg), so HDR video converted for a browser will look washed out. " +
+                               "Builds from ffmpeg.org's links (BtbN, gyan.dev) and most Linux packages have it.");
+        }
+        catch (Exception ex) { log.LogWarning("Couldn't list ffmpeg's filters: {Error}", ex.Message); }
+    }
+
+    /// <summary>Whether ffmpeg's <c>-filters</c> list has this filter (a line like " ..C zscale  V->V  Apply resizing…").</summary>
+    public static bool HasFilter(string filterList, string name) =>
+        filterList.Split('\n').Any(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries) is { Length: >= 2 } p && p[1] == name);
 }

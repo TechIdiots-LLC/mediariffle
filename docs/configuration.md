@@ -26,6 +26,7 @@ Put your settings in file 2. A complete example:
       "Encoder": "Libx264",
       "VaapiDevice": "/dev/dri/renderD128",
       "MaxHeight": 1080,
+      "ToneMapHdr": true,
       "MaxVideoKbps": 8000,
       "MaxSessions": 4,
       "MaxSessionsPerUser": 2,
@@ -53,8 +54,9 @@ Put your settings in file 2. A complete example:
 | `AdminMfa.Hours` | How long a check lasts before Admin asks again. |
 | `Transcoding.FfmpegFolder` | Folder holding `ffmpeg` and `ffprobe`; empty to use `PATH`. |
 | `Transcoding.Encoder` | `Libx264` (CPU), `Nvenc` (NVIDIA), `Qsv` (Intel Quick Sync), `Vaapi` (Intel/AMD on Linux). |
-| `Transcoding.MaxHeight` | Transcodes are scaled down to this many lines. |
-| `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode. |
+| `Transcoding.MaxHeight` | Transcodes are scaled down to this many lines. `2160` allows 4K transcodes (see Quality below); 1080 by default. |
+| `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode. Raise it to about `30000` with `MaxHeight` 2160, or the 4K level is held to this. |
+| `Transcoding.ToneMapHdr` | HDR video (HDR10, HLG) that has to be converted is tone-mapped to ordinary colours, so it isn't washed out (see Quality below). `true` by default. |
 | `Transcoding.MaxSessions` | Remuxes and transcodes running at once, all users together. Direct play doesn't count. |
 | `Transcoding.MaxSessionsPerUser` | A user starting more stops their oldest. |
 | `Transcoding.SegmentSeconds` | Length of a stream segment. Shorter switches level and starts sooner; longer is a little more efficient. |
@@ -136,7 +138,9 @@ never touched) and everyone's place in it.
 
 ## Quality
 
-The player has a quality menu: **Auto**, **Original**, and 1080p (8 Mbit/s), 720p (4), 480p (1.5), 360p (0.8).
+The player has a quality menu: **Auto**, **Original**, and 2160p (4K, 25 Mbit/s, when allowed), 1080p (8), 720p (4),
+480p (1.5), 360p (0.8). The menu lists only what a file can have here: nothing above the server's `MaxHeight`, the
+user's cap, or (by more than a step) the picture itself.
 
 - **Auto** is an adaptive stream, as on streaming sites: a playlist offering every level (none above the picture's
   own size, the server's `MaxHeight` or the user's cap), from which the player picks a level segment by segment by
@@ -159,6 +163,29 @@ it's needed again. Seeking in a transcode never restarts the whole stream.
 
 Admins can cap a user's quality (**Admin → Users → Best quality**), e.g. 720p for someone streaming over a slow
 connection, so one viewer can't use all of the server's upload. A capped user doesn't get Original.
+
+### 4K
+
+A 4K file plays at 4K as it is (Original, or Auto with the connection to spare) on a device that decodes its video:
+HEVC on Safari and on Chrome/Edge with a hardware HEVC decoder, H.264 everywhere. A converted stream stops at 1080p
+unless the server allows 4K:
+
+```json
+"Transcoding": { "Encoder": "Nvenc", "MaxHeight": 2160, "MaxVideoKbps": 30000 }
+```
+
+That adds a 2160p level (H.264 at about 25 Mbit/s) to Auto and the menu, for browsers that can't decode HEVC
+(Firefox) and for 4K Chromecasts. Use a hardware encoder (`Nvenc`, `Qsv` or `Vaapi`): `Libx264` on the CPU can't
+make 4K in real time on most machines.
+
+### HDR
+
+HDR video (HDR10, HDR10+, HLG, and Dolby Vision's HDR10 base layer) sent as it is is the browser's to show, and
+browsers handle it themselves (on an HDR screen, or tone-mapped on an ordinary one). Converted to H.264, it's
+**tone-mapped** to ordinary (SDR, BT.709) colours first, so it isn't washed out and grey, as it would be with HDR's
+picture simply relabelled. That's done on the CPU with ffmpeg's `zscale` (libzimg) and `tonemap` filters, after
+scaling down, whatever the encoder; the log says at start if this ffmpeg lacks them (the builds linked from
+ffmpeg.org and most Linux packages have them). It takes CPU time, most at 4K; `"ToneMapHdr": false` turns it off.
 
 ## Library layout
 

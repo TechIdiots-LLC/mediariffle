@@ -106,6 +106,10 @@ public static partial class PlaybackEndpoints
                 };
             }
 
+            // HDR video that's converted is tone-mapped to ordinary colours (when this ffmpeg can)
+            if (plan.Mode == PlaybackMode.Transcode && plan.Video is { IsHdr: true } && ffmpeg.CanToneMap)
+                plan = plan with { ToneMap = true, Reason = plan.Reason + "; HDR tone-mapped" };
+
             var start = req.Start;
             if (start is null)
             {

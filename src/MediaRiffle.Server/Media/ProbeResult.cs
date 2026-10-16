@@ -8,8 +8,15 @@ public enum StreamType { Video, Audio, Subtitle, Other }
 /// <summary>One stream of a file, from ffprobe.</summary>
 public sealed record ProbeStream(
     int Index, StreamType Type, string Codec, string? Profile, string? PixelFormat,
-    int Width, int Height, int Channels, string? Language, string? Title, bool IsDefault, bool IsForced)
+    int Width, int Height, int Channels, string? Language, string? Title, bool IsDefault, bool IsForced,
+    string? ColorTransfer = null, string? ColorPrimaries = null)
 {
+    /// <summary>
+    /// HDR video: HDR10 / HDR10+ / Dolby Vision's base layer (PQ, "smpte2084") or HLG ("arib-std-b67"). Converted to
+    /// ordinary (SDR) H.264 it needs tone mapping, or it looks washed out.
+    /// </summary>
+    public bool IsHdr => Type == StreamType.Video && ColorTransfer is "smpte2084" or "arib-std-b67";
+
     /// <summary>Text subtitles can be turned into WebVTT; image ones (PGS, DVD) can only be burned into the video.</summary>
     public bool IsTextSubtitle => Type == StreamType.Subtitle &&
         Codec is "subrip" or "srt" or "ass" or "ssa" or "mov_text" or "webvtt" or "text";
@@ -97,7 +104,8 @@ public sealed class ProbeResult
                     Int(s, "index"), type, Str(s, "codec_name") ?? "unknown", Str(s, "profile"), Str(s, "pix_fmt"),
                     Int(s, "width"), Int(s, "height"), Int(s, "channels"),
                     Str(tags, "language"), Str(tags, "title"),
-                    Int(disposition, "default") == 1, Int(disposition, "forced") == 1));
+                    Int(disposition, "default") == 1, Int(disposition, "forced") == 1,
+                    Str(s, "color_transfer"), Str(s, "color_primaries")));
             }
         }
         return new ProbeResult

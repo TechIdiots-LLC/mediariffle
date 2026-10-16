@@ -11,6 +11,12 @@
   every 12 hours. An admin without one is walked through setting it up the first time they open Admin, ending with ten
   one-time recovery codes. Manage passkeys, the authenticator and recovery codes under Profile; another admin can reset
   someone's under Admin → Users. Signing in itself is unchanged. See docs/configuration.md.
+- **4K transcodes**: a 2160p level (H.264 at about 25 Mbit/s) for Auto and the quality menu, when the server allows it
+  (`Transcoding:MaxHeight` 2160, `MaxVideoKbps` about 30000; best with a hardware encoder). For browsers that can't
+  play a 4K file's HEVC as it is, and 4K Chromecasts. The quality menu now lists only the levels a file can have.
+- **HDR tone mapping**: HDR video (HDR10, HLG) converted to H.264 is tone-mapped to ordinary colours instead of
+  looking washed out. Needs ffmpeg's zscale filter, which most builds have (the log says if not);
+  `Transcoding:ToneMapHdr` turns it off. See docs/configuration.md.
 
 ### 🐞 Bug fixes
 - **A show's other series are told apart**: season folders named for another series of the show (`UK - Season 01`,
