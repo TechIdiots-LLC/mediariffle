@@ -332,7 +332,7 @@ public static partial class PlaybackEndpoints
     public static bool NearlyDone(double position, double duration) =>
         duration > 0 && (position >= duration * 0.92 || (duration >= 600 && duration - position <= 180));
 
-    private static string ContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    internal static string ContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
         ".webm" => "video/webm",
         ".mov" => "video/quicktime",

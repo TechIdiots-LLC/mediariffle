@@ -2,9 +2,18 @@
 
 ## master
 ### ✨ Features and improvements
-- _...Add new stuff here..._
+- **Play in VLC**: under the player, Play in VLC… opens the file as it is in VLC, from where you are (on Android and
+  an iPhone or iPad the VLC app opens; on a computer a small .m3u playlist is saved, or copy the link into VLC's Open
+  Network Stream). VLC decodes everything itself (4K HEVC, HDR, Dolby Vision, TrueHD), so the server only reads the
+  file. The link carries its own key, works for 24 hours, and isn't offered to an account with a quality cap.
+- **Smoother 4K played as it is**: the browser keeps less of what's already played of a high-bitrate stream, so its
+  limited room goes to what's ahead.
 
 ### 🐞 Bug fixes
+- **The Cast button shows again**: Google's own button hid itself until Chrome had found a Chromecast. The player
+  and the music bar now have a Cast button of their own, always there in Chrome and Edge (on HTTPS), which opens
+  Chrome's Cast dialog and reads "Casting" while casting. "Watching on a TV…" moved out of the controls, under the
+  player with Play in VLC….
 - **Sound out of sync after a seek, resume or subtitle change**: a file played as it is (copied video, as 4K HEVC
   is) and started part-way through had its sound a second or more early, and text subtitles late. Copied video
   starts at a keyframe before the time; the sound now starts there with it, and the player's clock knows where.

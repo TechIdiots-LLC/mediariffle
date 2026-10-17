@@ -1,6 +1,6 @@
 import { api } from './api.js';
 import { h, formatTime } from './dom.js';
-import { castAvailable, castMedia, onCastChange, isCasting } from './cast.js';
+import { castAvailable, castButton, castMedia, onCastChange, isCasting } from './cast.js';
 
 // Plays one file. The server picks how (Direct: the file as it is; Remux: an HLS stream of the copied video that
 // starts at `startSeconds` into the file; adaptive: a transcode at several levels, the whole file on its own clock),
@@ -206,7 +206,7 @@ export class Player {
     castAvailable().then(ok => {
       if (!ok) return;
       this.castSlot.hidden = false;
-      this.castSlot.append(document.createElement('google-cast-launcher'));
+      this.castSlot.append(castButton());
       this.offCast = onCastChange(casting => { if (casting) this.castHere(); else this.forCast = false; });
     });
   }
@@ -231,12 +231,65 @@ export class Player {
           h('span', { class: 'row screens' },
             this.castSlot,
             this.airplayBtn,
-            h('button', { class: 'secondary', title: 'Full screen (F)', onclick: () => this.fullscreen() }, '⛶ Full screen'),
-            h('button', { class: 'secondary', title: 'Ways to watch on a TV', onclick: () => this.tvHelp.toggleAttribute('hidden') }, 'On a TV…')),
+            h('button', { class: 'secondary', title: 'Full screen (F)', onclick: () => this.fullscreen() }, '⛶ Full screen')),
           this.info,
-          this.next),
+          this.next)),
+      // Other ways to watch, under the controls (not in full screen)
+      h('div', { class: 'player-extras' },
+        h('div', { class: 'row' },
+          h('button', { class: 'link', title: 'Ways to watch on a TV', onclick: () => this.tvHelp.toggleAttribute('hidden') }, 'Watching on a TV…'),
+          h('button', { class: 'link', title: 'The file as it is, in the VLC app', onclick: () => this.playInVlc() }, 'Play in VLC…')),
+        this.vlcPanel = h('div', { class: 'vlc-panel', hidden: true }),
         this.tvHelp = tvHelp()));
     return this.root;
+  }
+
+  // Play in VLC: the file as it is, from where this is now. VLC decodes it all itself (4K HEVC, HDR, Dolby Vision,
+  // TrueHD) and the server only reads the file. On Android and an iPhone or iPad the VLC app opens with it; elsewhere
+  // a small playlist (.m3u) is saved, which opens in VLC. The link can be copied too, for VLC's Open Network Stream.
+  async playInVlc() {
+    const panel = this.vlcPanel;
+    if (!panel.hidden) { panel.hidden = true; return; }
+    panel.hidden = false;
+    panel.replaceChildren(h('span', { class: 'muted' }, 'Making a link…'));
+    let link;
+    try { link = await api(`/api/external/${this.fileId}`, { method: 'POST' }); }
+    catch (e) { panel.replaceChildren(h('span', { class: 'error' }, e.message)); return; }
+    const at = Math.max(0, Math.floor(this.position()));
+    const title = (this.details.summary.title || link.name).replace(/[\r\n]+/g, ' ');
+    const ua = navigator.userAgent;
+    const ios = /iPhone|iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const open = () => {
+      this.video.pause();
+      if (/Android/.test(ua)) {
+        const u = new URL(link.url);
+        location.href = `intent://${u.host}${u.pathname}#Intent;scheme=${u.protocol.slice(0, -1)};package=org.videolan.vlc;` +
+          `type=video/*;S.title=${encodeURIComponent(title)};l.position=${at * 1000};end`;
+      } else if (ios) {
+        location.href = `vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(link.url)}`;
+      } else {
+        const m3u = `#EXTM3U\n#EXTINF:-1,${title}\n${at > 0 ? `#EXTVLCOPT:start-time=${at}\n` : ''}${link.url}\n`;
+        const a = h('a', { href: URL.createObjectURL(new Blob([m3u], { type: 'audio/x-mpegurl' })),
+          download: `${title.replace(/[\\/:*?"<>|]+/g, '').trim() || 'video'}.m3u` });
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      }
+    };
+    const copied = h('span', { class: 'muted' });
+    const copy = async () => {
+      try { await navigator.clipboard.writeText(link.url); copied.textContent = 'Copied'; }
+      catch { copied.textContent = link.url; }
+    };
+    const desktop = !/Android/.test(ua) && !ios;
+    panel.replaceChildren(
+      h('div', { class: 'row' },
+        h('button', { class: 'secondary', onclick: open }, desktop ? 'Save playlist for VLC' : 'Open in VLC'),
+        h('button', { class: 'secondary', onclick: copy }, 'Copy link'), copied),
+      h('p', { class: 'muted' },
+        desktop ? `Open the saved .m3u with VLC${at > 0 ? `; it starts at ${formatTime(at)}` : ''}. Or in VLC, Media → Open Network Stream and paste the link. `
+          : 'Needs the VLC app. ',
+        'VLC fetches the file from this server\'s address itself, so it has to be able to reach it. The link works for 24 hours; ' +
+        'what you watch in VLC isn\'t remembered here.'));
   }
 
   // Shows the controls, and hides them again after 3 s unless paused, not full screen, or the mouse is over them
@@ -455,8 +508,13 @@ export class Player {
     } else if (window.Hls?.isSupported()) {
       const Hls = window.Hls;
       const est = this.estimate();
+      // A browser holds only so much of a stream, behind and ahead together (Chrome: about 150 MB of video). A 4K
+      // file as it is, at 50–100 Mbit/s, fills that in seconds: what's kept behind shrinks with the bitrate, so the
+      // room goes to what's ahead, and that's asked for only as far as fits, instead of running into the limit
+      const mbPerSec = (s.streamKbps || this.qualities.find(q => q.id === 'original')?.kbps || 0) / 8000;
+      const fit = (mb, min, max) => mbPerSec > 0 ? Math.max(min, Math.min(max, Math.round(mb / mbPerSec))) : max;
       this.hls = new Hls({
-        startPosition: s.adaptive ? (s.seekTo || 0) : 0, maxBufferLength: 60, backBufferLength: 90,
+        startPosition: s.adaptive ? (s.seekTo || 0) : 0, maxBufferLength: fit(110, 10, 60), backBufferLength: fit(20, 5, 90),
         // Its bandwidth estimate starts from the last one measured here, so the first level fits the connection
         ...(est ? { abrEwmaDefaultEstimate: est * 1000 } : {}),
         // Steps up only with plenty of room, judged over a longer stretch, so a few quick segments don't move it
