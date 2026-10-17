@@ -128,7 +128,10 @@ public static class PlaybackPlanner
         if (transcode && o.Encoder == VideoEncoder.Vaapi) a.AddRange(["-vaapi_device", o.VaapiDevice]);
         // libplacebo tone-maps on the GPU through Vulkan
         if (transcode && plan.Libplacebo) a.AddRange(["-init_hw_device", "vulkan"]);
-        if (startSeconds > 0) a.AddRange(["-ss", Seconds(startSeconds)]);
+        // Copied video starts at the keyframe ffmpeg's seek lands on, before the time; -noaccurate_seek starts the
+        // audio there too. Otherwise it's cut at the time itself, a second or more later, and in fMP4 that gap is
+        // only an edit list, which browsers ignore: the sound plays that much early (see Ffmpeg.RemuxStartAsync)
+        if (startSeconds > 0) a.AddRange([.. transcode ? [] : new[] { "-noaccurate_seek" }, "-ss", Seconds(startSeconds)]);
         a.AddRange(["-i", input]);
 
         if (plan.Video is { } v)

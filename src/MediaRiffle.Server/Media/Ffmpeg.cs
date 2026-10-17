@@ -85,32 +85,51 @@ public sealed class Ffmpeg(IOptions<MediaRiffleOptions> options, ILogger<Ffmpeg>
     }
 
     /// <summary>
-    /// The time of the last video keyframe at or before <paramref name="seconds"/>. Copied video can only start at
-    /// a keyframe, so a remux started there begins exactly where the player's clock says; returns
-    /// <paramref name="seconds"/> when none is found in the 20 s before it.
+    /// Where a remux started with <c>-noaccurate_seek -ss <paramref name="seconds"/></c> really begins, in seconds from
+    /// the start of the file (<paramref name="fileStart"/>: its format start_time). Copied video can only start at a
+    /// keyframe, and which one ffmpeg lands on isn't simply the last at or before the time: it seeks a little early in
+    /// files with B-frames, and Matroska only to its cue points. So the same seek is made here, copying one video
+    /// packet, and that packet's time read. Null when it can't tell.
     /// </summary>
-    public async Task<double> KeyframeAtOrBeforeAsync(string path, int videoStream, double seconds)
+    public async Task<double?> RemuxStartAsync(string path, int videoStream, double seconds, double fileStart)
     {
-        var from = Math.Max(0, seconds - 20).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
-        var to = (seconds + 0.5).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
         try
         {
-            var output = Encoding.UTF8.GetString(await RunAsync(FfprobePath,
-                ["-v", "error", "-select_streams", videoStream.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                 "-skip_frame", "nokey", "-read_intervals", $"{from}%{to}",
-                 "-show_entries", "frame=best_effort_timestamp_time", "-of", "csv=p=0", path],
+            var output = Encoding.UTF8.GetString(await RunAsync(FfmpegPath,
+                ["-hide_banner", "-loglevel", "error", "-noaccurate_seek", "-copyts",
+                 "-ss", seconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), "-i", path,
+                 "-map", $"0:{videoStream.ToString(System.Globalization.CultureInfo.InvariantCulture)}", "-c", "copy",
+                 "-frames:v", "1", "-f", "framecrc", "-"],
                 TimeSpan.FromSeconds(20)));
-            var best = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(l => double.TryParse(l.TrimEnd(','), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var t) ? t : double.NaN)
-                .Where(t => !double.IsNaN(t) && t <= seconds + 0.001)
-                .DefaultIfEmpty(double.NaN).Max();
-            return double.IsNaN(best) ? seconds : best;
+            return FirstPacketSeconds(output) is { } t ? t - fileStart : null;
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
         {
-            log.LogDebug("No keyframe lookup for {Path}: {Error}", path, ex.Message);
-            return seconds;
+            log.LogDebug("No remux start for {Path}: {Error}", path, ex.Message);
+            return null;
         }
+    }
+
+    /// <summary>The first packet's pts in seconds, from ffmpeg's framecrc output ("#tb 0: 1/1000", then "0, dts, pts, …").</summary>
+    public static double? FirstPacketSeconds(string framecrc)
+    {
+        double? tb = null;
+        foreach (var raw in framecrc.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.StartsWith("#tb 0:", StringComparison.Ordinal))
+            {
+                var parts = line[6..].Trim().Split('/');
+                if (parts.Length == 2 && long.TryParse(parts[0], out var num) && long.TryParse(parts[1], out var den) && den > 0)
+                    tb = (double)num / den;
+            }
+            else if (!line.StartsWith('#') && line.Length > 0 && tb is { } t)
+            {
+                var cols = line.Split(',');
+                return cols.Length > 2 && long.TryParse(cols[2].Trim(), out var pts) ? pts * t : null;
+            }
+        }
+        return null;
     }
 
     public static void Kill(Process p)

@@ -160,7 +160,10 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
     /// <summary>Whether a session is still running, without counting as activity on it.</summary>
     public bool Exists(string id) => _sessions.ContainsKey(id);
 
-    public async Task<StreamSession> StartAsync(string userId, int fileId, string fullPath, PlaybackPlan plan, double startSeconds, double durationSeconds = 0)
+    /// <param name="startSeconds">Where ffmpeg is asked to start (-ss).</param>
+    /// <param name="streamStart">Where the stream really starts, when that differs (copied video starts at a keyframe before it).</param>
+    public async Task<StreamSession> StartAsync(string userId, int fileId, string fullPath, PlaybackPlan plan, double startSeconds, double durationSeconds = 0,
+        double? streamStart = null)
     {
         await _startLock.WaitAsync();
         try
@@ -184,7 +187,7 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
             {
                 Id = id, UserId = userId, FileId = fileId, FullPath = fullPath, Plan = plan,
                 // An adaptive stream is the whole file on its own clock; the player starts it at startSeconds
-                StartSeconds = plan.Mode == PlaybackMode.Direct || plan.IsAdaptive ? 0 : startSeconds, Directory = dir,
+                StartSeconds = plan.Mode == PlaybackMode.Direct || plan.IsAdaptive ? 0 : streamStart ?? startSeconds, Directory = dir,
                 DurationSeconds = durationSeconds, SegmentSeconds = Math.Max(1, T.SegmentSeconds),
             };
             if (plan.IsAdaptive)

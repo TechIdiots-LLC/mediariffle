@@ -5,7 +5,10 @@
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- **Sound out of sync after a seek, resume or subtitle change**: a file played as it is (copied video, as 4K HEVC
+  is) and started part-way through had its sound a second or more early, and text subtitles late. Copied video
+  starts at a keyframe before the time; the sound now starts there with it, and the player's clock knows where.
+  (Seeking to that keyframe itself had made ffmpeg land on the one before it.)
 
 ## 0.6.2
 ### ✨ Features and improvements

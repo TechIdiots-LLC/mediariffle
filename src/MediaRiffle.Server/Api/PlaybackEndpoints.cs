@@ -137,14 +137,18 @@ public static partial class PlaybackEndpoints
                 start = saved is { Finished: false } ? Math.Max(0, saved.PositionSeconds - 5) : 0;
             }
             start = Math.Clamp(start.Value, 0, Math.Max(0, file.DurationSeconds - 1));
-            // Copied video starts at a keyframe; start the stream exactly there so its clock is right
-            if (plan.Mode == PlaybackMode.Remux && start > 0 && plan.Video is { } v)
-                start = await ffmpeg.KeyframeAtOrBeforeAsync(path, v.Index, start.Value);
+            // Copied video starts at the keyframe ffmpeg's seek lands on, before the time: the stream's clock (and its
+            // subtitles) start there. Seeking to that keyframe itself would land on the one before it.
+            double? streamStart = null;
+            if (plan.Mode == PlaybackMode.Remux && start > 0 && plan.Video is { } v &&
+                await ffmpeg.RemuxStartAsync(path, v.Index, start.Value, probe.StartSeconds) is { } landed &&
+                landed >= 0 && landed <= start + 0.5 && start - landed < 60)
+                streamStart = landed;
 
             StreamSession session;
             try
             {
-                session = await sessions.StartAsync(userId, file.Id, path, plan, start.Value, probe.ContentSeconds);
+                session = await sessions.StartAsync(userId, file.Id, path, plan, start.Value, probe.ContentSeconds, streamStart);
                 session.FirstLevel = plan.Levels is { } ls ? Math.Max(0, ls.ToList().FindIndex(l => l.Id == req.StartLevel)) : 0;
                 if (plan.Mode != PlaybackMode.Direct && !plan.IsAdaptive) await sessions.WaitForPlaylistAsync(session, ct);
             }

@@ -87,6 +87,27 @@ public class PlaybackPlannerTests
     }
 
     [Fact]
+    public void ARemuxFromPartWayStartsTheSoundWithThePicture()
+    {
+        // Copied video starts at a keyframe before the time; without -noaccurate_seek the sound would start at the
+        // time itself, and in fMP4 browsers play it that much early
+        var plan = PlaybackPlanner.Decide(Probe("matroska,webm", V("h264"), A(1, "ac3", 6)), ".mkv", null, null);
+        var args = PlaybackPlanner.HlsArguments(plan, "/m/a.mkv", 600, new TranscodingOptions());
+        Assert.Equal(PlaybackMode.Remux, plan.Mode);
+        Assert.True(args.IndexOf("-noaccurate_seek") is >= 0 and var i && i < args.IndexOf("-ss") && args.IndexOf("-ss") < args.IndexOf("-i"));
+        Assert.Equal("600", args[args.IndexOf("-ss") + 1]);
+    }
+
+    [Theory]
+    [InlineData("#tb 0: 1/1000\n#media_type 0: video\n0,     598806,     598973,       41,   270874, 0xef7dc90e\n", 598.973)]
+    [InlineData("#extradata 0: 149, 0xad312720\n#tb 0: 1/24000\n0,   35924889,   35925890,     1001,   694585, 0xd90dac62\n", 1496.912083)]
+    public void WhereARemuxReallyStarts(string framecrc, double seconds) =>
+        Assert.Equal(seconds, Ffmpeg.FirstPacketSeconds(framecrc)!.Value, 5);
+
+    [Fact]
+    public void NoPacketNoStart() => Assert.Null(Ffmpeg.FirstPacketSeconds("#tb 0: 1/1000\n"));
+
+    [Fact]
     public void TranscodeScalesDownTallVideo()
     {
         var plan = PlaybackPlanner.Decide(Probe("matroska,webm", V("hevc", 2160, "yuv420p10le", "Main 10")), ".mkv", null, null);
