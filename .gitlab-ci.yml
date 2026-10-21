@@ -1,4 +1,5 @@
-# MediaRiffle CI on the Windows shell runner (tag "windows"), as VistumblerMAUI's. GitLab ignores .github/.
+# MediaRiffle CI on the Windows shell runner (tag "windows"), as VistumblerMAUI's, and the Proxmox template on the Linux
+# runner (tags "linux", "docker"). GitLab ignores .github/.
 # The runner needs the .NET 10 SDK, NSIS (makensis) and, for the version bump, Python 3.
 #
 #   test                  Merge requests and pushes to main: dotnet test.
@@ -11,6 +12,8 @@
 #                           MediaRiffle-v<ver>-win-x64.zip, -win-arm64.zip               portable / IIS
 #                           mediariffle_<ver>-1_amd64.deb, _arm64.deb                    Ubuntu/Debian
 #                           MediaRiffle-v<ver>-linux-x64.tar.gz, -linux-arm64.tar.gz     other distros (install.sh)
+#                           MediaRiffle-v<ver>-proxmox-amd64.tar.zst                    Proxmox LXC template (release-proxmox,
+#                                                                                       on the Linux runner; docs/proxmox.md)
 #   bump-version          Build > Pipelines > New pipeline with BUMP_VERSION set: bump the version, roll the changelog,
 #                         push release-v<version> and open a merge request. Merging it makes the release.
 #
@@ -115,10 +118,37 @@ release-build:
       - release-files/
     expire_in: 7 days
 
+# The Proxmox LXC template, from the amd64 .deb (proxmox/build-template.sh). On the Linux runner (Docker executor,
+# gitlab-runner-install's install-linux-runner.sh): the build needs root in the job container, not privileges; the test
+# boots the template only when the job can use Docker (a --privileged runner), and otherwise checks its files.
+release-proxmox:
+  stage: build
+  tags: [linux, docker]
+  image: ubuntu:24.04
+  rules: *release-rules
+  needs:
+    - job: release-check
+    - job: release-build
+      parallel:
+        matrix:
+          - RID: linux-x64
+  script:
+    - |
+      if [ "$RELEASE_PUBLISHED" = "true" ]; then echo "Release $RELEASE_TAG already exists; skipping."; exit 0; fi
+      apt-get update -q && apt-get install -y -q --no-install-recommends ca-certificates curl zstd
+      deb=$(ls release-files/mediariffle_*_amd64.deb)
+      mkdir -p /tmp/deb && mv "$deb" /tmp/deb/ && rm -rf release-files
+      bash proxmox/build-template.sh /tmp/deb/$(basename "$deb") "release-files/MediaRiffle-$RELEASE_TAG-proxmox-amd64.tar.zst"
+      bash proxmox/test-template.sh "release-files/MediaRiffle-$RELEASE_TAG-proxmox-amd64.tar.zst"
+  artifacts:
+    paths:
+      - release-files/
+    expire_in: 7 days
+
 release-publish:
   stage: release
   rules: *release-rules
-  needs: [release-check, release-build]
+  needs: [release-check, release-build, release-proxmox]
   resource_group: release
   script:
     - ./.gitlab/scripts/publish-release.ps1 -PackageName mediariffle -ReleaseName MediaRiffle

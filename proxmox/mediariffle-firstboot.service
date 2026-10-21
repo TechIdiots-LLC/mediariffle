@@ -1,0 +1,15 @@
+[Unit]
+Description=Set up this MediaRiffle container (first boot)
+ConditionPathExists=/etc/mediariffle/firstboot-pending
+Wants=network-online.target
+After=network-online.target
+Before=mediariffle.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mediariffle-firstboot
+StandardOutput=journal+console
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

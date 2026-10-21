@@ -2,6 +2,11 @@
 
 ## master
 ### ✨ Features and improvements
+- **Proxmox LXC template**: each release has `MediaRiffle-v<version>-proxmox-amd64.tar.zst`, Proxmox's Ubuntu 24.04
+  template with MediaRiffle, ffmpeg and the Intel/AMD GPU drivers installed, listening on port 5080; a container made
+  from it sets itself up at first boot (port and trusted proxies from `/etc/mediariffle/firstboot.env`). Built and
+  boot-tested by the release pipelines (GitLab's on the Linux runner). See docs/proxmox.md, which also covers passing in
+  a media share and the host's GPU.
 - **Play in VLC**: under the player, Play in VLC… opens the file as it is in VLC, from where you are (on Android and
   an iPhone or iPad the VLC app opens; on a computer a small .m3u playlist is saved, or copy the link into VLC's Open
   Network Stream). VLC decodes everything itself (4K HEVC, HDR, Dolby Vision, TrueHD), so the server only reads the
