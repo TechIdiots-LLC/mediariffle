@@ -1,0 +1,68 @@
+#!/bin/bash
+# Makes this container's MediaRiffle its own: run once, at its first boot, before MediaRiffle starts
+# (mediariffle-firstboot.service); can be run again by hand, then systemctl restart mediariffle.
+#
+# Applies /etc/mediariffle/firstboot.env (where it listens and which proxies it trusts) to
+# /etc/mediariffle/appsettings.json, makes SSH host keys when the container has none, and writes where to open
+# MediaRiffle to /root/mediariffle-first-login.txt. MediaRiffle makes its own database and keys when it starts.
+set -euo pipefail
+# pct exec runs commands with a minimal PATH
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+
+PENDING=/etc/mediariffle/firstboot-pending
+ENV_FILE=/etc/mediariffle/firstboot.env
+SETTINGS=/etc/mediariffle/appsettings.json
+LOGIN_FILE=/root/mediariffle-first-login.txt
+
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+    set +a
+fi
+
+# Proxmox makes SSH host keys when it creates the container; anything else that starts the template may not
+if [ -d /etc/ssh ] && ! ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; then
+    ssh-keygen -A >/dev/null
+fi
+
+port=${MEDIARIFFLE_PORT:-5080}
+case "$port" in
+    '' | *[!0-9]*) echo "mediariffle-firstboot: MEDIARIFFLE_PORT must be a number, not '$port'" >&2; exit 1 ;;
+esac
+sed -i -E "s|\"Url\": \"http://\*:[0-9]+\"|\"Url\": \"http://*:$port\"|" "$SETTINGS"
+
+# The reverse proxies in front (e.g. HAProxy on OPNsense: each firewall's address), as well as this container itself
+if [ -n "${MEDIARIFFLE_TRUSTED_PROXIES:-}" ]; then
+    list='"127.0.0.1", "::1"'
+    for proxy in $(echo "$MEDIARIFFLE_TRUSTED_PROXIES" | tr ',' ' '); do
+        case "$proxy" in
+            *[!0-9A-Fa-f.:/]*) echo "mediariffle-firstboot: '$proxy' isn't an IP address or network" >&2; exit 1 ;;
+        esac
+        list="$list, \"$proxy\""
+    done
+    sed -i -E "s|\"TrustedProxies\": \[[^]]*\]|\"TrustedProxies\": [ $list ]|" "$SETTINGS"
+fi
+if [ -n "${MEDIARIFFLE_FORWARD_LIMIT:-}" ]; then
+    case "$MEDIARIFFLE_FORWARD_LIMIT" in
+        *[!0-9]* | 0) echo "mediariffle-firstboot: MEDIARIFFLE_FORWARD_LIMIT must be 1 or more" >&2; exit 1 ;;
+    esac
+    sed -i -E "s|\"ForwardLimit\": [0-9]+|\"ForwardLimit\": $MEDIARIFFLE_FORWARD_LIMIT|" "$SETTINGS"
+fi
+chown root:mediariffle "$SETTINGS"
+chmod 0640 "$SETTINGS"
+
+addresses=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v '^$' | grep -v ':' || true)
+umask 077
+{
+    echo "MediaRiffle is running in this container, on port $port:"
+    for a in $addresses; do echo "  http://$a:$port/"; done
+    echo
+    echo "The first visit creates the admin account, so open it now (or keep the port closed to everyone else"
+    echo "until you have). Then add libraries under Admin -> Libraries: folders the container can see, e.g. a"
+    echo "media share mounted on the Proxmox host and passed in as a mount point (docs/proxmox.md)."
+    echo
+    echo "Settings: $SETTINGS (then systemctl restart mediariffle). Logs: journalctl -u mediariffle"
+} > "$LOGIN_FILE"
+rm -f "$PENDING"
+echo "mediariffle-firstboot: done; see $LOGIN_FILE"

@@ -1,7 +1,8 @@
 name: Build and Release
 
 # On a push to main, releases <Version> (src/MediaRiffle.Server/MediaRiffle.Server.csproj) if there's no GitHub release
-# for it yet, with the matching CHANGELOG.md section as the notes. Same files as the GitLab pipeline (build/Package.ps1).
+# for it yet, with the matching CHANGELOG.md section as the notes. Same files as the GitLab pipeline (build/Package.ps1),
+# and the Proxmox LXC template made from the amd64 .deb (proxmox/build-template.sh, boot-tested with Docker).
 # Secrets (optional): SIG_PFX (base64 of a code-signing .pfx) and SIG_PFX_PASS sign the Windows exe and installers.
 
 on:
@@ -66,10 +67,35 @@ jobs:
           path: release-files/
           retention-days: 7
 
+  proxmox:
+    name: Proxmox LXC template
+    runs-on: ubuntu-24.04
+    needs: [release-check, build]
+    if: ${{ needs.release-check.outputs.published == 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-linux-x64
+          path: linux-x64
+      - name: Build the template
+        run: |
+          sudo apt-get install -y -q zstd
+          sudo bash proxmox/build-template.sh linux-x64/mediariffle_*_amd64.deb \
+            "proxmox-files/MediaRiffle-v${{ needs.release-check.outputs.version }}-proxmox-amd64.tar.zst"
+      - name: Boot-test it
+        run: sudo bash proxmox/test-template.sh proxmox-files/*.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-proxmox
+          path: proxmox-files/
+          compression-level: 0
+          retention-days: 7
+
   release:
     name: Publish GitHub release
     runs-on: ubuntu-latest
-    needs: [release-check, build]
+    needs: [release-check, build, proxmox]
     if: ${{ needs.release-check.outputs.published == 'false' }}
     environment: release
     steps:

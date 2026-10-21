@@ -211,6 +211,7 @@ app.MapListEndpoints();
 app.MapHiddenEndpoints();
 app.MapMusicEndpoints();
 app.MapMusicCastEndpoints();
+app.MapExternalPlayerEndpoints();
 app.MapPlaybackEndpoints();
 app.MapStreamEndpoints();
 app.MapFallbackToFile("index.html");

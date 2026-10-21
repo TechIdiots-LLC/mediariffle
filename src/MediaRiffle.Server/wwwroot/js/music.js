@@ -6,7 +6,7 @@
 import { api } from './api.js';
 import { h, mount, art, formatTime } from './dom.js';
 import { getQueue, saveQueue, clearQueue, onAudioQueue, pageFor } from './queue.js';
-import { castAvailable, onCastChange, isCasting, castSession, remotePlayer, castTracks, castTrackId, castJumpTo, castStep } from './cast.js';
+import { castAvailable, castButton, onCastChange, isCasting, castSession, remotePlayer, castTracks, castTrackId, castJumpTo, castStep } from './cast.js';
 
 // What this browser plays besides MP3, AAC and WAV; anything else the server converts to AAC
 const probe = document.createElement('audio');
@@ -331,8 +331,8 @@ function renderBar() {
     h('a', { class: 'np-cover', href: '#/now', title: 'Now playing' }, art(t.album.image, 0, 'music')),
     h('a', { class: 'np-info', href: '#/now', title: 'Now playing' }, h('div', { class: 'np-title' }, t.title), artist, err),
     c.buttons, c.seekbar,
-    // Google's Cast button: picks a Chromecast, or stops casting
-    music.castReady ? h('span', { class: 'cast-btn np-cast' }, document.createElement('google-cast-launcher')) : h('span'),
+    // Picks a Chromecast, or stops casting
+    music.castReady ? castButton('secondary np-cast') : h('span'),
     h('button', { class: 'chip-x np-close', title: 'Stop and close', onclick: () => music.close(true) }, '×'));
   barUpdate = () => { c.update(); showError(); };
 }

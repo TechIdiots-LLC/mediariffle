@@ -2,10 +2,32 @@
 
 ## master
 ### ✨ Features and improvements
-- _...Add new stuff here..._
+- **Proxmox LXC template**: each release has `MediaRiffle-v<version>-proxmox-amd64.tar.zst`, Proxmox's Ubuntu 24.04
+  template with MediaRiffle, ffmpeg and the Intel/AMD GPU drivers installed, listening on port 5080; a container made
+  from it sets itself up at first boot (port and trusted proxies from `/etc/mediariffle/firstboot.env`). Built and
+  boot-tested by the release pipelines (GitLab's on the Linux runner). See docs/proxmox.md, which also covers passing in
+  a media share and the host's GPU.
+- **Decoding on the GPU**: with a GPU encoder (`Qsv`, `Vaapi`, `Nvenc`), video is decoded and scaled on that GPU too,
+  so the picture never leaves it: a 4K file converted about 3.5 times faster on an Intel laptop's GPU. With `Vaapi`
+  (Linux), HDR and Dolby Vision are tone-mapped there with libplacebo, through Vulkan. What the GPU decodes is found
+  out at start and logged; anything else, a stream the GPU fails on, and burned-in subtitles are decoded on the CPU as
+  before. `Transcoding:HardwareDecoding` turns it off. See docs/configuration.md.
+- **Play in VLC**: under the player, Play in VLC… opens the file as it is in VLC, from where you are (on Android and
+  an iPhone or iPad the VLC app opens; on a computer a small .m3u playlist is saved, or copy the link into VLC's Open
+  Network Stream). VLC decodes everything itself (4K HEVC, HDR, Dolby Vision, TrueHD), so the server only reads the
+  file. The link carries its own key, works for 24 hours, and isn't offered to an account with a quality cap.
+- **Smoother 4K played as it is**: the browser keeps less of what's already played of a high-bitrate stream, so its
+  limited room goes to what's ahead.
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- **The Cast button shows again**: Google's own button hid itself until Chrome had found a Chromecast. The player
+  and the music bar now have a Cast button of their own, always there in Chrome and Edge (on HTTPS), which opens
+  Chrome's Cast dialog and reads "Casting" while casting. "Watching on a TV…" moved out of the controls, under the
+  player with Play in VLC….
+- **Sound out of sync after a seek, resume or subtitle change**: a file played as it is (copied video, as 4K HEVC
+  is) and started part-way through had its sound a second or more early, and text subtitles late. Copied video
+  starts at a keyframe before the time; the sound now starts there with it, and the player's clock knows where.
+  (Seeking to that keyframe itself had made ffmpeg land on the one before it.)
 
 ## 0.6.2
 ### ✨ Features and improvements

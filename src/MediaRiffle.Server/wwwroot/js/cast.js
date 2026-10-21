@@ -28,6 +28,30 @@ export function castAvailable() {
   return ready;
 }
 
+// The Cast button, once castAvailable() says yes. Ours, not the SDK's <google-cast-launcher>: that one hides itself
+// until Chrome has found a Chromecast on the network, so it often isn't there at all and nobody knows why. This one
+// always is, and opens Chrome's Cast dialog (which says when it finds none); while casting it reads "Casting".
+export function castButton(className = 'secondary') {
+  const ctx = cast.framework.CastContext.getInstance();
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = className + ' cast-button';
+  btn.title = 'Cast to a Chromecast or Google TV';
+  const type = cast.framework.CastContextEventType.CAST_STATE_CHANGED;
+  const show = () => {
+    // Taken off the page (a new player, the music bar redrawn): stop listening
+    if (btn.dataset.shown && !btn.isConnected) { ctx.removeEventListener(type, show); return; }
+    if (btn.isConnected) btn.dataset.shown = '1';
+    const on = ctx.getCastState() === cast.framework.CastState.CONNECTED;
+    btn.textContent = on ? 'Casting' : 'Cast';
+    btn.classList.toggle('casting', on);
+  };
+  btn.addEventListener('click', () => ctx.requestSession().catch(() => { /* closed the dialog */ }));
+  ctx.addEventListener(type, show);
+  show();
+  return btn;
+}
+
 export function isCasting() {
   try { return !!cast.framework.CastContext.getInstance().getCurrentSession(); }
   catch { return false; }
