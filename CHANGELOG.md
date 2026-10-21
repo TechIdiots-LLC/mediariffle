@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.7.0
+### ✨ Features and improvements
 - **Proxmox LXC template**: each release has `MediaRiffle-v<version>-proxmox-amd64.tar.zst`, Proxmox's Ubuntu 24.04
   template with MediaRiffle, ffmpeg and the Intel/AMD GPU drivers installed, listening on port 5080; a container made
   from it sets itself up at first boot (port and trusted proxies from `/etc/mediariffle/firstboot.env`). Built and
@@ -20,6 +27,7 @@
   limited room goes to what's ahead.
 
 ### 🐞 Bug fixes
+- Av sync ([!20](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/20)) (@acalcutt)
 - **The Cast button shows again**: Google's own button hid itself until Chrome had found a Chromecast. The player
   and the music bar now have a Cast button of their own, always there in Chrome and Edge (on HTTPS), which opens
   Chrome's Cast dialog and reads "Casting" while casting. "Watching on a TV…" moved out of the controls, under the
