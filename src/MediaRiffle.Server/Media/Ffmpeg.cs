@@ -161,6 +161,7 @@ public sealed class Ffmpeg(IOptions<MediaRiffleOptions> options, ILogger<Ffmpeg>
         }
         await CheckToneMappingAsync();
         await CheckLibplaceboAsync();
+        await CheckGpuDecodingAsync();
         return true;
     }
 
@@ -207,6 +208,74 @@ public sealed class Ffmpeg(IOptions<MediaRiffleOptions> options, ILogger<Ffmpeg>
         }
     }
 
+
+    /// <summary>
+    /// What the hardware encoder's GPU decodes, keeping the picture there (found out at start, by putting a tiny
+    /// sample of each kind of video through the GPU pipeline), and whether it tone-maps HDR there too. None with
+    /// Libx264, or with Transcoding:HardwareDecoding off.
+    /// </summary>
+    public PlaybackPlanner.GpuDecoding Gpu { get; private set; } = PlaybackPlanner.GpuDecoding.None;
+
+    private async Task CheckGpuDecodingAsync()
+    {
+        var t = options.Value.Transcoding;
+        if (!t.HardwareDecoding || t.Encoder == VideoEncoder.Libx264) return;
+        var dir = Path.Combine(Path.GetTempPath(), $"mediariffle-gpu-{Environment.ProcessId}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var codecs = new HashSet<string>();
+            bool toneMap = false;
+            foreach (var (codec, encodes) in PlaybackPlanner.GpuSamples)
+            {
+                var sample = Path.Combine(dir, codec + ".mkv");
+                if (!await MadeAsync(encodes, sample)) continue;   // this ffmpeg can't make one: not tried
+                if (!await WorksAsync(PlaybackPlanner.GpuTestArguments(codec, sample, t, toneMap: false))) continue;
+                codecs.Add(codec);
+                // HDR on the GPU: libplacebo on VA-API's frames through Vulkan (the only GPU tone mapping used)
+                if (codec == "hevc10" && t.Encoder == VideoEncoder.Vaapi && t.ToneMapHdr && t.UseLibplacebo)
+                    toneMap = await WorksAsync(PlaybackPlanner.GpuTestArguments(codec, sample, t, toneMap: true));
+            }
+            Gpu = new PlaybackPlanner.GpuDecoding(codecs, toneMap);
+            if (codecs.Count == 0)
+                log.LogWarning("The GPU ({Encoder}) decodes none of the samples, so video is decoded on the CPU and only encoded " +
+                               "on the GPU. Check the GPU is passed through and its driver installed (docs/proxmox.md, " +
+                               "install-ubuntu.md), or set Transcoding:HardwareDecoding to false to skip this check.", t.Encoder);
+            else
+                log.LogInformation("Decoded on the GPU ({Encoder}): {Codecs}; HDR {ToneMap}", t.Encoder,
+                    string.Join(", ", PlaybackPlanner.GpuSamples.Select(s => s.Codec).Where(codecs.Contains).Select(GpuCodecName)),
+                    toneMap ? "tone-mapped there too (libplacebo)" : "decoded on the CPU, to tone-map it with libplacebo or zscale");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
+        }
+
+        async Task<bool> MadeAsync(string[][] encodes, string sample)
+        {
+            foreach (var encode in encodes)
+                if (await WorksAsync(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=12:d=0.5",
+                        .. encode, sample]))
+                    return true;
+            return false;
+        }
+
+        async Task<bool> WorksAsync(IEnumerable<string> args)
+        {
+            try { await RunAsync(FfmpegPath, args, TimeSpan.FromSeconds(30)); return true; }
+            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or System.ComponentModel.Win32Exception)
+            {
+                log.LogDebug("GPU check: {Error}", ex.Message);
+                return false;
+            }
+        }
+    }
+
+    public static string GpuCodecName(string codec) => codec switch
+    {
+        "h264" => "H.264", "hevc" => "HEVC", "hevc10" => "HEVC 10-bit", "av1" => "AV1", "vp9" => "VP9", "mpeg2" => "MPEG-2",
+        _ => codec,
+    };
     /// <summary>One frame of a small 10-bit HDR picture through libplacebo on Vulkan, to nowhere.</summary>
     public static readonly string[] LibplaceboTestArguments =
     [

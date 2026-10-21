@@ -35,11 +35,16 @@ public enum SegmentFormat
 /// Transcoded HDR video is tone-mapped to SDR (BT.709) first, so it isn't washed out; set when the video is HDR and
 /// the server's ffmpeg can (see <see cref="Ffmpeg.CanToneMap"/>).
 /// </param>
+/// <param name="GpuDecode">
+/// Decoded on the hardware encoder's GPU, and scaled and (HDR) tone-mapped there, the picture never leaving it (see
+/// <see cref="PlaybackPlanner.DecodesOnGpu"/>). ToneMap and Libplacebo are still set for HDR: they're what a stream
+/// falls back to if the GPU fails on it.
+/// </param>
 public sealed record PlaybackPlan(
     PlaybackMode Mode, ProbeStream? Video, ProbeStream? Audio, ProbeStream? BurnSubtitle, string Reason,
     string Quality = Media.Quality.Original, int TargetHeight = 1080, int TargetVideoKbps = 8000, int AudioKbps = 192,
     SegmentFormat Segments = SegmentFormat.Ts, int StreamKbps = 0, IReadOnlyList<QualityLevel>? Levels = null,
-    bool ToneMap = false, bool Libplacebo = false)
+    bool ToneMap = false, bool Libplacebo = false, bool GpuDecode = false)
 {
     public bool IsAdaptive => Levels is { Count: > 0 };
 }
@@ -125,13 +130,12 @@ public static class PlaybackPlanner
     {
         var a = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
         bool transcode = plan.Mode == PlaybackMode.Transcode;
-        if (transcode && o.Encoder == VideoEncoder.Vaapi) a.AddRange(["-vaapi_device", o.VaapiDevice]);
-        // libplacebo tone-maps on the GPU through Vulkan
-        if (transcode && plan.Libplacebo) a.AddRange(["-init_hw_device", "vulkan"]);
+        a.AddRange(DeviceArguments(plan, o, transcode));
         // Copied video starts at the keyframe ffmpeg's seek lands on, before the time; -noaccurate_seek starts the
         // audio there too. Otherwise it's cut at the time itself, a second or more later, and in fMP4 that gap is
         // only an edit list, which browsers ignore: the sound plays that much early (see Ffmpeg.RemuxStartAsync)
         if (startSeconds > 0) a.AddRange([.. transcode ? [] : new[] { "-noaccurate_seek" }, "-ss", Seconds(startSeconds)]);
+        if (transcode && plan.GpuDecode && plan.Video is { } gv) a.AddRange(GpuDecoder(gv, o));
         a.AddRange(["-i", input]);
 
         if (plan.Video is { } v)
@@ -144,7 +148,7 @@ public static class PlaybackPlanner
             }
             else
             {
-                a.AddRange(VideoTranscode(v, plan.BurnSubtitle, plan.TargetHeight, plan.TargetVideoKbps, o, fixedKeyframes: false, plan.ToneMap, plan.Libplacebo));
+                a.AddRange(VideoTranscode(v, plan.BurnSubtitle, plan.TargetHeight, plan.TargetVideoKbps, o, fixedKeyframes: false, plan.ToneMap, plan.Libplacebo, plan.GpuDecode));
             }
         }
 
@@ -181,7 +185,7 @@ public static class PlaybackPlanner
     /// each segment starts cleanly (<paramref name="fixedKeyframes"/>: for an adaptive stream, where it must).
     /// </summary>
     private static List<string> VideoTranscode(ProbeStream v, ProbeStream? burn, int targetHeight, int kbps, TranscodingOptions o,
-        bool fixedKeyframes, bool toneMap = false, bool libplacebo = false)
+        bool fixedKeyframes, bool toneMap = false, bool libplacebo = false, bool gpuDecode = false)
     {
         var a = new List<string>();
         int height = Math.Min(targetHeight, o.MaxHeight);
@@ -192,25 +196,137 @@ public static class PlaybackPlanner
             : libplacebo ? LibplaceboFilter(scale ? height : null) + ","
             : toneMap ? (scale ? $"scale=-2:{height}," : "") + ToneMapFilter(v) + ","
             : null;
-        var chain = o.Encoder switch
-        {
-            // VA-API scales on the GPU, after the frames are uploaded to it
-            VideoEncoder.Vaapi => hdr is not null ? hdr + "format=nv12,hwupload"
-                : "format=nv12,hwupload" + (scale ? $",scale_vaapi=w=-2:h={height}" : ""),
-            VideoEncoder.Qsv => (hdr ?? (scale ? $"scale=-2:{height}," : "")) + "format=nv12",
-            _ => (hdr ?? (scale ? $"scale=-2:{height}," : "")) + "format=yuv420p",
-        };
+        var chain = gpuDecode ? GpuFilter(o, OutputSize(v, height), v.IsHdr)
+            : o.Encoder switch
+            {
+                // VA-API scales on the GPU, after the frames are uploaded to it
+                VideoEncoder.Vaapi => hdr is not null ? hdr + "format=nv12,hwupload"
+                    : "format=nv12,hwupload" + (scale ? $",scale_vaapi=w=-2:h={height}" : ""),
+                VideoEncoder.Qsv => (hdr ?? (scale ? $"scale=-2:{height}," : "")) + "format=nv12",
+                _ => (hdr ?? (scale ? $"scale=-2:{height}," : "")) + "format=yuv420p",
+            };
         if (burn is { } s) a.AddRange(["-filter_complex", $"[0:{v.Index}][0:{s.Index}]overlay,{chain}[v]", "-map", "[v]"]);
         else a.AddRange(["-map", $"0:{v.Index}", "-vf", chain]);
         a.AddRange(EncoderArguments(o, Math.Min(kbps, o.MaxVideoKbps), Math.Min(height, v.Height > 0 ? v.Height : height)));
         // Tone-mapped (or ordinary) output is BT.709: say so, or players may take it for the source's BT.2020
-        if (hdr is not null) a.AddRange(["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]);
+        if (hdr is not null || (gpuDecode && v.IsHdr)) a.AddRange(["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]);
         // A player switching level starts a segment with no picture before it: NVENC's forced keyframes must be IDR
         if (fixedKeyframes && o.Encoder == VideoEncoder.Nvenc) a.AddRange(["-forced-idr", "1"]);
         // t counts from the first frame of this run, which starts on a segment boundary
         a.AddRange(["-force_key_frames", $"expr:gte(t,n_forced*{o.SegmentSeconds})"]);
         return a;
     }
+
+    /// <summary>
+    /// The GPU devices a transcode uses, before its input: VA-API's for uploading frames decoded on the CPU, and Vulkan
+    /// for libplacebo. Decoding on the GPU brings its own device (<see cref="GpuDecoder"/>).
+    /// </summary>
+    private static List<string> DeviceArguments(PlaybackPlan plan, TranscodingOptions o, bool transcode)
+    {
+        if (!transcode || plan.GpuDecode) return [];
+        var a = new List<string>();
+        if (o.Encoder == VideoEncoder.Vaapi) a.AddRange(["-vaapi_device", o.VaapiDevice]);
+        if (plan.Libplacebo) a.AddRange(["-init_hw_device", "vulkan"]);
+        return a;
+    }
+
+    // ── Decoding on the GPU ──
+    //
+    // With a GPU encoder, the video can be decoded on that GPU and scaled and tone-mapped there too (VA-API's
+    // scale_vaapi and tonemap_vaapi, Quick Sync's vpp_qsv, CUDA's scale_cuda), so the picture never comes back to the
+    // CPU: copying 4K frames back costs about what decoding them in software does. What the GPU decodes is found out
+    // at start (Ffmpeg.CheckGpuDecodingAsync), by putting a tiny sample of each codec through this same pipeline.
+
+    /// <summary>The codecs a GPU was found to decode (<see cref="GpuCodec"/>'s names), and whether it tone-maps HDR.</summary>
+    public sealed record GpuDecoding(IReadOnlySet<string> Codecs, bool ToneMap)
+    {
+        public static readonly GpuDecoding None = new(new HashSet<string>(), false);
+    }
+
+    /// <summary>The kind of video a GPU might decode: h264, hevc, hevc10, av1, vp9 or mpeg2 (4:2:0 only); null for anything else.</summary>
+    public static string? GpuCodec(ProbeStream v) => (v.Codec, v.PixelFormat) switch
+    {
+        ("h264", null or "yuv420p" or "yuvj420p") => "h264",
+        ("hevc", null or "yuv420p" or "yuvj420p") => "hevc",
+        ("hevc", "yuv420p10le") => "hevc10",
+        ("av1", null or "yuv420p" or "yuv420p10le") => "av1",
+        ("vp9", null or "yuv420p") => "vp9",
+        ("mpeg2video", null or "yuv420p") => "mpeg2",
+        _ => null,
+    };
+
+    /// <summary>
+    /// Whether this video is decoded on the GPU: the encoder's GPU decodes its kind, and nothing needs the picture on
+    /// the CPU. An image subtitle burned in does; so does HDR (Dolby Vision 5 included) unless the GPU tone-maps it
+    /// with libplacebo, which only VA-API can hand frames to (through Vulkan). Quick Sync's and VA-API's own tone
+    /// mapping isn't used: it comes out much darker than libplacebo's.
+    /// </summary>
+    public static bool DecodesOnGpu(ProbeStream v, ProbeStream? burn, GpuDecoding gpu, TranscodingOptions o) =>
+        o.HardwareDecoding && o.Encoder != VideoEncoder.Libx264 && burn is null &&
+        GpuCodec(v) is { } codec && gpu.Codecs.Contains(codec) &&
+        (!v.IsHdr || (gpu.ToneMap && o.Encoder == VideoEncoder.Vaapi && o.ToneMapHdr && o.UseLibplacebo));
+
+    /// <summary>The input options that decode on the encoder's GPU and keep the frames there (before -i).</summary>
+    public static List<string> GpuDecoder(ProbeStream v, TranscodingOptions o) => GpuDecoder(GpuCodec(v) ?? "h264", o, v.IsHdr);
+
+    public static List<string> GpuDecoder(string codec, TranscodingOptions o, bool hdr = false) => o.Encoder switch
+    {
+        // HDR: a Vulkan device made from the VA-API one, so libplacebo can work on the decoded frames where they are
+        VideoEncoder.Vaapi when hdr => ["-init_hw_device", $"vaapi=va:{o.VaapiDevice}", "-init_hw_device", "vulkan=vk@va",
+            "-hwaccel", "vaapi", "-hwaccel_device", "va", "-hwaccel_output_format", "vaapi"],
+        VideoEncoder.Vaapi => ["-hwaccel", "vaapi", "-hwaccel_device", o.VaapiDevice, "-hwaccel_output_format", "vaapi"],
+        // Quick Sync decodes with its own decoders (on Linux through the render node)
+        VideoEncoder.Qsv => [
+            .. OperatingSystem.IsWindows() ? [] : new[] { "-qsv_device", o.VaapiDevice },
+            "-hwaccel", "qsv", "-hwaccel_output_format", "qsv",
+            "-c:v", (codec == "hevc10" ? "hevc" : codec) + "_qsv"],
+        VideoEncoder.Nvenc => ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"],
+        _ => [],
+    };
+
+    /// <summary>
+    /// The filters for frames on the GPU: scaled to <paramref name="size"/> (exactly: vpp_qsv takes no -2) as 8-bit.
+    /// HDR (VA-API only, see <see cref="DecodesOnGpu"/>): mapped into Vulkan, scaled and tone-mapped by libplacebo
+    /// (Dolby Vision's metadata applied), and mapped back for the encoder.
+    /// </summary>
+    public static string GpuFilter(TranscodingOptions o, (int Width, int Height) size, bool hdr)
+    {
+        var (w, h) = size;
+        return o.Encoder switch
+        {
+            VideoEncoder.Vaapi when hdr => "hwmap=derive_device=vulkan,format=vulkan," +
+                $"libplacebo=w={w}:h={h}:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=bt.2390:" +
+                "apply_dolbyvision=1:format=nv12,hwmap=derive_device=vaapi,format=vaapi",
+            VideoEncoder.Vaapi => $"scale_vaapi=w={w}:h={h}:format=nv12",
+            VideoEncoder.Qsv => $"vpp_qsv=w={w}:h={h}:format=nv12",
+            _ => $"scale_cuda=w={w}:h={h}:format=nv12",
+        };
+    }
+
+    /// <summary>
+    /// How Ffmpeg.CheckGpuDecodingAsync makes its tiny sample of each kind of video: alternative ffmpeg arguments
+    /// (encoders this ffmpeg may not have), the output file last. hevc10 is HDR10, for the tone-mapping check too.
+    /// </summary>
+    public static readonly IReadOnlyList<(string Codec, string[][] Encodes)> GpuSamples =
+    [
+        ("h264", [["-pix_fmt", "yuv420p", "-c:v", "libx264"]]),
+        ("hevc", [["-pix_fmt", "yuv420p", "-c:v", "libx265", "-x265-params", "log-level=error"]]),
+        ("hevc10", [["-pix_fmt", "yuv420p10le", "-c:v", "libx265", "-x265-params",
+            "log-level=error:hdr10=1:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1):max-cll=1000,400",
+            "-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc"]]),
+        ("av1", [["-pix_fmt", "yuv420p10le", "-c:v", "libsvtav1", "-preset", "12"],
+                 ["-pix_fmt", "yuv420p10le", "-c:v", "libaom-av1", "-cpu-used", "8", "-usage", "realtime"],
+                 ["-pix_fmt", "yuv420p10le", "-c:v", "librav1e", "-speed", "10"]]),
+        ("vp9", [["-pix_fmt", "yuv420p", "-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8"]]),
+        ("mpeg2", [["-pix_fmt", "yuv420p", "-c:v", "mpeg2video"]]),
+    ];
+
+    /// <summary>A GPU sample through the transcode pipeline (decoded, scaled, maybe tone-mapped, encoded) to nowhere.</summary>
+    public static List<string> GpuTestArguments(string codec, string sample, TranscodingOptions o, bool toneMap) =>
+    [
+        "-hide_banner", "-v", "error", .. GpuDecoder(codec, o, toneMap), "-i", sample,
+        "-vf", GpuFilter(o, (160, 90), toneMap), .. EncoderArguments(o, 1000, 90), "-f", "null", "-",
+    ];
 
     private static IEnumerable<string> EncoderArguments(TranscodingOptions o, int kbps, int height)
     {
@@ -316,11 +432,12 @@ public static class PlaybackPlanner
         var d = o.SegmentSeconds;
         // -progress: how far it has got, twice a second on stdout, for its speed (see SegmentEncoder)
         var a = new List<string> { "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-y" };
-        if (o.Encoder == VideoEncoder.Vaapi) a.AddRange(["-vaapi_device", o.VaapiDevice]);
-        if (plan.Libplacebo) a.AddRange(["-init_hw_device", "vulkan"]);
+        a.AddRange(DeviceArguments(plan, o, transcode: true));
         // -ss even at 0: the first frame of a run is then always the first one on or after the boundary
-        a.AddRange(["-copyts", "-start_at_zero", "-ss", Seconds((double)startSegment * d), "-i", input]);
-        if (plan.Video is { } v) a.AddRange(VideoTranscode(v, plan.BurnSubtitle, level.Height, level.VideoKbps, o, fixedKeyframes: true, plan.ToneMap, plan.Libplacebo));
+        a.AddRange(["-copyts", "-start_at_zero", "-ss", Seconds((double)startSegment * d)]);
+        if (plan.GpuDecode && plan.Video is { } gv) a.AddRange(GpuDecoder(gv, o));
+        a.AddRange(["-i", input]);
+        if (plan.Video is { } v) a.AddRange(VideoTranscode(v, plan.BurnSubtitle, level.Height, level.VideoKbps, o, fixedKeyframes: true, plan.ToneMap, plan.Libplacebo, plan.GpuDecode));
         if (plan.Audio is { } au) a.AddRange(["-map", $"0:{au.Index}", "-c:a", "aac", "-b:a", $"{level.AudioKbps}k", "-ac", "2"]);
         a.AddRange([
             "-sn", "-dn", "-map_metadata", "-1", "-max_muxing_queue_size", "4096",

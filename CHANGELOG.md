@@ -7,6 +7,11 @@
   from it sets itself up at first boot (port and trusted proxies from `/etc/mediariffle/firstboot.env`). Built and
   boot-tested by the release pipelines (GitLab's on the Linux runner). See docs/proxmox.md, which also covers passing in
   a media share and the host's GPU.
+- **Decoding on the GPU**: with a GPU encoder (`Qsv`, `Vaapi`, `Nvenc`), video is decoded and scaled on that GPU too,
+  so the picture never leaves it: a 4K file converted about 3.5 times faster on an Intel laptop's GPU. With `Vaapi`
+  (Linux), HDR and Dolby Vision are tone-mapped there with libplacebo, through Vulkan. What the GPU decodes is found
+  out at start and logged; anything else, a stream the GPU fails on, and burned-in subtitles are decoded on the CPU as
+  before. `Transcoding:HardwareDecoding` turns it off. See docs/configuration.md.
 - **Play in VLC**: under the player, Play in VLC… opens the file as it is in VLC, from where you are (on Android and
   an iPhone or iPad the VLC app opens; on a computer a small .m3u playlist is saved, or copy the link into VLC's Open
   Network Stream). VLC decodes everything itself (4K HEVC, HDR, Dolby Vision, TrueHD), so the server only reads the

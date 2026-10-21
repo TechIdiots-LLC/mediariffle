@@ -40,6 +40,12 @@ public sealed class TranscodingOptions
     /// Dolby Vision's metadata applied, which Dolby Vision 5 needs to look right. Off: zscale (with ToneMapHdr).
     /// </summary>
     public bool UseLibplacebo { get; set; } = true;
+    /// <summary>
+    /// With a GPU encoder (Qsv, Vaapi, Nvenc): decode on that GPU too, and scale and tone-map HDR there, so the picture
+    /// never leaves it (several times faster than decoding 4K on the CPU). Only for what the GPU was found to decode at
+    /// start; burned-in subtitles and Dolby Vision 5 still decode on the CPU, as does a stream the GPU fails on.
+    /// </summary>
+    public bool HardwareDecoding { get; set; } = true;
     /// <summary>Peak video bitrate of a transcode, in kbit/s.</summary>
     public int MaxVideoKbps { get; set; } = 8000;
     /// <summary>Streams transcoding or remuxing at once, across all users; more are refused until one ends.</summary>

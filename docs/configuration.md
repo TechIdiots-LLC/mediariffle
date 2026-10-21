@@ -29,6 +29,7 @@ Put your settings in file 2. A complete example:
       "MaxHeight": 1080,
       "ToneMapHdr": true,
       "UseLibplacebo": true,
+      "HardwareDecoding": true,
       "MaxVideoKbps": 8000,
       "MaxSessions": 4,
       "MaxSessionsPerUser": 2,
@@ -59,6 +60,7 @@ Put your settings in file 2. A complete example:
 | `Transcoding.MaxHeight` | Transcodes are scaled down to this many lines. `2160` allows 4K transcodes (see Quality below); 1080 by default. |
 | `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode. Raise it to about `30000` with `MaxHeight` 2160, or the 4K level is held to this. |
 | `Transcoding.ToneMapHdr` | HDR video (HDR10, HLG) that has to be converted is tone-mapped to ordinary colours, so it isn't washed out (see Quality below). `true` by default. |
+| `Transcoding.HardwareDecoding` | With a GPU encoder (`Qsv`, `Vaapi`, `Nvenc`), decode on that GPU too and scale (and with `Vaapi`, tone-map HDR) there, for what it was found to decode at start (see Decoding on the GPU below). `true` by default. |
 | `Transcoding.UseLibplacebo` | Tone-map HDR with libplacebo when this ffmpeg has it and a Vulkan GPU works: better HDR10, and Dolby Vision applied, which Dolby Vision 5 needs (see HDR below). `true` by default. |
 | `Transcoding.MaxSessions` | Remuxes and transcodes running at once, all users together. Direct play doesn't count. |
 | `Transcoding.MaxSessionsPerUser` | A user starting more stops their oldest. |
@@ -212,7 +214,26 @@ right only with libplacebo (without it, the log and the player's info line say s
 most rips) carry HDR10 underneath and play as HDR10 does. libplacebo comes with gyan.dev's *full* build on Windows
 (`winget install Gyan.FFmpeg`; the *essentials* build `Install-Ffmpeg.ps1` fetches may lack it), BtbN's builds, and
 recent Linux packages; Vulkan comes with current NVIDIA, AMD and Intel drivers. `"UseLibplacebo": false` keeps zscale.
-Not with the `Vaapi` encoder, whose frames go to its own GPU device: there it's zscale.
+With the `Vaapi` encoder, libplacebo runs on video decoded on the GPU (below); decoded on the CPU, it's zscale there.
+
+### Decoding on the GPU
+
+With a GPU encoder (`Qsv`, `Vaapi` or `Nvenc`), video is **decoded on that GPU** too and scaled there, so the picture
+never comes back to the CPU. That's the difference between a 4K file converting several times faster than it plays and
+not keeping up: decoding 4K HEVC is most of a transcode's work, and copying 4K frames back from the GPU costs about as
+much. At start, MediaRiffle puts a tiny sample of each kind of video (H.264, HEVC, HEVC 10-bit, AV1, VP9, MPEG-2)
+through the GPU and logs what it decodes, e.g. `Decoded on the GPU (Vaapi): H.264, HEVC, HEVC 10-bit, AV1, VP9`; the
+player's info line says `decoded on the GPU` for a stream that is. Anything else is decoded on the CPU as before, as is
+a stream the GPU fails on (the log says so), and one with an image subtitle burned in.
+
+**HDR** is tone-mapped on the GPU only with **`Vaapi`** (Linux): the decoded frames are handed to libplacebo through
+Vulkan, so it looks as libplacebo does on the CPU (Dolby Vision 5 included), needing Mesa's Vulkan driver
+(`mesa-vulkan-drivers`, in the Proxmox template). Quick Sync's and VA-API's own HDR tone mapping isn't used, as it
+comes out much darker. With `Qsv` or `Nvenc`, HDR is decoded on the CPU and tone-mapped as described above.
+
+On Linux, Intel GPUs from Broadwell on (including the N100/N150 mini PCs) work with `Vaapi` and the
+`intel-media-va-driver` package; AMD with `mesa-va-drivers`. In a Proxmox container, pass the GPU in first
+([proxmox.md](proxmox.md)). `"HardwareDecoding": false` decodes everything on the CPU.
 
 ## Library layout
 

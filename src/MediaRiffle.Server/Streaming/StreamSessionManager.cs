@@ -47,15 +47,26 @@ public sealed class StreamSession
     internal ConcurrentDictionary<(int Level, int Segment), string> Segments { get; } = new();
     /// <summary>The latest segment the player asked for, to stop an ffmpeg that has run far ahead of it.</summary>
     internal int LastRequestedSegment { get; set; }
+    /// <summary>
+    /// The GPU failed on this stream's video (an ffmpeg decoding there gave up before its first segment): from then on
+    /// it's decoded on the CPU, with the plan's HDR settings.
+    /// </summary>
+    internal bool CpuDecode { get; set; }
+    /// <summary>The plan an ffmpeg starting now follows: without GPU decoding once that failed.</summary>
+    internal PlaybackPlan EncoderPlan => CpuDecode ? Plan with { GpuDecode = false } : Plan;
 }
 
 /// <summary>One ffmpeg making one level of an adaptive stream, from <see cref="StartSegment"/> on.</summary>
-internal sealed class SegmentEncoder(int level, int startSegment, string directory, Process process)
+internal sealed class SegmentEncoder(int level, int startSegment, string directory, Process process, bool gpuDecode = false)
 {
     public int Level { get; } = level;
     public int StartSegment { get; } = startSegment;
     public string Directory { get; } = directory;
     public Process Process { get; } = process;
+    /// <summary>Decoding on the GPU: when it fails (ffmpeg exits with an error), the stream goes on decoding on the CPU.</summary>
+    public bool GpuDecode { get; } = gpuDecode;
+    /// <summary>Decoding on the GPU and it failed. What it wrote as it ended isn't used (it may have no picture).</summary>
+    public bool GpuFailed => GpuDecode && Process.HasExited && Process.ExitCode != 0;
     /// <summary>The last segment this run finished (StartSegment - 1 before the first).</summary>
     public int Latest { get; private set; } = startSegment - 1;
     private long _read;
@@ -67,9 +78,15 @@ internal sealed class SegmentEncoder(int level, int startSegment, string directo
     /// <summary>Where it had got to (seconds of video) and when (Environment.TickCount64), over the last 10 s or so.</summary>
     private readonly Queue<(long Ms, double Out)> _progress = new();
 
-    /// <summary>A line of ffmpeg's -progress output; out_time_us is how far it has written.</summary>
+    /// <summary>Video frames written so far (frame= in -progress).</summary>
+    public long Frames => Interlocked.Read(ref _frames);
+    private long _frames;
+
+    /// <summary>A line of ffmpeg's -progress output: out_time_us is how far it has written, frame= how many pictures.</summary>
     public void Progress(string line)
     {
+        if (line.StartsWith("frame=", StringComparison.Ordinal) && long.TryParse(line.AsSpan(6), out var frames))
+            Interlocked.Exchange(ref _frames, frames);
         if (!line.StartsWith("out_time_us=", StringComparison.Ordinal) || !long.TryParse(line.AsSpan(12), out var us) || us <= 0) return;
         long now = Environment.TickCount64;
         lock (_progress)
@@ -105,7 +122,9 @@ internal sealed class SegmentEncoder(int level, int startSegment, string directo
             try
             {
                 var list = Path.Combine(Directory, "list.csv");
-                if (!File.Exists(list)) return;
+                // Decoding on the GPU, a segment counts only once pictures come out: one written as it fails (a size or
+                // profile the GPU can't decode) has sound but no picture, and is often listed before ffmpeg has exited
+                if (GpuFailed || (GpuDecode && Frames == 0) || !File.Exists(list)) return;
                 using var f = new FileStream(list, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                 if (f.Length <= _read) return;
                 f.Seek(_read, SeekOrigin.Begin);
@@ -276,6 +295,28 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
         while (DateTime.UtcNow < until)
         {
             ct.ThrowIfCancellationRequested();
+            // Decoding on the GPU failed (a size or profile it can't decode after all, a driver problem): the same
+            // again, decoded on the CPU, for this stream from now on. Checked first: ffmpeg writes out a segment as
+            // it gives up, which may have sound but no picture.
+            if (mine.GpuFailed && !s.CpuDecode && s.Encoder == mine)
+            {
+                await s.EncoderLock.WaitAsync(ct);
+                try
+                {
+                    if (s.Encoder == mine && _sessions.ContainsKey(s.Id))
+                    {
+                        // Its last segment, if it was read just before ffmpeg ended, is made again
+                        if (s.Segments.TryGetValue((mine.Level, mine.Latest), out var last) && last.StartsWith(mine.Directory, StringComparison.Ordinal))
+                            s.Segments.TryRemove((mine.Level, mine.Latest), out _);
+                        s.CpuDecode = true;
+                        log.LogWarning("Session {Id}: the GPU couldn't decode this video ({Errors}); decoding it on the CPU",
+                            s.Id, Ffmpeg.LastLines(mine.Errors, 2));
+                        mine = StartEncoder(s, level, segment);
+                        continue;
+                    }
+                }
+                finally { s.EncoderLock.Release(); }
+            }
             mine.Collect(s);
             if (s.Segments.TryGetValue((level, segment), out done)) return Made(done);
             // Replaced (the player switched level or seeked meanwhile), or ffmpeg ended without it
@@ -302,10 +343,10 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
         // Each run writes to its own folder, so a segment being sent is never overwritten by another run
         var dir = Path.Combine(s.Directory, $"v{level}", $"r{segment}-{Environment.TickCount64}");
         System.IO.Directory.CreateDirectory(dir);
-        var psi = ffmpeg.StartInfo(ffmpeg.FfmpegPath, PlaybackPlanner.SegmentArguments(s.Plan, lvl, s.FullPath, segment, T));
+        var psi = ffmpeg.StartInfo(ffmpeg.FfmpegPath, PlaybackPlanner.SegmentArguments(s.EncoderPlan, lvl, s.FullPath, segment, T));
         psi.WorkingDirectory = dir;
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        var e = new SegmentEncoder(level, segment, dir, p);
+        var e = new SegmentEncoder(level, segment, dir, p, s.EncoderPlan.GpuDecode);
         p.ErrorDataReceived += (_, a) => { if (a.Data is { Length: > 0 } line) e.AddError(line); };
         p.OutputDataReceived += (_, a) => { if (a.Data is { Length: > 0 } line) e.Progress(line); };
         p.Exited += (_, _) =>

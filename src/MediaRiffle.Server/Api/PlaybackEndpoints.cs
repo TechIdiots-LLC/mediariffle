@@ -111,8 +111,13 @@ public static partial class PlaybackEndpoints
                 };
             }
 
-            // HDR video that's converted is tone-mapped to ordinary colours: with libplacebo when it works here (Dolby
-            // Vision's metadata applied; not with VA-API, whose frames go to its own GPU device), else with zscale
+            // Decoded on the hardware encoder's GPU, and scaled and tone-mapped there, when it can
+            bool gpu = plan.Mode == PlaybackMode.Transcode && plan.Video is { } gv &&
+                       PlaybackPlanner.DecodesOnGpu(gv, plan.BurnSubtitle, ffmpeg.Gpu, t);
+            var reason = plan.Reason;
+            // HDR on the CPU: tone-mapped with libplacebo (Dolby Vision's metadata applied; not with VA-API, whose
+            // frames go to its own GPU device) when it works here, else with zscale. Also what a stream decoded on the
+            // GPU falls back to if the GPU fails on it.
             if (plan.Mode == PlaybackMode.Transcode && plan.Video is { IsHdr: true } hdr)
             {
                 if (ffmpeg.CanLibplacebo && t.Encoder != VideoEncoder.Vaapi)
@@ -129,6 +134,8 @@ public static partial class PlaybackEndpoints
                                  (hdr.IsDolbyVisionOnly ? $" ({hdr.DolbyVisionLabel}'s colours need an ffmpeg with libplacebo and a Vulkan GPU)" : ""),
                     };
             }
+            if (gpu)
+                plan = plan with { GpuDecode = true, Reason = reason + (plan.Video!.IsHdr ? "; decoded and tone-mapped on the GPU" : "; decoded on the GPU") };
 
             var start = req.Start;
             if (start is null)
