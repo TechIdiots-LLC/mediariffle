@@ -241,14 +241,27 @@ apt install -y sqlite3
 wget -q https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/raw/main/deploy/carry-user-data.sql
 systemctl stop mediariffle
 cp /var/lib/mediariffle/mediariffle.db /root/mediariffle.db.before-carry
-sqlite3 /var/lib/mediariffle/mediariffle.db -cmd "ATTACH '/root/old/mediariffle.db' AS old" < carry-user-data.sql
+sqlite3 -bail /var/lib/mediariffle/mediariffle.db -cmd "ATTACH '/root/old/mediariffle.db' AS old" < carry-user-data.sql
 chown mediariffle:mediariffle /var/lib/mediariffle/mediariffle.db*
 systemctl start mediariffle
 ```
 
-It prints what it did, e.g. `Users matched: 4 of 4`, `Lists and favorites: 37 added, 0 not in the new libraries`. A
-user it can't match (a different user name in the new database) is left out, so make sure everyone's account came
-across first. `/root/mediariffle.db.before-carry` is the database as it was, if anything looks wrong.
+It ends with a table of what it did: users and libraries matched, and the lists and favorites, hidden items and watch
+progress added, each with how many weren't in the new libraries. A user it can't match (a different user name in the
+new database) is left out with everything of theirs, so make sure everyone's account came across first.
+`/root/mediariffle.db.before-carry` is the database as it was, if anything looks wrong.
+
+**With DB Browser for SQLite instead** (on Windows, say): the script is plain SQL, so it runs there too.
+
+1. In the container, `systemctl stop mediariffle`, and copy `/var/lib/mediariffle/mediariffle.db` out (on the node:
+   `pct pull 120 /var/lib/mediariffle/mediariffle.db /root/new.db`, then to your PC). Keep a copy as it was.
+2. Stop the old server's MediaRiffle too (`Stop-Service MediaRiffle`), so its database is complete.
+3. **Open Database**: the copy of the **new** one. **Attach Database**: the old one
+   (`C:\ProgramData\MediaRiffle\mediariffle.db`), and name it `old`.
+4. **Execute SQL**: open `carry-user-data.sql`, **Execute all** (F5), and check the table it shows. **Write Changes**
+   (Ctrl+S), then close the database.
+5. Copy it back (`pct push 120 /root/new.db /var/lib/mediariffle/mediariffle.db` on the node), then in the container
+   `chown mediariffle:mediariffle /var/lib/mediariffle/mediariffle.db` and `systemctl start mediariffle`.
 
 ## Upgrading to a new release
 

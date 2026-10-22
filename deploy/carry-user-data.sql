@@ -5,21 +5,33 @@
 -- Things are matched by what they are, not by id: users by user name, libraries by name, shows by folder, movies and
 -- albums by their group key, artists by name, files by their path in the library. What the new database doesn't have
 -- (not scanned yet, or gone) is left out and counted. Running it again adds nothing twice; watch progress already in
--- the new database is kept unless the old one is newer.
+-- the new database is kept unless the old one is newer. It ends by listing what it did.
 --
--- With MediaRiffle stopped, the new database backed up, and the old one (with its -wal and -shm files, if any) at
--- /root/old/mediariffle.db:
+-- Plain SQL, for the sqlite3 command line or DB Browser for SQLite. Stop MediaRiffle where the NEW database is first,
+-- and back that database up. The new database is the one opened ("main"); the old one is attached as "old".
+--
+-- sqlite3, in the container, the old database at /root/old/mediariffle.db:
 --
 --   systemctl stop mediariffle
 --   cp /var/lib/mediariffle/mediariffle.db /root/mediariffle.db.before-carry
---   sqlite3 /var/lib/mediariffle/mediariffle.db -cmd "ATTACH '/root/old/mediariffle.db' AS old" < carry-user-data.sql
+--   sqlite3 -bail /var/lib/mediariffle/mediariffle.db -cmd "ATTACH '/root/old/mediariffle.db' AS old" < carry-user-data.sql
+--   chown mediariffle:mediariffle /var/lib/mediariffle/mediariffle.db*
 --   systemctl start mediariffle
+--
+-- DB Browser for SQLite: Open Database -> the NEW mediariffle.db; Attach Database -> the old one, named old;
+-- Execute SQL -> open this file -> Execute all (F5); check the table it shows; Write Changes (Ctrl+S).
 
-.bail on
-.headers off
-.mode list
-
-BEGIN;
+DROP VIEW IF EXISTS temp.old_tags;
+DROP VIEW IF EXISTS temp.old_hidden;
+DROP TABLE IF EXISTS temp.map_user;
+DROP TABLE IF EXISTS temp.map_library;
+DROP TABLE IF EXISTS temp.map_show;
+DROP TABLE IF EXISTS temp.map_movie;
+DROP TABLE IF EXISTS temp.map_artist;
+DROP TABLE IF EXISTS temp.map_album;
+DROP TABLE IF EXISTS temp.map_file;
+DROP TABLE IF EXISTS temp.carry_result;
+CREATE TEMP TABLE carry_result (Step INTEGER, What TEXT, Done INTEGER, NotInNewLibraries INTEGER);
 
 CREATE TEMP TABLE map_user AS
     SELECT o.Id AS OldId, n.Id AS NewId FROM old.AspNetUsers o JOIN main.AspNetUsers n ON n.NormalizedUserName = o.NormalizedUserName;
@@ -41,8 +53,10 @@ CREATE TEMP TABLE map_file AS
     SELECT o.Id AS OldId, n.Id AS NewId FROM old.MediaFiles o
     JOIN temp.map_library l ON l.OldId = o.LibraryId JOIN main.MediaFiles n ON n.LibraryId = l.NewId AND n.RelativePath = o.RelativePath;
 
-SELECT 'Users matched: ' || (SELECT COUNT(*) FROM temp.map_user) || ' of ' || (SELECT COUNT(*) FROM old.AspNetUsers);
-SELECT 'Libraries matched: ' || (SELECT COUNT(*) FROM temp.map_library) || ' of ' || (SELECT COUNT(*) FROM old.Libraries);
+-- Matched of all (a user or library left out here takes everything of theirs with it)
+INSERT INTO temp.carry_result VALUES
+    (1, 'Users matched', (SELECT COUNT(*) FROM temp.map_user), (SELECT COUNT(*) FROM old.AspNetUsers) - (SELECT COUNT(*) FROM temp.map_user)),
+    (2, 'Libraries matched', (SELECT COUNT(*) FROM temp.map_library), (SELECT COUNT(*) FROM old.Libraries) - (SELECT COUNT(*) FROM temp.map_library));
 
 -- An old row with each of its ids mapped (an id it doesn't have stays null); rows with an id that has no match are left out
 CREATE TEMP VIEW old_tags AS
@@ -61,8 +75,8 @@ INSERT INTO main.UserTags (UserId, Tag, ShowId, MovieId, ArtistId, AlbumId, Medi
     WHERE o.Found AND NOT EXISTS (SELECT 1 FROM main.UserTags x WHERE x.UserId = o.UserId AND x.Tag = o.Tag
         AND x.ShowId IS o.ShowId AND x.MovieId IS o.MovieId AND x.ArtistId IS o.ArtistId AND x.AlbumId IS o.AlbumId
         AND x.MediaFileId IS o.MediaFileId);
-SELECT 'Lists and favorites: ' || changes() || ' added, ' || (SELECT COUNT(*) FROM temp.old_tags WHERE NOT Found) ||
-       ' not in the new libraries';
+INSERT INTO temp.carry_result VALUES
+    (3, 'Lists and favorites added', changes(), (SELECT COUNT(*) FROM temp.old_tags WHERE NOT Found));
 
 CREATE TEMP VIEW old_hidden AS
     SELECT u.NewId AS UserId, s.NewId AS ShowId, m.NewId AS MovieId, ar.NewId AS ArtistId, al.NewId AS AlbumId,
@@ -79,8 +93,8 @@ INSERT INTO main.Hidden (UserId, ShowId, MovieId, ArtistId, AlbumId, MediaFileId
     SELECT o.UserId, o.ShowId, o.MovieId, o.ArtistId, o.AlbumId, o.MediaFileId, o.CreatedUtc FROM temp.old_hidden o
     WHERE o.Found AND NOT EXISTS (SELECT 1 FROM main.Hidden x WHERE x.UserId = o.UserId AND x.ShowId IS o.ShowId
         AND x.MovieId IS o.MovieId AND x.ArtistId IS o.ArtistId AND x.AlbumId IS o.AlbumId AND x.MediaFileId IS o.MediaFileId);
-SELECT 'Hidden: ' || changes() || ' added, ' || (SELECT COUNT(*) FROM temp.old_hidden WHERE NOT Found) ||
-       ' not in the new libraries';
+INSERT INTO temp.carry_result VALUES
+    (4, 'Hidden items added', changes(), (SELECT COUNT(*) FROM temp.old_hidden WHERE NOT Found));
 
 -- Watch progress: one row per user and file; the newer of the two wins
 INSERT INTO main.Progress (UserId, MediaFileId, PositionSeconds, Finished, LeftContinue, UpdatedUtc)
@@ -91,8 +105,9 @@ INSERT INTO main.Progress (UserId, MediaFileId, PositionSeconds, Finished, LeftC
         PositionSeconds = excluded.PositionSeconds, Finished = excluded.Finished,
         LeftContinue = excluded.LeftContinue, UpdatedUtc = excluded.UpdatedUtc
     WHERE excluded.UpdatedUtc > main.Progress.UpdatedUtc;
-SELECT 'Watch progress: ' || changes() || ' added or updated, ' ||
-       (SELECT COUNT(*) FROM old.Progress p JOIN temp.map_user u ON u.OldId = p.UserId
-        WHERE p.MediaFileId NOT IN (SELECT OldId FROM temp.map_file)) || ' not in the new libraries';
+INSERT INTO temp.carry_result VALUES
+    (5, 'Watch progress added or updated', changes(),
+     (SELECT COUNT(*) FROM old.Progress p JOIN temp.map_user u ON u.OldId = p.UserId
+      WHERE p.MediaFileId NOT IN (SELECT OldId FROM temp.map_file)));
 
-COMMIT;
+SELECT What, Done, NotInNewLibraries FROM temp.carry_result ORDER BY Step;
