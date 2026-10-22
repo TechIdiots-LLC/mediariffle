@@ -222,6 +222,34 @@ and the pictures. The settings file is separate. Use the same release on both, o
    and passkeys carry on working (they're tied to the name, not the server). Keep the old server stopped (or its
    service disabled) until you're happy, then remove it.
 
+### Lists, favorites and watch history that didn't come across
+
+If a library was started afresh in the container (its folder changed under Admin → Libraries, or the library added
+again), its shows, movies and files were scanned with new ids, and the lists, favorites, hidden items and watch
+progress that pointed at the old ones went with them. `deploy/carry-user-data.sql` brings them back from the old
+database: it matches users by user name, libraries by name, and shows, movies, albums, artists and files by what they
+are (their folder or path in the library), so the ids don't matter. Anything the new libraries don't have is left out
+and counted, and running it twice adds nothing twice.
+
+Put the old database (`mediariffle.db`, with its `-wal` and `-shm` files if there are any; they're in
+`mediariffle-data.tar.gz` from step 2) in `/root/old/` in the container, scan the new libraries first, then:
+
+```bash
+pct enter 120
+su -
+apt install -y sqlite3
+wget -q https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/raw/main/deploy/carry-user-data.sql
+systemctl stop mediariffle
+cp /var/lib/mediariffle/mediariffle.db /root/mediariffle.db.before-carry
+sqlite3 /var/lib/mediariffle/mediariffle.db -cmd "ATTACH '/root/old/mediariffle.db' AS old" < carry-user-data.sql
+chown mediariffle:mediariffle /var/lib/mediariffle/mediariffle.db*
+systemctl start mediariffle
+```
+
+It prints what it did, e.g. `Users matched: 4 of 4`, `Lists and favorites: 37 added, 0 not in the new libraries`. A
+user it can't match (a different user name in the new database) is left out, so make sure everyone's account came
+across first. `/root/mediariffle.db.before-carry` is the database as it was, if anything looks wrong.
+
 ## Upgrading to a new release
 
 A container is upgraded in place with the release's `.deb`, as any Ubuntu machine is. MediaRiffle's data

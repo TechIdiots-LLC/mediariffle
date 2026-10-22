@@ -2,7 +2,9 @@
 
 ## master
 ### ✨ Features and improvements
-- _...Add new stuff here..._
+- **Bring back lists, favorites and watch history after a move**: `deploy/carry-user-data.sql` copies them from an
+  old database into one whose libraries were scanned afresh (moved to a new server, or a library's folder changed in
+  Admin), matching shows, movies, music and files by what they are rather than by id. See docs/proxmox.md.
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._
