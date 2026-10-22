@@ -2,7 +2,9 @@
 
 ## master
 ### ✨ Features and improvements
-- **Bring back lists, favorites and watch history after a move**: `deploy/carry-user-data.sql` copies them from an
+- **Bring back lists, favorites and watch history after a move**: `deploy/export-user-data.sql` (run on the old
+  database, in DB Browser for SQLite or sqlite3) makes an import script for the new one; `deploy/carry-user-data.sql`
+  does it in one step with both databases at hand. They carry them from an
   old database into one whose libraries were scanned afresh (moved to a new server, or a library's folder changed in
   Admin), matching shows, movies, music and files by what they are rather than by id. See docs/proxmox.md.
 

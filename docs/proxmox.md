@@ -226,42 +226,38 @@ and the pictures. The settings file is separate. Use the same release on both, o
 
 If a library was started afresh in the container (its folder changed under Admin → Libraries, or the library added
 again), its shows, movies and files were scanned with new ids, and the lists, favorites, hidden items and watch
-progress that pointed at the old ones went with them. `deploy/carry-user-data.sql` brings them back from the old
-database: it matches users by user name, libraries by name, and shows, movies, albums, artists and files by what they
-are (their folder or path in the library), so the ids don't matter. Anything the new libraries don't have is left out
-and counted, and running it twice adds nothing twice.
+progress that pointed at the old ones went with them. They can be brought back from the old database, matched by what
+things are (users by user name; shows, movies, albums, artists and files by their library's name and their folder or
+path in it), so the ids don't matter. What the new libraries don't have is left out, and nothing is added twice.
 
-Put the old database (`mediariffle.db`, with its `-wal` and `-shm` files if there are any; they're in
-`mediariffle-data.tar.gz` from step 2) in `/root/old/` in the container, scan the new libraries first, then:
+1. **Export, on the old server**, with `deploy/export-user-data.sql`. It only reads the old database and makes an import
+   script. In DB Browser for SQLite: **Open Database** → `C:\ProgramData\MediaRiffle\mediariffle.db` (MediaRiffle
+   stopped, or a copy of it); **Execute SQL** → open `export-user-data.sql` → **Execute all** (F5). The result is one
+   cell: click it, and in the **Edit Database Cell** pane, **Export to file** → `import-user-data.sql`. Its first lines
+   say what's in it, e.g. `from 3 users: 22 list entries, 1 hidden, 266 watch progress`.
 
-```bash
-pct enter 120
-su -
-apt install -y sqlite3
-wget -q https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/raw/main/deploy/carry-user-data.sql
-systemctl stop mediariffle
-cp /var/lib/mediariffle/mediariffle.db /root/mediariffle.db.before-carry
-sqlite3 -bail /var/lib/mediariffle/mediariffle.db -cmd "ATTACH '/root/old/mediariffle.db' AS old" < carry-user-data.sql
-chown mediariffle:mediariffle /var/lib/mediariffle/mediariffle.db*
-systemctl start mediariffle
-```
+2. **Import, in the container**, its libraries scanned:
 
-It ends with a table of what it did: users and libraries matched, and the lists and favorites, hidden items and watch
-progress added, each with how many weren't in the new libraries. A user it can't match (a different user name in the
-new database) is left out with everything of theirs, so make sure everyone's account came across first.
-`/root/mediariffle.db.before-carry` is the database as it was, if anything looks wrong.
+   ```bash
+   # on the node
+   pct push 120 import-user-data.sql /root/import-user-data.sql
+   pct enter 120
+   su -
+   apt install -y sqlite3
+   systemctl stop mediariffle
+   cp /var/lib/mediariffle/mediariffle.db /root/mediariffle.db.before-import
+   sqlite3 -bail /var/lib/mediariffle/mediariffle.db < /root/import-user-data.sql
+   chown mediariffle:mediariffle /var/lib/mediariffle/mediariffle.db*
+   systemctl start mediariffle
+   ```
 
-**With DB Browser for SQLite instead** (on Windows, say): the script is plain SQL, so it runs there too.
+   It ends with `Added or updated N of M`: fewer than M when some aren't in the new libraries (not scanned yet, or
+   gone) or were there already. Running it again adds nothing twice, and watch progress already in the new database is
+   kept unless the old one is newer. A user with a different user name in the new database is left out.
+   `/root/mediariffle.db.before-import` is the database as it was, if anything looks wrong.
 
-1. In the container, `systemctl stop mediariffle`, and copy `/var/lib/mediariffle/mediariffle.db` out (on the node:
-   `pct pull 120 /var/lib/mediariffle/mediariffle.db /root/new.db`, then to your PC). Keep a copy as it was.
-2. Stop the old server's MediaRiffle too (`Stop-Service MediaRiffle`), so its database is complete.
-3. **Open Database**: the copy of the **new** one. **Attach Database**: the old one
-   (`C:\ProgramData\MediaRiffle\mediariffle.db`), and name it `old`.
-4. **Execute SQL**: open `carry-user-data.sql`, **Execute all** (F5), and check the table it shows. **Write Changes**
-   (Ctrl+S), then close the database.
-5. Copy it back (`pct push 120 /root/new.db /var/lib/mediariffle/mediariffle.db` on the node), then in the container
-   `chown mediariffle:mediariffle /var/lib/mediariffle/mediariffle.db` and `systemctl start mediariffle`.
+With both databases on one machine, `deploy/carry-user-data.sql` does the same in one step: open the new database,
+attach the old one as `old`, and run it (the instructions are at the top of the file).
 
 ## Upgrading to a new release
 
