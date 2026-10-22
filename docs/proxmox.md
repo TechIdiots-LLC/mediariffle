@@ -1,130 +1,300 @@
-# Running MediaRiffle in a Proxmox container
+# MediaRiffle on Proxmox
 
-Each release has `MediaRiffle-v<version>-proxmox-amd64.tar.zst`, an LXC template: Proxmox's own Ubuntu 24.04 template
-with MediaRiffle's `.deb` installed, ffmpeg with it, and the VA-API drivers for Intel or AMD encoding. It listens on
-port 5080 of the container's network and makes its database and keys when it first starts, so every container made
-from it is its own.
+Each release includes `MediaRiffle-v<version>-proxmox-amd64.tar.zst`, a Proxmox LXC template: Proxmox's own Ubuntu
+24.04 template with MediaRiffle's `.deb` installed, ffmpeg with it, and the drivers for encoding on an Intel or AMD GPU
+(VA-API, and Vulkan for libplacebo). MediaRiffle listens on port 5080 of the container's network. A container made from
+the template sets itself up on its first boot (its port and the reverse proxies it trusts, from `firstboot.env`), and
+MediaRiffle makes its database and keys when it first starts, so every container is its own.
 
-Host names and addresses here are placeholders.
+Container ID `120`, host names and addresses here are placeholders; `<version>` is the release, e.g. `0.7.0`.
 
-## 1. Put the template on the Proxmox host
+## Before you start
 
-In the web interface: a storage that holds container templates (e.g. **local**) → **CT Templates** → **Upload**, and
-pick the file. Or on the host:
+- **Size:** 2 cores and 2 GB of RAM for playing files as they are; 4 cores and 4 GB for converting. Converting 4K wants
+  the node's GPU (below) more than more cores. 16 GB of disk: Ubuntu and MediaRiffle take about 2 GB, and conversions
+  are written to `/var/lib/mediariffle/transcode` while they play (about 1 GB an hour of 1080p each) and deleted after.
+- **The media:** an unprivileged container can't mount a Windows or Samba share itself. Mount it on the Proxmox node and
+  pass the folder in (below).
+- **Moving an existing install?** Read [Moving an existing install into the container](#moving-an-existing-install-into-the-container)
+  first: it keeps your accounts, watch history and lists.
 
-```sh
-cd /var/lib/vz/template/cache
-wget https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/releases/v0.7.0/downloads/MediaRiffle-v0.7.0-proxmox-amd64.tar.zst
+## Creating the container
+
+1. Download the template into the node's template storage:
+
+   ```bash
+   cd /var/lib/vz/template/cache
+   wget https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/releases/v<version>/downloads/MediaRiffle-v<version>-proxmox-amd64.tar.zst
+   ```
+
+   (Or upload it on the web UI: *local → CT Templates → Upload*.)
+
+2. Create the container:
+
+   ```bash
+   pct create 120 local:vztmpl/MediaRiffle-v<version>-proxmox-amd64.tar.zst \
+       --hostname mediariffle --ostype ubuntu --unprivileged 1 --features nesting=1 \
+       --cores 4 --memory 4096 --swap 1024 --rootfs local-lvm:16 \
+       --net0 name=eth0,bridge=vmbr0,ip=dhcp --onboot 1
+   ```
+
+   On the web UI, *Create CT* works the same way; *Nesting* (under *Options → Features*) is ticked by default for an
+   unprivileged container. `nesting=1` lets systemd sandbox MediaRiffle's service in the container. A fixed address
+   (`ip=192.168.0.120/24,gw=192.168.0.1`) suits a reverse proxy better than DHCP.
+
+3. **Optional:** set the first-boot settings *before* the first start: the port, and the reverse proxies in front (see
+   [Behind HAProxy](#behind-haproxy-on-opnsense-or-pfsense-or-another-proxy)):
+
+   ```bash
+   pct mount 120
+   nano /var/lib/lxc/120/rootfs/etc/mediariffle/firstboot.env
+   pct unmount 120
+   ```
+
+   Uncomment the lines you need: `MEDIARIFFLE_PORT`, `MEDIARIFFLE_TRUSTED_PROXIES`, `MEDIARIFFLE_FORWARD_LIMIT`.
+
+4. Pass the media in ([below](#media-from-a-file-share)) and, to convert on the GPU, the GPU
+   ([below](#encoding-and-decoding-on-the-gpu)). Both can be done later too.
+
+5. Start it, and see where it answers:
+
+   ```bash
+   pct start 120
+   pct exec 120 -- cat /root/mediariffle-first-login.txt
+   ```
+
+   That lists its addresses, e.g. `http://192.168.0.120:5080/`. **The first visit creates the admin account**, so open
+   it straight away, before anyone else on the network can. Then add the libraries under **Admin → Libraries**
+   (`/mnt/media/Movies` and so on).
+
+## Behind HAProxy on OPNsense or pfSense (or another proxy)
+
+The proxy handles HTTPS and the public name; MediaRiffle has to know its address, or every visitor looks like the proxy
+(and sign-in rate limiting throttles everyone at once). Put it in `firstboot.env` before the first start:
+
+```bash
+MEDIARIFFLE_TRUSTED_PROXIES="192.168.0.1"
 ```
 
-## 2. Create the container
+For an HA pair with CARP, list both firewalls' own addresses on that network and the CARP VIP. HAProxy connects from
+the active node's own address, so the VIP alone isn't enough:
 
-**Create CT** with the template, or on the host:
-
-```sh
-pct create 120 local:vztmpl/MediaRiffle-v0.7.0-proxmox-amd64.tar.zst \
-  --hostname mediariffle --ostype ubuntu --unprivileged 1 --features nesting=1 \
-  --cores 4 --memory 4096 --swap 1024 --rootfs local-lvm:16 \
-  --net0 name=eth0,bridge=vmbr0,ip=dhcp --onboot 1
+```bash
+MEDIARIFFLE_TRUSTED_PROXIES="192.168.0.2 192.168.0.3 192.168.0.1"
 ```
 
-- **Unprivileged, with nesting on** (the default for a new container in the web interface): MediaRiffle's service is
-  sandboxed by systemd, which needs nesting in an unprivileged container.
-- **Cores**: transcoding uses all it gets. 4 is enough for a 1080p transcode or two; a 4K HDR source wants more, or a
-  GPU (below). Playing files as they are hardly uses any.
-- **Disk**: the program and Ubuntu take about 2 GB; transcodes are written to `/var/lib/mediariffle/transcode` while
-  they play and deleted after, about 1 GB an hour of 1080p each. 16 GB is plenty.
+In HAProxy:
 
-Don't start it yet if you want to set things up first (step 3).
+- the frontend has the certificate (the ACME plugin can get it), redirects port 80 to HTTPS, and sets
+  `X-Forwarded-Proto: https`;
+- the backend is the container's address, port 5080, with *forwardfor* (X-Forwarded-For) on;
+- set the backend's server timeout to 120 s or more: starting a stream waits for its first segment;
+- optionally, health-check `GET /api/auth/state` (200).
 
-## 3. First boot settings (optional)
+[reverse-proxy.md](reverse-proxy.md) has the HAProxy configuration, and Apache or nginx in between. For a container
+already set up, change `TrustedProxies` in `/etc/mediariffle/appsettings.json` ([Changing settings](#changing-settings)).
 
-Before the first start, MediaRiffle can be told its port and the reverse proxies in front of it, in
-`/etc/mediariffle/firstboot.env`:
+## Media from a file share
 
-```sh
-pct mount 120
-nano /var/lib/lxc/120/rootfs/etc/mediariffle/firstboot.env
-pct unmount 120
-```
+Mount the share on the **Proxmox node**, read-only, readable by everyone (an unprivileged container's users are
+different numbers on the node), then pass the folder in. On the node:
 
-```sh
-MEDIARIFFLE_PORT=5080
-# e.g. HAProxy on OPNsense: both firewalls and their CARP address
-MEDIARIFFLE_TRUSTED_PROXIES="192.168.0.1 192.168.0.2 192.168.0.3"
-MEDIARIFFLE_FORWARD_LIMIT=1
-```
+```bash
+apt install cifs-utils
+install -m 0600 /dev/null /root/.smb-media
+nano /root/.smb-media      # username=svc-mediariffle  password=…  domain=EXAMPLE
+mkdir -p /mnt/media
+echo '//fileserver/Media  /mnt/media  cifs  credentials=/root/.smb-media,ro,vers=3.1.1,file_mode=0644,dir_mode=0755,_netdev,nofail,x-systemd.automount  0  0' >> /etc/fstab
+systemctl daemon-reload && mount /mnt/media && ls /mnt/media
 
-They go into `/etc/mediariffle/appsettings.json` when the container first starts. That file is where every setting
-lives ([configuration.md](configuration.md)); to change one later, edit it and `systemctl restart mediariffle`.
-
-## 4. Start it and make the admin account
-
-```sh
-pct start 120
-pct exec 120 -- cat /root/mediariffle-first-login.txt
-```
-
-That lists the addresses it answers on, e.g. `http://192.168.0.120:5080/`. **The first visit creates the admin
-account**, so open it straight away, before anyone else on the network can. Then put your reverse proxy in front for
-HTTPS ([reverse-proxy.md](reverse-proxy.md)), pointing it at the container's address and port 5080.
-
-## 5. Media
-
-A container can't mount a Windows or Samba share itself unless it's privileged, so mount the share on the Proxmox
-host and pass the folder in:
-
-```sh
-# on the host: /etc/fstab (see file-server.md for the credentials file)
-//fileserver/media  /mnt/media  cifs  credentials=/root/.smb-media,ro,file_mode=0644,dir_mode=0755,_netdev,nofail  0 0
-
-pct set 120 -mp0 /mnt/media,mp=/mnt/media,ro=1
+pct set 120 -mp0 /mnt/media,mp=/mnt/media,ro=1,backup=0
 pct reboot 120
 ```
 
-The files must be readable by everyone (`file_mode=0644,dir_mode=0755`): an unprivileged container's users are
-different numbers on the host. Then add `/mnt/media/Movies` and the rest under **Admin → Libraries**. The service waits
-for `/mnt/media` at start (`RequiresMountsFor`), so pass the media in there or edit that line of the service.
+The library paths are then `/mnt/media/Movies`, `/mnt/media/Shows` and so on. [file-server.md](file-server.md) covers
+the account on the file server. MediaRiffle's service waits for `/mnt/media` at start (`RequiresMountsFor`); with the
+media elsewhere, pass it in at `/mnt/media` anyway, or that line of the service needs an override
+(`systemctl edit mediariffle`).
 
-## 6. Hardware encoding (optional)
+## Encoding and decoding on the GPU
 
-To encode on the host's Intel or AMD GPU, pass its render node in (Proxmox 8.1 or newer), owned by the container's
-`render` group:
+To convert on the node's Intel or AMD GPU (an N100/N150 mini PC's, for one), pass its render node in, owned by the
+container's `render` group (Proxmox 8.1 or newer):
 
-```sh
+```bash
 pct exec 120 -- getent group render        # e.g. render:x:993:mediariffle
 pct set 120 -dev0 /dev/dri/renderD128,gid=993
 pct reboot 120
-pct exec 120 -- vainfo --display drm --device /dev/dri/renderD128
+pct exec 120 -- vainfo --display drm --device /dev/dri/renderD128 | grep -E 'HEVC|H264'
 ```
 
-Then set `"Encoder": "Vaapi"` under `Transcoding` in `/etc/mediariffle/appsettings.json`
-and restart MediaRiffle. The log then lists what the GPU decodes: with `Vaapi` it decodes, scales, tone-maps HDR (with
-libplacebo, through Vulkan) and encodes, all on the GPU, which is what lets a small mini PC convert 4K (see Decoding on
-the GPU in [configuration.md](configuration.md)). NVIDIA needs its driver in the container too, which this template
-doesn't include.
+`vainfo` should list `VAProfileH264…` with `VAEntrypointEncSlice` (or `EncSliceLP`). Then set `"Encoder": "Vaapi"` under
+`Transcoding` ([Changing settings](#changing-settings)). MediaRiffle's log then says what the GPU decodes, e.g.
+`Decoded on the GPU (Vaapi): H.264, HEVC, HEVC 10-bit, AV1, VP9, MPEG-2; HDR tone-mapped there too (libplacebo)`: video
+is decoded, scaled, tone-mapped and encoded on the GPU (see Decoding on the GPU in
+[configuration.md](configuration.md)). Older Intel GPUs encode with the `intel-media-va-driver-non-free` package
+(Ubuntu's multiverse) when `vainfo` lists no `EncSlice`. NVIDIA needs its driver in the container too, which this
+template doesn't include.
 
-## Upgrading
+## Changing settings
 
-Inside the container, install the new release's `.deb` the same way as on any Ubuntu machine
-([install-ubuntu.md](install-ubuntu.md)):
+Every setting is in `/etc/mediariffle/appsettings.json` ([configuration.md](configuration.md)):
 
-```sh
-apt update && apt install ./mediariffle_0.7.1-1_amd64.deb
+```bash
+pct exec 120 -- nano /etc/mediariffle/appsettings.json
+pct exec 120 -- systemctl restart mediariffle
+pct exec 120 -- journalctl -u mediariffle -n 30 --no-pager      # check it started
 ```
 
-Your data and settings stay. If apt asks about `/etc/mediariffle/appsettings.json`, keep yours (the default, **N**).
-`apt upgrade` keeps Ubuntu and ffmpeg up to date.
+Running `/usr/local/sbin/mediariffle-firstboot` again applies `firstboot.env` once more (the port and proxies).
 
-## How the template is made
+## Moving an existing install into the container
 
-`proxmox/build-template.sh` unpacks Proxmox's `ubuntu-24.04-standard` template (checked against its published SHA-512),
-installs the `.deb` in a chroot, sets it to listen on the container's network, arms `mediariffle-firstboot` and packs
-it again with no machine ID, SSH host keys or MediaRiffle data. `proxmox/test-template.sh` boots the result with Docker
-standing in for `pct` and checks MediaRiffle answers with the first boot settings applied. Both run in the release
-pipelines (GitLab: `release-proxmox` on the Linux runner; GitHub: the `proxmox` job), or by hand, as root:
+From another MediaRiffle (on Windows, or Ubuntu), everything that matters is in its data folder: the database
+(accounts, passkeys, watch history, lists, libraries), the keys that sign sign-ins (so nobody has to sign in again)
+and the pictures. The settings file is separate. Use the same release on both, or a newer one in the container.
 
-```sh
-sudo proxmox/build-template.sh mediariffle_0.7.0-1_amd64.deb out/MediaRiffle-v0.7.0-proxmox-amd64.tar.zst
-sudo proxmox/test-template.sh out/MediaRiffle-v0.7.0-proxmox-amd64.tar.zst
-```
+1. **Create the container** as above, with the media and GPU passed in. Start it once, then stop MediaRiffle there:
+
+   ```bash
+   pct exec 120 -- systemctl stop mediariffle
+   ```
+
+2. **On the old server, stop MediaRiffle and pack its data.** On Windows (PowerShell, as an administrator):
+
+   ```powershell
+   Stop-Service MediaRiffle
+   cd C:\ProgramData\MediaRiffle      # or DataDirectory, if your settings moved it
+   $items = 'mediariffle.db', 'mediariffle.db-wal', 'mediariffle.db-shm', 'keys', 'images', 'avatars' | Where-Object { Test-Path $_ }
+   tar -czf $HOME\mediariffle-data.tar.gz @items
+   ```
+
+   (On Ubuntu: `sudo systemctl stop mediariffle`, then
+   `sudo tar -C /var/lib/mediariffle -czf mediariffle-data.tar.gz mediariffle.db keys images avatars`.) Note the
+   settings you changed in `C:\ProgramData\MediaRiffle\appsettings.json` (or `/etc/mediariffle/appsettings.json`):
+   Google sign-in, trusted proxies, quality limits.
+
+3. **Copy it into the container**, through the node:
+
+   ```bash
+   scp you@oldserver:mediariffle-data.tar.gz /root/       # or copy it to the node any other way
+   pct push 120 /root/mediariffle-data.tar.gz /root/mediariffle-data.tar.gz
+   pct enter 120
+   su -
+   rm -rf /var/lib/mediariffle/*
+   tar -xzf /root/mediariffle-data.tar.gz -C /var/lib/mediariffle
+   chown -R mediariffle:mediariffle /var/lib/mediariffle
+   ```
+
+4. **Point the libraries at the container's paths.** Editing a library's folder under Admin → Libraries starts that
+   library afresh (its watch history goes), so change them in the database instead, while MediaRiffle is stopped. The
+   files inside keep their places as long as the folders under the share are the same:
+
+   ```bash
+   apt install -y sqlite3
+   sqlite3 /var/lib/mediariffle/mediariffle.db 'SELECT Id, Name, Path FROM Libraries;'
+   ```
+
+   Then replace the share's part of the paths (`\\fileserver\Media` here: copy it exactly as the list shows it, as it's
+   matched letter for letter) with where the share is in the container, and the rest of the backslashes with `/`:
+
+   ```bash
+   sqlite3 /var/lib/mediariffle/mediariffle.db <<'SQL'
+   UPDATE Libraries SET Path = replace(replace(Path, '\\fileserver\Media', '/mnt/media'), '\', '/');
+   SELECT Id, Name, Path FROM Libraries;
+   SQL
+   ```
+
+   Every path should now start `/mnt/media/` (`\\fileserver\Media\TV Shows` → `/mnt/media/TV Shows`). One from
+   another share comes out as `//server/...`: fix it with `UPDATE Libraries SET Path = '/mnt/other/Music' WHERE Id = 3;`.
+
+5. **Settings:** put the ones you noted into `/etc/mediariffle/appsettings.json` (not `Kestrel`, `FfmpegFolder` or
+   `DataDirectory`, which differ here; `Encoder` is `Vaapi` with the GPU passed in). Then start it and check:
+
+   ```bash
+   systemctl start mediariffle
+   journalctl -u mediariffle -n 30 --no-pager
+   ```
+
+   Sign in on `http://<container>:5080/`; Admin → Libraries → Scan now checks every library still finds its files.
+
+6. **Switch HAProxy's backend** to the container's address and port 5080. With the same public name, Google sign-in
+   and passkeys carry on working (they're tied to the name, not the server). Keep the old server stopped (or its
+   service disabled) until you're happy, then remove it.
+
+## Upgrading to a new release
+
+A container is upgraded in place with the release's `.deb`, as any Ubuntu machine is. MediaRiffle's data
+(`/var/lib/mediariffle`) and settings (`/etc/mediariffle/appsettings.json`) are kept; the program in
+`/opt/mediariffle` is replaced, and the database is brought up to date when it starts.
+
+1. **On the node, save a copy first:**
+
+   ```bash
+   pct snapshot 120 before-upgrade
+   ```
+
+   If the container's storage can't snapshot, back it up instead (the media mount point, `backup=0`, is left out):
+
+   ```bash
+   vzdump 120 --mode snapshot --storage local
+   ```
+
+2. **Open a login shell in the container.** Type these one at a time and wait for each prompt (pasted together, the
+   second is lost while the shell starts):
+
+   ```bash
+   pct enter 120
+   su -
+   ```
+
+3. **Install the new release** (set `VER` to it):
+
+   ```bash
+   VER=0.7.1
+   cd /root
+   wget -q "https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/releases/v$VER/downloads/mediariffle_$VER-1_amd64.deb"
+   apt update
+   apt install ./mediariffle_$VER-1_amd64.deb
+   ```
+
+   apt stops MediaRiffle, replaces it and starts it again. If it asks about `/etc/mediariffle/appsettings.json`, keep
+   yours (the default, **N**): the new release's own is beside it as `appsettings.json.dpkg-dist`, to compare.
+
+4. **Check it:**
+
+   ```bash
+   systemctl is-active mediariffle
+   journalctl -u mediariffle -n 30 --no-pager
+   curl -s http://127.0.0.1:5080/api/auth/state      # "version":"0.7.1"
+   ```
+
+   Then sign in and play something. Once you're happy, remove the download (`rm /root/mediariffle_*.deb`) and the
+   snapshot (`pct delsnapshot 120 before-upgrade` on the node).
+
+**Rolling back:** `pct rollback 120 before-upgrade` (or restore the vzdump backup) returns the container, data
+included, to the moment of the copy. Installing the older `.deb` alone isn't enough once the new release has updated
+the database.
+
+Read the release's CHANGELOG entry before upgrading: anything that needs doing by hand is noted there.
+
+**Ubuntu and ffmpeg** are kept up to date like any Ubuntu machine's: `apt update && apt upgrade` in the container (a
+snapshot first is cheap insurance), or turn on `unattended-upgrades` for security updates.
+
+## Notes
+
+- `pct enter` and `pct exec` start with a short PATH that leaves out `/usr/local/sbin`, where `mediariffle-firstboot`
+  lives. Run `su -` after `pct enter` to get a normal login shell, or call it by its full path.
+- Logs: `journalctl -u mediariffle` (MediaRiffle), `journalctl -u mediariffle-firstboot` (the first boot).
+- Unprivileged containers with nesting are fine. If MediaRiffle won't start with `status=226/NAMESPACE`, nesting is
+  off: `pct set 120 --features nesting=1` and restart the container.
+- The template is built by `proxmox/build-template.sh`, which installs the `.deb` into Proxmox's `ubuntu-24.04-standard`
+  template (checked against its published SHA-512) in a chroot and packs it again with no machine ID, SSH host keys or
+  MediaRiffle data. `proxmox/test-template.sh` boots the result with Docker standing in for `pct` and checks MediaRiffle
+  answers with the first-boot settings applied. Both run in the release pipelines (GitLab: `release-proxmox` on the
+  Linux runner; GitHub: the `proxmox` job), or by hand as root:
+
+  ```bash
+  sudo proxmox/build-template.sh mediariffle_<version>-1_amd64.deb out/MediaRiffle-v<version>-proxmox-amd64.tar.zst
+  sudo proxmox/test-template.sh out/MediaRiffle-v<version>-proxmox-amd64.tar.zst
+  ```
