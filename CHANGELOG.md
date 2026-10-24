@@ -9,6 +9,10 @@
   Admin), matching shows, movies, music and files by what they are rather than by id. See docs/proxmox.md.
 
 ### 🐞 Bug fixes
+- **Quick Sync streams kept their segments and clock in step**: Intel's encoder ignored the forced keyframes every 4 s
+  without `-forced_idr`, keeping its own 256-frame GOP, so segments came out 10 or 21 s long against a playlist of 4 s
+  ones. The stream's clock drifted from the file's, and near the end a film could run on past its length or stop with
+  a playback error.
 - **Play works after a long pause**: a video paused overnight (the computer asleep, so the player's "still here" never
   reached the server, which stopped the stream as idle) couldn't be started again without reloading the page. Play
   after a pause of over a minute now checks the stream is still there and, if not, starts a new one from the same

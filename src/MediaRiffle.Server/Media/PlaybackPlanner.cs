@@ -212,6 +212,9 @@ public static class PlaybackPlanner
         if (hdr is not null || (gpuDecode && v.IsHdr)) a.AddRange(["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]);
         // A player switching level starts a segment with no picture before it: NVENC's forced keyframes must be IDR
         if (fixedKeyframes && o.Encoder == VideoEncoder.Nvenc) a.AddRange(["-forced-idr", "1"]);
+        // Quick Sync ignores forced keyframes altogether without this, keeping its own GOP of 256 frames: segments then
+        // come out 10 or 21 s long against a playlist of 4 s ones, and the stream's clock drifts from the file's
+        if (o.Encoder == VideoEncoder.Qsv) a.AddRange(["-forced_idr", "1"]);
         // t counts from the first frame of this run, which starts on a segment boundary
         a.AddRange(["-force_key_frames", $"expr:gte(t,n_forced*{o.SegmentSeconds})"]);
         return a;
