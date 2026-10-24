@@ -9,6 +9,10 @@
   Admin), matching shows, movies, music and files by what they are rather than by id. See docs/proxmox.md.
 
 ### 🐞 Bug fixes
+- **Auto stops returning to a 4K original that stalls**: once the file as it is stalls on a device (a 60 Mbit/s
+  disc rip, say), Auto remembers it there for 30 days, starting on the adaptive stream and not stepping back up to
+  the original every two minutes, which made playback stall and switch quality over and over. Original from the
+  menu still plays it.
 - **4K HDR on an Intel Arc (VA-API) converts at 1.7x real time**: the GPU now decodes and scales it, and only the
   1080p frames are copied back for libplacebo and encoded on the GPU again. Handing VA-API's 10-bit frames straight to
   Vulkan crashed on Arc with Ubuntu 24.04's Mesa, so HDR fell back to the CPU and couldn't keep up. The startup

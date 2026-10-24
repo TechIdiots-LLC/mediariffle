@@ -70,6 +70,27 @@ function tvHelp() {
 function remember(key, value) { try { localStorage.setItem(key, value); } catch { } }
 function recall(key) { try { return localStorage.getItem(key); } catch { return null; } }
 
+// Files whose original stalled on this device (a 60 Mbit/s 4K disc rip, say), and when: Auto then starts on the
+// adaptive stream and doesn't step back up to the file as it is, which would only stall again, over and over. For
+// 30 days, so a better connection or device gets another go; Original from the menu always plays it.
+const STALLED_KEY = 'mediariffle.originalStalled';
+const STALLED_DAYS = 30;
+function stalledFiles() {
+  try {
+    const all = JSON.parse(recall(STALLED_KEY) || '{}');
+    const cutoff = Date.now() - STALLED_DAYS * 86400000;
+    return Object.fromEntries(Object.entries(all).filter(([, at]) => at > cutoff));
+  } catch { return {}; }
+}
+const originalStalled = fileId => !!stalledFiles()[fileId];
+function markOriginalStalled(fileId) {
+  const all = stalledFiles();
+  all[fileId] = Date.now();
+  // The most recent few hundred: enough, and localStorage stays small
+  const kept = Object.entries(all).sort((a, b) => b[1] - a[1]).slice(0, 300);
+  remember(STALLED_KEY, JSON.stringify(Object.fromEntries(kept)));
+}
+
 // Full screen is the whole page's (the document), not the player's own: going on to the next one (from the controls, a
 // play queue, a media key or a voice assistant's "next track") builds a new player inside the page, and full screen
 // stays. While it lasts the page is "theater": the player lies over everything (see body.theater in site.css).
@@ -345,6 +366,8 @@ export class Player {
   // ceiling.
   async autoStart() {
     const original = this.qualities.find(q => q.id === 'original');
+    // The file as it is stalled here before: the adaptive stream, whatever the preference
+    if (originalStalled(this.fileId)) return 'auto';
     if (this.preference === 'high') return original ? 'original' : 'auto';
     let kbps = this.estimate();
     if (!kbps) kbps = await this.speedTest();
@@ -436,14 +459,16 @@ export class Player {
         // What it really downloads at: the speed the adaptive stream starts from
         if (need > 0) remember(SPEED_KEY, String(Math.round(need * Math.max(0.05, 1 + Math.min(0, slope)))));
         this.aheadSamples = [];
+        markOriginalStalled(this.fileId);
         this.switchTo('auto', 'Slower connection: adapting to it');
       }
       return;
     }
     this.capLevels(now);
     const top = this.hls && this.hls.levels.length && this.hls.currentLevel === this.topLevel();
-    // Back up to the file as it is: never under a Medium or Low ceiling; sooner for High (best first)
+    // Back up to the file as it is: never under a Medium or Low ceiling, nor once it stalled here; sooner for High
     if (!this.underCeiling() && original && original.kbps > 0 && this.session.originalMode !== 'Transcode' && top &&
+        !originalStalled(this.fileId) &&
         est > original.kbps * 1.6 && ahead > 20 && this.stalls.length === 0 && sinceSwitch > (this.preference === 'high' ? 30000 : 120000)) {
       this.lastSwitch = now;
       this.switchTo('original', 'Faster connection: the file as it is');
