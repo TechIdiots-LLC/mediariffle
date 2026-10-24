@@ -2,6 +2,11 @@
 
 ## master
 ### ✨ Features and improvements
+- **Changing stream without stopping**: picking a quality, an audio track or an image subtitle, and Auto moving
+  between the file as it is and the converted stream, used to stop playback and show Loading… while a new stream
+  started. Now the new stream starts in the background, a few seconds ahead, while the old one keeps playing, and
+  takes over once it has the next few seconds ready: no pause. (Paused, casting, AirPlay and the last seconds of a
+  file change the plain way.)
 - **Bring back lists, favorites and watch history after a move**: `deploy/export-user-data.sql` (run on the old
   database, in DB Browser for SQLite or sqlite3) makes an import script for the new one; `deploy/carry-user-data.sql`
   does it in one step with both databases at hand. They carry them from an

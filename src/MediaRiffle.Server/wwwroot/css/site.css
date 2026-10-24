@@ -114,6 +114,8 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--bord
 .player { position: relative; background: #000; border-radius: var(--radius); overflow: hidden; }
 /* As tall as the screen allows with the controls in view; dvh, as iPhone Safari counts its toolbars in vh */
 .player video { width: 100%; max-height: calc(100vh - 190px); max-height: calc(100dvh - 190px); display: block; background: #000; }
+/* A stream getting ready to take over (handover in player.js): laid over the one playing, out of sight, until the swap */
+.player video.standby { position: absolute; inset: 0; height: 100%; opacity: 0; pointer-events: none; }
 .player .spinner { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; pointer-events: none; font-size: 14px; }
 .controls { display: grid; gap: 8px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--radius) var(--radius); }
 .controls .seek { width: 100%; }

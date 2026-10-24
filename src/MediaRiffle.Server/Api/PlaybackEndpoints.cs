@@ -25,8 +25,13 @@ namespace MediaRiffle.Server.Api;
 /// stream instead of one at the best level.
 /// </param>
 /// <param name="StartLevel">The level an adaptive stream's player should start at (listed first in its master playlist).</param>
+/// <param name="Replacing">
+/// The stream this one takes over from, while that one keeps playing until the player swaps to this and closes it
+/// (a change of quality, audio or burned-in subtitles without a pause). Kept rather than stopped as the same file's.
+/// </param>
 public sealed record PlayRequest(int FileId, int? Audio, string? Subtitle, bool Burn, double? Start,
-    string? Quality = null, bool Hevc = false, bool Hevc10 = false, bool Adaptive = false, string? StartLevel = null);
+    string? Quality = null, bool Hevc = false, bool Hevc10 = false, bool Adaptive = false, string? StartLevel = null,
+    string? Replacing = null);
 
 public sealed record ProgressRequest(int FileId, double Position, bool? Finished);
 
@@ -155,7 +160,7 @@ public static partial class PlaybackEndpoints
             StreamSession session;
             try
             {
-                session = await sessions.StartAsync(userId, file.Id, path, plan, start.Value, probe.ContentSeconds, streamStart);
+                session = await sessions.StartAsync(userId, file.Id, path, plan, start.Value, probe.ContentSeconds, streamStart, req.Replacing);
                 session.FirstLevel = plan.Levels is { } ls ? Math.Max(0, ls.ToList().FindIndex(l => l.Id == req.StartLevel)) : 0;
                 if (plan.Mode != PlaybackMode.Direct && !plan.IsAdaptive) await sessions.WaitForPlaylistAsync(session, ct);
             }
