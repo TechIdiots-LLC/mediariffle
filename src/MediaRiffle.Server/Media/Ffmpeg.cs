@@ -197,7 +197,8 @@ public sealed class Ffmpeg(IOptions<MediaRiffleOptions> options, ILogger<Ffmpeg>
         if (!options.Value.Transcoding.ToneMapHdr || !options.Value.Transcoding.UseLibplacebo) return;
         try
         {
-            await RunAsync(FfmpegPath, LibplaceboTestArguments, TimeSpan.FromSeconds(30));
+            // Long enough for a first run, which compiles libplacebo's shaders: 30 s wasn't, on an Intel Arc
+            await RunAsync(FfmpegPath, LibplaceboTestArguments, TimeSpan.FromSeconds(120));
             CanLibplacebo = true;
             log.LogInformation("HDR and Dolby Vision are tone-mapped with libplacebo (Vulkan)");
         }
@@ -232,9 +233,9 @@ public sealed class Ffmpeg(IOptions<MediaRiffleOptions> options, ILogger<Ffmpeg>
                 if (!await MadeAsync(encodes, sample)) continue;   // this ffmpeg can't make one: not tried
                 if (!await WorksAsync(PlaybackPlanner.GpuTestArguments(codec, sample, t, toneMap: false))) continue;
                 codecs.Add(codec);
-                // HDR on the GPU: libplacebo on VA-API's frames through Vulkan (the only GPU tone mapping used)
+                // HDR on the GPU: VA-API decodes and scales, libplacebo tone-maps the copy (the only GPU tone mapping used)
                 if (codec == "hevc10" && t.Encoder == VideoEncoder.Vaapi && t.ToneMapHdr && t.UseLibplacebo)
-                    toneMap = await WorksAsync(PlaybackPlanner.GpuTestArguments(codec, sample, t, toneMap: true));
+                    toneMap = await WorksAsync(PlaybackPlanner.GpuTestArguments(codec, sample, t, toneMap: true), TimeSpan.FromSeconds(120));
             }
             Gpu = new PlaybackPlanner.GpuDecoding(codecs, toneMap);
             if (codecs.Count == 0)
@@ -260,9 +261,9 @@ public sealed class Ffmpeg(IOptions<MediaRiffleOptions> options, ILogger<Ffmpeg>
             return false;
         }
 
-        async Task<bool> WorksAsync(IEnumerable<string> args)
+        async Task<bool> WorksAsync(IEnumerable<string> args, TimeSpan? timeout = null)
         {
-            try { await RunAsync(FfmpegPath, args, TimeSpan.FromSeconds(30)); return true; }
+            try { await RunAsync(FfmpegPath, args, timeout ?? TimeSpan.FromSeconds(30)); return true; }
             catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or System.ComponentModel.Win32Exception)
             {
                 log.LogDebug("GPU check: {Error}", ex.Message);

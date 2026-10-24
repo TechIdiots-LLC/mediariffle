@@ -115,12 +115,12 @@ public static partial class PlaybackEndpoints
             bool gpu = plan.Mode == PlaybackMode.Transcode && plan.Video is { } gv &&
                        PlaybackPlanner.DecodesOnGpu(gv, plan.BurnSubtitle, ffmpeg.Gpu, t);
             var reason = plan.Reason;
-            // HDR on the CPU: tone-mapped with libplacebo (Dolby Vision's metadata applied; not with VA-API, whose
-            // frames go to its own GPU device) when it works here, else with zscale. Also what a stream decoded on the
+            // HDR on the CPU: tone-mapped with libplacebo (Dolby Vision's metadata applied; on its own Vulkan device, so
+            // with VA-API too) when it works here, else with zscale. Also what a stream decoded on the
             // GPU falls back to if the GPU fails on it.
             if (plan.Mode == PlaybackMode.Transcode && plan.Video is { IsHdr: true } hdr)
             {
-                if (ffmpeg.CanLibplacebo && t.Encoder != VideoEncoder.Vaapi)
+                if (ffmpeg.CanLibplacebo)
                     plan = plan with
                     {
                         Libplacebo = true,

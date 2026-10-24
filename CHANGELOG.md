@@ -9,7 +9,11 @@
   Admin), matching shows, movies, music and files by what they are rather than by id. See docs/proxmox.md.
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- **4K HDR on an Intel Arc (VA-API) converts at 1.7x real time**: the GPU now decodes and scales it, and only the
+  1080p frames are copied back for libplacebo and encoded on the GPU again. Handing VA-API's 10-bit frames straight to
+  Vulkan crashed on Arc with Ubuntu 24.04's Mesa, so HDR fell back to the CPU and couldn't keep up. The startup
+  libplacebo check waits long enough for a first run's shader compile (it gave up after 30 s), and with VA-API, HDR
+  decoded on the CPU is tone-mapped with libplacebo too rather than zscale.
 
 ## 0.7.0
 ### ✨ Features and improvements

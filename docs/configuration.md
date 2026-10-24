@@ -214,7 +214,7 @@ right only with libplacebo (without it, the log and the player's info line say s
 most rips) carry HDR10 underneath and play as HDR10 does. libplacebo comes with gyan.dev's *full* build on Windows
 (`winget install Gyan.FFmpeg`; the *essentials* build `Install-Ffmpeg.ps1` fetches may lack it), BtbN's builds, and
 recent Linux packages; Vulkan comes with current NVIDIA, AMD and Intel drivers. `"UseLibplacebo": false` keeps zscale.
-With the `Vaapi` encoder, libplacebo runs on video decoded on the GPU (below); decoded on the CPU, it's zscale there.
+With the `Vaapi` encoder, libplacebo also tone-maps video decoded on the GPU (below).
 
 ### Decoding on the GPU
 
@@ -226,10 +226,14 @@ through the GPU and logs what it decodes, e.g. `Decoded on the GPU (Vaapi): H.26
 player's info line says `decoded on the GPU` for a stream that is. Anything else is decoded on the CPU as before, as is
 a stream the GPU fails on (the log says so), and one with an image subtitle burned in.
 
-**HDR** is tone-mapped on the GPU only with **`Vaapi`** (Linux): the decoded frames are handed to libplacebo through
-Vulkan, so it looks as libplacebo does on the CPU (Dolby Vision 5 included), needing Mesa's Vulkan driver
-(`mesa-vulkan-drivers`, in the Proxmox template). Quick Sync's and VA-API's own HDR tone mapping isn't used, as it
-comes out much darker. With `Qsv` or `Nvenc`, HDR is decoded on the CPU and tone-mapped as described above.
+**HDR** is tone-mapped on the GPU path only with **`Vaapi`** (Linux): the GPU decodes and scales the video still in
+10-bit, only those frames (a quarter of 4K's, at 1080p) come back, libplacebo tone-maps them on Vulkan (Dolby Vision 5
+included, looking as it does on the CPU) and the GPU encodes the result. That needs Mesa's Vulkan driver
+(`mesa-vulkan-drivers`, in the Proxmox template). An Intel Arc A380 converts a 60 Mbit/s 4K HDR disc rip to 1080p this
+way at 1.7x real time; to 4K it manages only 0.6x, so leave `MaxHeight` at 1080 and play 4K files as they are (Original)
+on devices that can. Quick Sync's and VA-API's own HDR tone mapping isn't used, as it comes out much darker. With
+`Qsv` or `Nvenc`, HDR is decoded on the CPU and tone-mapped as described above (on an integrated GPU, copying frames
+back saves nothing).
 
 On Linux, Intel GPUs from Broadwell on (including the N100/N150 mini PCs) work with `Vaapi` and the
 `intel-media-va-driver` package; AMD with `mesa-va-drivers`. In a Proxmox container, pass the GPU in first

@@ -70,18 +70,25 @@ public class GpuDecodingTests
     }
 
     [Fact]
-    public void VaapiToneMapsWithLibplaceboOnItsFrames()
+    public void VaapiScalesOnTheGpuThenToneMapsTheCopyWithLibplacebo()
     {
         var hdr10 = Video("hevc", "yuv420p10le", transfer: "smpte2084");
         var args = PlaybackPlanner.SegmentArguments(Plan(hdr10, gpu: true), Quality.Level("1080")!, "/m/a.mkv", 0, O(VideoEncoder.Vaapi));
         Assert.Equal("vaapi=va:/dev/dri/renderD128", args[args.IndexOf("-init_hw_device") + 1]);
-        Assert.Equal("vulkan=vk@va", args[args.LastIndexOf("-init_hw_device") + 1]);
+        Assert.Equal("va", args[args.IndexOf("-filter_hw_device") + 1]);   // hwupload goes back to the decoding device
         Assert.Equal("va", args[args.IndexOf("-hwaccel_device") + 1]);
         Assert.DoesNotContain("-vaapi_device", args);   // the decoder's device carries through
         var vf = args[args.IndexOf("-vf") + 1];
-        Assert.StartsWith("hwmap=derive_device=vulkan,format=vulkan,libplacebo=w=1920:h=1080:", vf);
+        // Scaled on the GPU still 10-bit, only those frames copied back, libplacebo on its own Vulkan device, back up
+        Assert.StartsWith("scale_vaapi=w=1920:h=1080:format=p010,hwdownload,format=p010le,libplacebo=", vf);
         Assert.Contains("apply_dolbyvision=1", vf);
-        Assert.EndsWith("hwmap=derive_device=vaapi,format=vaapi", vf);
+        Assert.EndsWith(":format=nv12,hwupload", vf);
+        Assert.DoesNotContain("hwmap", vf);   // mapping VA-API frames into Vulkan fails on Intel Arc
+        Assert.DoesNotContain("vulkan=vk@va", args);
+        // At 4K too, unscaled
+        var uhd = PlaybackPlanner.SegmentArguments(Plan(hdr10, gpu: true), Quality.Level("2160")!, "/m/a.mkv", 0,
+            new TranscodingOptions { Encoder = VideoEncoder.Vaapi, MaxHeight = 2160 });
+        Assert.StartsWith("scale_vaapi=w=3840:h=2160:format=p010,hwdownload", uhd[uhd.IndexOf("-vf") + 1]);
         Assert.Equal("bt709", args[args.IndexOf("-color_trc") + 1]);
         var sdr = PlaybackPlanner.SegmentArguments(Plan(Video("h264", "yuv420p", 1080), gpu: true), Quality.Level("720")!, "/m/a.mkv", 0, O(VideoEncoder.Vaapi));
         Assert.Equal("scale_vaapi=w=1280:h=720:format=nv12", sdr[sdr.IndexOf("-vf") + 1]);
@@ -109,7 +116,7 @@ public class GpuDecodingTests
         Assert.Equal("hevc_qsv", args[args.IndexOf("-c:v") + 1]);
         Assert.Equal("vpp_qsv=w=160:h=90:format=nv12", args[args.IndexOf("-vf") + 1]);
         var hdr = PlaybackPlanner.GpuTestArguments("hevc10", "/tmp/hevc10.mkv", O(VideoEncoder.Vaapi), toneMap: true);
-        Assert.Contains("vulkan=vk@va", hdr);
+        Assert.Equal("va", hdr[hdr.IndexOf("-filter_hw_device") + 1]);
         Assert.Contains("libplacebo=", hdr[hdr.IndexOf("-vf") + 1]);
         Assert.Equal("h264_qsv", args[args.LastIndexOf("-c:v") + 1]);
         Assert.Equal("mpeg2_qsv", PlaybackPlanner.GpuDecoder("mpeg2", O(VideoEncoder.Qsv)).Last());
