@@ -2,6 +2,9 @@
 
 ## master
 ### ✨ Features and improvements
+- **A 1440p level**, between 1080p and 4K: `"MaxHeight": 1440` (with `"MaxVideoKbps": 16000`) offers it, `2160` both.
+  For a GPU that can't convert 4K in real time but can to 1440p (an Intel Arc A380: 1.2x from a 60 Mbit/s 4K HDR
+  disc rip, against 0.6x to 4K); Auto only steps up to it while the encoder keeps ahead.
 - **Changing stream without stopping**: picking a quality, an audio track or an image subtitle, and Auto moving
   between the file as it is and the converted stream, used to stop playback and show Loading… while a new stream
   started. Now the new stream starts in the background, a few seconds ahead, while the old one keeps playing, and

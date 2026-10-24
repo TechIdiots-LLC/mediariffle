@@ -16,10 +16,12 @@ public class UhdHdrTests
     private static readonly TranscodingOptions Uhd = new() { MaxHeight = 2160, MaxVideoKbps = 30000, Encoder = VideoEncoder.Nvenc };
 
     [Theory]
-    [InlineData(2160, 2160, "2160,1080,720,480,360")]   // 4K allowed, a 4K file: every level
+    [InlineData(2160, 2160, "2160,1440,1080,720,480,360")]   // 4K allowed, a 4K file: every level
+    [InlineData(2160, 1440, "1440,1080,720,480,360")]        // up to 1440p: a 4K file gets it, not 4K
     [InlineData(1080, 2160, "1080,720,480,360")]        // a 1080p file never gets a 4K level
     [InlineData(2160, 1080, "1080,720,480,360")]        // 4K not allowed (the default): as before
-    [InlineData(1600, 2160, "2160,1080,720,480,360")]   // between levels: 4K keeps the picture's own size
+    [InlineData(1600, 2160, "2160,1440,1080,720,480,360")]   // between levels: 4K keeps the picture's own size
+    [InlineData(1440, 2160, "1440,1080,720,480,360")]        // a 1440p file: no 4K level
     public void FourKIsALevelWhenTheServerAllowsIt(int source, int max, string expected) =>
         Assert.Equal(expected, string.Join(",", Quality.AdaptiveLevels(source, max, null).Select(l => l.Id)));
 

@@ -57,8 +57,8 @@ Put your settings in file 2. A complete example:
 | `AdminMfa.Hours` | How long a check lasts before Admin asks again. |
 | `Transcoding.FfmpegFolder` | Folder holding `ffmpeg` and `ffprobe`; empty to use `PATH`. |
 | `Transcoding.Encoder` | `Libx264` (CPU), `Nvenc` (NVIDIA), `Qsv` (Intel Quick Sync), `Vaapi` (Intel/AMD on Linux). |
-| `Transcoding.MaxHeight` | Transcodes are scaled down to this many lines. `2160` allows 4K transcodes (see Quality below); 1080 by default. |
-| `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode. Raise it to about `30000` with `MaxHeight` 2160, or the 4K level is held to this. |
+| `Transcoding.MaxHeight` | Transcodes are scaled down to this many lines. `1440` adds a 1440p level, `2160` 1440p and 4K (see Quality below); 1080 by default. |
+| `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode. Raise it to about `16000` with `MaxHeight` 1440 and `30000` with 2160, or those levels are held to this. |
 | `Transcoding.ToneMapHdr` | HDR video (HDR10, HLG) that has to be converted is tone-mapped to ordinary colours, so it isn't washed out (see Quality below). `true` by default. |
 | `Transcoding.HardwareDecoding` | With a GPU encoder (`Qsv`, `Vaapi`, `Nvenc`), decode on that GPU too and scale (and with `Vaapi`, tone-map HDR) there, for what it was found to decode at start (see Decoding on the GPU below). `true` by default. |
 | `Transcoding.UseLibplacebo` | Tone-map HDR with libplacebo when this ffmpeg has it and a Vulkan GPU works: better HDR10, and Dolby Vision applied, which Dolby Vision 5 needs (see HDR below). `true` by default. |
@@ -145,7 +145,7 @@ never touched) and everyone's place in it.
 
 ## Quality
 
-The player has a quality menu: **Auto**, **Original**, and 2160p (4K, 25 Mbit/s, when allowed), 1080p (8), 720p (4),
+The player has a quality menu: **Auto**, **Original**, and 2160p (4K, 25 Mbit/s) and 1440p (14) when allowed, 1080p (8), 720p (4),
 480p (1.5), 360p (0.8). The menu lists only what a file can have here: nothing above the server's `MaxHeight`, the
 user's cap, or (by more than a step) the picture itself.
 
@@ -196,6 +196,11 @@ unless the server allows 4K:
 That adds a 2160p level (H.264 at about 25 Mbit/s) to Auto and the menu, for browsers that can't decode HEVC
 (Firefox) and for 4K Chromecasts. Use a hardware encoder (`Nvenc`, `Qsv` or `Vaapi`): `Libx264` on the CPU can't
 make 4K in real time on most machines.
+
+`"MaxHeight": 1440` (with `"MaxVideoKbps": 16000`) adds a **1440p** level instead, for a GPU that can't convert 4K in
+real time but manages 1440p: an Intel Arc A380 converts a 60 Mbit/s 4K HDR disc rip to 1440p at 1.2x real time, to
+4K at only 0.6x. `2160` offers both. Auto steps up to a level only while the server's encoder keeps it ahead of
+playing, so on a busy server or a heavy file it stays at 1080p.
 
 ### HDR
 
