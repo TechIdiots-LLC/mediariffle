@@ -537,6 +537,7 @@ export class Player {
       if (!this.session) return;
       // The file as it is failing after it had played: most likely its stream went away (stopped as idle while the
       // computer slept, the server restarted), not a file this browser can't play
+      if (this.nearEnd()) { this.onEnded(); return; }   // ran out just before the end it said: finished
       if (this.session.mode === 'Direct' && this.playingSince && this.recoverStream()) return;
       this.status.textContent = 'This video can\'t be played here.';
     });
@@ -666,8 +667,9 @@ export class Player {
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) return;
         if (video !== this.video) { hls.failed = true; return; }
-        // Past the last segment there is (a file a little shorter than it said): that's the end
-        if (s.adaptive && this.position() > this.duration() - 12) { this.onEnded(); return; }
+        // Failing in the last stretch: the file ran out a little before the length it said (a container's duration
+        // counts trailing audio, a last segment that never comes): that's the end, not an error to recover from
+        if (this.nearEnd()) { this.onEnded(); return; }
         // The stream went away (stopped as idle, the server restarted)
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR && this.recoverStream()) return;
         this.status.textContent = 'Playback error: ' + (data.details ?? data.type);
@@ -885,6 +887,12 @@ export class Player {
   // How long this plays: an adaptive stream says (it counts from the first frame), else what the scan found
   duration() { return this.session?.adaptive && this.session.duration > 0 ? this.session.duration : this.details.summary.duration; }
 
+  // In the last stretch of the file: the last 20 s, or 1% of a long one, as a file's stated length can run past what
+  // there is to play by that much
+  nearEnd() {
+    const d = this.duration();
+    return d > 0 && d - this.position() < Math.max(20, d * 0.01);
+  }
 
   showTime(pos) {
     this.time.textContent = `${formatTime(pos)} / ${formatTime(this.duration())}`;
@@ -898,6 +906,10 @@ export class Player {
   }
 
   onEnded() {
+    // Once per stream: a stream that fails at its end (nearEnd) can also say "ended", and a play queue moving on twice
+    // would skip one
+    if (!this.session || this.endedFor === this.session.sessionId) return;
+    this.endedFor = this.session.sessionId;
     // An HLS stream also ends at its last segment when the file does
     this.saveProgress(false, true);
     if (this.onFinished?.()) return;   // a play queue moves on by itself

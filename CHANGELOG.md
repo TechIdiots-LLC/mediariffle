@@ -14,6 +14,10 @@
   Admin), matching shows, movies, music and files by what they are rather than by id. See docs/proxmox.md.
 
 ### 🐞 Bug fixes
+- **The end of a film is the end**: a stream that fails in the last 20 s (or last 1% of a long film), as a file's
+  stated length can run past what there is to play, now counts as finished (saved as watched, on to the next
+  episode) instead of a playback error, or a new stream started at the very end. It finishes once, too, so a play
+  queue never skips one.
 - **Quick Sync streams kept their segments and clock in step**: Intel's encoder ignored the forced keyframes every 4 s
   without `-forced_idr`, keeping its own 256-frame GOP, so segments came out 10 or 21 s long against a playlist of 4 s
   ones. The stream's clock drifted from the file's, and near the end a film could run on past its length or stop with
