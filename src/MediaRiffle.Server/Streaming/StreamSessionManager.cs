@@ -176,6 +176,9 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
         return s;
     }
 
+    /// <summary>How many streams are running (anything else reading the libraries waits while there are any).</summary>
+    public int Count => _sessions.Count;
+
     /// <summary>Whether a session is still running, without counting as activity on it.</summary>
     public bool Exists(string id) => _sessions.ContainsKey(id);
 

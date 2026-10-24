@@ -179,7 +179,7 @@ export class Player {
       details.audio.map(a => h('option', { value: a.index, selected: a.index === this.audio }, a.label)));
     this.subSelect = h('select', { onchange: () => this.pickSubtitle(this.subSelect.value) },
       h('option', { value: '' }, 'Subtitles off'),
-      details.subtitles.map(s => h('option', { value: s.id }, s.label + (s.text ? '' : ' (burned in)'))));
+      details.subtitles.map(s => h('option', { value: s.id }, s.label + (s.text || s.pgs ? '' : ' (burned in)'))));
     this.autoOption = h('option', { value: 'auto' }, 'Auto');
     this.qualitySelect = h('select', { title: 'Quality', onchange: () => this.pickQuality(this.qualitySelect.value) },
       this.autoOption, this.qualities.map(q => h('option', { value: q.id }, q.label)));
@@ -195,7 +195,7 @@ export class Player {
     this.onKey = e => this.key(e);
     addEventListener('keydown', this.onKey);
     this.setupMediaSession();
-    this.monitor = setInterval(() => { this.checkQuality(); this.keepAlive(); }, 2000);
+    this.monitor = setInterval(() => { this.checkQuality(); this.keepAlive(); this.checkPgs(); }, 2000);
     this.lastAlive = 0;
     this.playingLevel = null;   // the adaptive stream's level playing now: { id, label }
 
@@ -314,6 +314,7 @@ export class Player {
     this.useSession(await this.requestStream(startAt));
     this.attach(this.session);
     this.setTextTrack();
+    this.setPgs();
     if (autoplay) { try { await this.video.play(); } catch { /* autoplay blocked: the Play button still works */ } }
     if (isCasting() && !this.forCast) this.castHere();
   }
@@ -321,7 +322,7 @@ export class Player {
   // A stream from `startAt` with the current audio, subtitles and quality; `replacing` keeps that stream running on
   // the server until this one takes over from it (handover)
   requestStream(startAt, replacing = null) {
-    const burn = this.subtitle && !this.details.subtitles.find(s => s.id === this.subtitle)?.text;
+    const burn = !!this.subtitle && this.burns(this.subtitle);
     const caps = this.forCast ? { hevc: false, hevc10: false } : this.caps;
     return api('/api/play', { method: 'POST', body: {
       fileId: this.fileId, audio: this.audio, subtitle: this.subtitle, burn: !!burn, start: startAt,
@@ -603,6 +604,7 @@ export class Player {
     old.video.remove();
     api(`/api/play/${old.session.sessionId}`, { method: 'DELETE' }).catch(() => {});
     this.setTextTrack();
+    this.setPgs();
   }
 
   // Resolves true once `video` has the next few seconds after `at()` (where the playing stream is, on the file's
@@ -701,13 +703,75 @@ export class Player {
     this.video.append(track);
   }
 
+  // Whether a subtitle has to be burned into the video: an image one the browser can't draw itself (a DVD's), or any
+  // image one on a TV, which plays the stream on its own (the PGS drawn here would stay on this screen)
+  burns(id) {
+    const s = this.details.subtitles.find(x => x.id === id);
+    return !!s && !s.text && !(s.pgs && !this.forCast);
+  }
+
+  // PGS (Blu-ray) subtitles, drawn over the video by libpgs from the track's data (see PgsSubtitles on the server).
+  // Until the server has the whole track (extracting it reads the whole file: minutes, for a 4K disc rip), it hands
+  // out five minutes at a time from where we are; checkPgs asks again as those run out, and for the whole track.
+  // Kept per player, so a new stream (a handover, a seek) draws from the same data straight away.
+  async setPgs() {
+    this.pgs?.renderer?.dispose();
+    if (this.pgs) this.pgs.renderer = null;
+    const sub = this.details.subtitles.find(x => x.id === this.subtitle);
+    if (!sub?.pgs || this.forCast || !this.session) { this.pgs = null; return; }
+    if (this.pgs?.id !== sub.id) this.pgs = { id: sub.id, data: null, complete: false, until: 0, asked: 0 };
+    const pgs = this.pgs, video = this.video;
+    try {
+      const { PgsRenderer } = await import('/lib/libpgs/libpgs.js');
+      if (this.pgs !== pgs || this.video !== video) return;   // changed meanwhile
+      pgs.renderer = new PgsRenderer({ workerUrl: '/lib/libpgs/libpgs.worker.js', video });
+      // Its clock is the video's; the subtitles' is the file's, which a stream started part-way is ahead of
+      pgs.renderer.timeOffset = this.session.startSeconds ?? 0;
+      if (pgs.data) pgs.renderer.loadFromBuffer(pgs.data.slice(0));
+      if (!pgs.data || (!pgs.complete && this.position() > pgs.until - 60)) await this.loadPgs();
+    } catch (e) { console.warn('PGS subtitles', e); }
+  }
+
+  // The whole track if the server has it, else the next five minutes from here (`completeOnly`: the whole track or nothing)
+  async loadPgs(completeOnly = false) {
+    const pgs = this.pgs;
+    if (!pgs || pgs.complete || pgs.loading || !this.session) return;
+    pgs.loading = true;
+    pgs.asked = Date.now();
+    try {
+      const from = Math.max(0, Math.floor(this.position()) - 2);
+      const r = await fetch(`/stream/${this.session.sessionId}/pgs/${pgs.id}.sup?from=${from}${completeOnly ? '&complete=true' : ''}`,
+        { cache: 'no-store' });
+      if (r.status === 204 || !r.ok) return;
+      const data = await r.arrayBuffer();
+      if (this.pgs !== pgs) return;
+      pgs.data = data;
+      pgs.complete = r.headers.get('X-Subtitle-Complete') === '1';
+      pgs.until = pgs.complete ? Infinity : +(r.headers.get('X-Subtitle-Until') ?? 0);
+      // A copy: the renderer may hand its buffer to its worker
+      await pgs.renderer?.loadFromBuffer(data.slice(0));
+    } catch { /* tried again by checkPgs */ }
+    finally { pgs.loading = false; }
+  }
+
+  // Whether a PGS subtitle is on and drawn by this page (not burned in)
+  drawsPgs() { return !!this.details.subtitles.find(x => x.id === this.subtitle)?.pgs; }
+
+  // Every 2 s: five minutes running out, the next five; every 30 s, whether the whole track is there yet
+  checkPgs() {
+    const pgs = this.pgs;
+    if (!pgs || pgs.complete || pgs.loading || !this.session) return;
+    if (this.position() > pgs.until - 60) this.loadPgs();
+    else if (Date.now() - pgs.asked > 30000) this.loadPgs(true);
+  }
+
   pickSubtitle(id) {
     const before = this.subtitle;
     this.subtitle = id || null;
-    const wasBurned = before && !this.details.subtitles.find(s => s.id === before)?.text;
-    const isBurned = this.subtitle && !this.details.subtitles.find(s => s.id === this.subtitle)?.text;
+    const wasBurned = !!before && this.burns(before);
+    const isBurned = !!this.subtitle && this.burns(this.subtitle);
     if (wasBurned || isBurned) this.restart(this.position(), { keepPaused: true, handover: true });   // image subtitles are part of the video
-    else this.setTextTrack();
+    else { this.setTextTrack(); this.setPgs(); }
   }
 
   async seek(t) {
@@ -804,6 +868,8 @@ export class Player {
     if (!this.session) return;
     this.pending = null;   // a handover getting ready is dropped
     this.stoppedAt = this.position();
+    this.pgs?.renderer?.dispose();
+    if (this.pgs) this.pgs.renderer = null;
     this.saveProgress();
     const id = this.session.sessionId;
     this.session = null;
@@ -925,7 +991,8 @@ export class Player {
     this.status.textContent = wireless ? 'Playing on the AirPlay device' : '';
     if (wireless && !this.forCast) {
       this.forCast = true;
-      if (this.session && this.session.videoCodec !== 'h264' && this.session.mode !== 'Direct')
+      // (and PGS subtitles burned in, which this screen would draw but the TV can't)
+      if (this.session && ((this.session.videoCodec !== 'h264' && this.session.mode !== 'Direct') || this.drawsPgs()))
         await this.restart(this.position(), { keepPaused: true });
     } else if (!wireless && !isCasting()) {
       this.forCast = false;
@@ -936,7 +1003,8 @@ export class Player {
   // HEVC, so a copied x265 stream is restarted as H.264 first.
   async castHere() {
     if (!this.session) return;
-    if (!this.forCast && this.session.videoCodec !== 'h264' && this.session.mode !== 'Direct') {
+    // So are PGS subtitles drawn here: the Chromecast needs them burned into the video
+    if (!this.forCast && ((this.session.videoCodec !== 'h264' && this.session.mode !== 'Direct') || this.drawsPgs())) {
       this.forCast = true;
       await this.restart(this.position(), { keepPaused: true });
       return;   // start() casts the new stream
@@ -955,6 +1023,8 @@ export class Player {
   }
 
   destroy() {
+    this.pgs?.renderer?.dispose();
+    this.pgs = null;
     this.pending = null;
     this.saveProgress(true);
     clearInterval(this.monitor);

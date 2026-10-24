@@ -28,6 +28,12 @@ public sealed record ProbeStream(
     /// <summary>"Dolby Vision 8.1", "Dolby Vision 5", or null.</summary>
     public string? DolbyVisionLabel => DolbyVisionProfile is { } p ? $"Dolby Vision {p}{(DolbyVisionCompatibility is { } c and > 0 ? $".{c}" : "")}" : null;
 
+    /// <summary>
+    /// Blu-ray image subtitles, which the browser draws itself (libpgs, see PgsSubtitles) rather than having them
+    /// burned into the video. DVD ones (dvd_subtitle) can still only be burned in.
+    /// </summary>
+    public bool IsPgs => Type == StreamType.Subtitle && Codec == "hdmv_pgs_subtitle";
+
     /// <summary>Text subtitles can be turned into WebVTT; image ones (PGS, DVD) can only be burned into the video.</summary>
     public bool IsTextSubtitle => Type == StreamType.Subtitle &&
         Codec is "subrip" or "srt" or "ass" or "ssa" or "mov_text" or "webvtt" or "text";

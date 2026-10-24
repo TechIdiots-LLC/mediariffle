@@ -64,7 +64,8 @@ In Development, settings can go in `src/MediaRiffle.Server/appsettings.Developme
 migrations: `dotnet tool restore`, then `dotnet ef migrations add <Name> -p src/MediaRiffle.Server -o Data/Migrations`.
 
 The web UI is plain JavaScript modules in `src/MediaRiffle.Server/wwwroot` with no build step;
-[hls.js](https://github.com/video-dev/hls.js) (Apache-2.0) is in `wwwroot/lib`.
+[hls.js](https://github.com/video-dev/hls.js) (Apache-2.0) and [libpgs](https://github.com/Arcus92/libpgs-js) (MIT, 0.9.0)
+are in `wwwroot/lib`.
 
 ## Releases
 
@@ -87,5 +88,6 @@ Packages can also be built by hand: `./build/Package.ps1 -Rid win-x64` (needs NS
 ## License
 
 MediaRiffle is released under the [BSD 3-Clause License](LICENSE), copyright TechIdiots LLC. It includes
-[hls.js](https://github.com/video-dev/hls.js) (Apache License 2.0, `src/MediaRiffle.Server/wwwroot/lib/hls.js/LICENSE`)
+[hls.js](https://github.com/video-dev/hls.js) (Apache License 2.0, `src/MediaRiffle.Server/wwwroot/lib/hls.js/LICENSE`) and
+[libpgs](https://github.com/Arcus92/libpgs-js) (MIT License, `src/MediaRiffle.Server/wwwroot/lib/libpgs/LICENSE`),
 and runs [FFmpeg](https://ffmpeg.org/), which is installed separately and has its own license.

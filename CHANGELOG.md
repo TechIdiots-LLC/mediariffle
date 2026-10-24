@@ -2,6 +2,12 @@
 
 ## master
 ### ✨ Features and improvements
+- **Blu-ray (PGS) subtitles without converting the video**: they're drawn by the browser over the picture (libpgs),
+  so turning them on or off never restarts the stream and a 4K file keeps playing as it is. Subtitle tracks are
+  extracted ahead of time in the background (all of a file's in one read, newest files first, only while nothing is
+  streaming) and kept, up to `SubtitleCacheGB`, so turning one on is instant; text subtitles of a big file no longer
+  take minutes the first time either. DVD subtitles, and any picture subtitles on a TV, are still burned in.
+  `PrepareSubtitles` turns the preparing off.
 - **A 1440p level**, between 1080p and 4K: `"MaxHeight": 1440` (with `"MaxVideoKbps": 16000`) offers it, `2160` both.
   For a GPU that can't convert 4K in real time but can to 1440p (an Intel Arc A380: 1.2x from a 60 Mbit/s 4K HDR
   disc rip, against 0.6x to 4K); Auto only steps up to it while the encoder keeps ahead.

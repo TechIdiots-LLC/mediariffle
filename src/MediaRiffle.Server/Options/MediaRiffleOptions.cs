@@ -101,6 +101,16 @@ public sealed class MediaRiffleOptions
     public int ScanIntervalMinutes { get; set; } = 60;
 
     /// <summary>
+    /// Extract files' subtitle tracks ahead of time, in the background while nothing is streaming (newest files first),
+    /// so turning one on is instant: getting a track out reads the whole file, minutes for a 4K disc rip. Off: only
+    /// the first time a track is turned on (PGS ones show five minutes at a time until then).
+    /// </summary>
+    public bool PrepareSubtitles { get; set; } = true;
+
+    /// <summary>The most the kept subtitle tracks may take, in GB (the least recently used go first; preparing stops there).</summary>
+    public double SubtitleCacheGB { get; set; } = 5;
+
+    /// <summary>
     /// Proxies trusted to set X-Forwarded-For/-Proto (e.g. nginx on 127.0.0.1). Needed behind a reverse proxy so
     /// rate limiting sees the real client and secure cookies know the request was HTTPS.
     /// </summary>

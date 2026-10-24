@@ -302,7 +302,8 @@ public static partial class PlaybackEndpoints
             return Results.File(s.FullPath, ContentType(s.FullPath), enableRangeProcessing: true);
         });
 
-        g.MapGet("/subs/{id}.vtt", async (string sessionId, string id, StreamSessionManager sessions, Ffmpeg ffmpeg, CancellationToken ct) =>
+        g.MapGet("/subs/{id}.vtt", async (string sessionId, string id, StreamSessionManager sessions, Ffmpeg ffmpeg,
+            SubtitleCache cache, AppDbContext db, CancellationToken ct) =>
         {
             if (sessions.Get(sessionId) is not { } s) return Results.NotFound();
             var m = SubtitleId().Match(id);
@@ -321,9 +322,19 @@ public static partial class PlaybackEndpoints
                 }
                 try
                 {
-                    // The whole track, then shifted by the stream's start, so cue times match the player's clock
-                    var full = await ffmpeg.RunAsync(ffmpeg.FfmpegPath, PlaybackPlanner.WebVttArguments(input, stream), TimeSpan.FromMinutes(2), ct);
-                    vtt = WebVtt.Utf8(WebVtt.Shift(System.Text.Encoding.UTF8.GetString(full), s.StartSeconds));
+                    // Kept already (SubtitleCache: read from the file ahead of time), else the track from the file now,
+                    // and the file's tracks kept for next time. Either way shifted by the stream's start, so cue times
+                    // match the player's clock.
+                    string full;
+                    if (stream is { } n && cache.Cached(s.FullPath, new SubtitleTrack(n, false)) is { } kept)
+                        full = await File.ReadAllTextAsync(kept, ct);
+                    else
+                    {
+                        if (stream is not null) await StartKeepingAsync(s, cache, db, ct);
+                        full = System.Text.Encoding.UTF8.GetString(
+                            await ffmpeg.RunAsync(ffmpeg.FfmpegPath, PlaybackPlanner.WebVttArguments(input, stream), TimeSpan.FromMinutes(5), ct));
+                    }
+                    vtt = WebVtt.Utf8(WebVtt.Shift(full, s.StartSeconds));
                 }
                 catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
                 {
@@ -335,6 +346,41 @@ public static partial class PlaybackEndpoints
             }
             return Results.Bytes(vtt, "text/vtt; charset=utf-8");
         });
+
+        // PGS (Blu-ray) subtitles for the player to draw (libpgs), on the file's clock: the whole track once kept
+        // (X-Subtitle-Complete: 1), until then the next five minutes from ?from= (X-Subtitle-Until says to where), the
+        // file's tracks being kept meanwhile. ?complete=true asks for the whole track only: 204 until it's kept.
+        g.MapGet("/pgs/s{stream:int}.sup", async (string sessionId, int stream, double? from, bool? complete,
+            StreamSessionManager sessions, SubtitleCache cache, AppDbContext db, HttpContext ctx, CancellationToken ct) =>
+        {
+            if (sessions.Get(sessionId) is not { } s) return Results.NotFound();
+            ctx.Response.Headers.CacheControl = "no-store";
+            if (cache.Cached(s.FullPath, new SubtitleTrack(stream, true)) is { } whole)
+            {
+                ctx.Response.Headers["X-Subtitle-Complete"] = "1";
+                return Results.File(whole, "application/octet-stream");
+            }
+            await StartKeepingAsync(s, cache, db, ct);
+            if (complete == true) return Results.NoContent();
+            var start = Math.Max(0, from ?? 0);
+            try
+            {
+                var window = await cache.WindowAsync(s.FullPath, stream, start, ct);
+                ctx.Response.Headers["X-Subtitle-Until"] = (start + SubtitleCache.WindowSeconds).ToString(CultureInfo.InvariantCulture);
+                return Results.Bytes(window, "application/octet-stream");
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+            {
+                return Results.Problem("Couldn't read these subtitles: " + ex.Message, statusCode: 500);
+            }
+        });
+    }
+
+    /// <summary>Starts keeping the stream's file's subtitle tracks (all of them, in one read), unless they are or it's under way.</summary>
+    private static async Task StartKeepingAsync(StreamSession s, SubtitleCache cache, AppDbContext db, CancellationToken ct)
+    {
+        var json = await db.MediaFiles.Where(f => f.Id == s.FileId).Select(f => f.ProbeJson).FirstOrDefaultAsync(ct);
+        if (!string.IsNullOrEmpty(json)) cache.Start(s.FullPath, SubtitleTrack.Of(ProbeResult.Parse(json)));
     }
 
     /// <summary>

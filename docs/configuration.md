@@ -14,6 +14,8 @@ Put your settings in file 2. A complete example:
   "MediaRiffle": {
     "DataDirectory": "",
     "ScanIntervalMinutes": 60,
+    "PrepareSubtitles": true,
+    "SubtitleCacheGB": 5,
     "TrustedProxies": [ "127.0.0.1" ],
     "ForwardLimit": 1,
     "Google": { "ClientId": "", "ClientSecret": "" },
@@ -47,6 +49,8 @@ Put your settings in file 2. A complete example:
 | --- | --- |
 | `DataDirectory` | Database, sign-in keys, cached pictures and running transcodes. Empty means `/var/lib/mediariffle` (Linux) or `%ProgramData%\MediaRiffle` (Windows). The service account needs read/write here and nowhere else. |
 | `ScanIntervalMinutes` | How often the libraries are rescanned; 0 for only at start and on Admin → Scan now. |
+| `PrepareSubtitles` | Extract files' subtitle tracks ahead of time, in the background while nothing is streaming, so turning one on is instant (see Subtitles below). `true` by default. |
+| `SubtitleCacheGB` | The most the kept subtitle tracks may take (the least recently used go first). 5 by default. |
 | `TrustedProxies` | IP addresses of the reverse proxies in front (HAProxy, Apache, nginx). Only these may set `X-Forwarded-For`/`-Proto`. |
 | `ForwardLimit` | How many proxies are in the chain: 1 for HAProxy alone, 2 for HAProxy → Apache. |
 | `Libraries` | Only used on the **first start**, to add the first libraries. After that they're managed under **Admin → Libraries** (see below), and this setting is ignored. |
@@ -243,6 +247,20 @@ back saves nothing).
 On Linux, Intel GPUs from Broadwell on (including the N100/N150 mini PCs) work with `Vaapi` and the
 `intel-media-va-driver` package; AMD with `mesa-va-drivers`. In a Proxmox container, pass the GPU in first
 ([proxmox.md](proxmox.md)). `"HardwareDecoding": false` decodes everything on the CPU.
+
+### Subtitles
+
+Text subtitles (SRT, ASS, in the file or beside it) are shown by the browser over any stream. **PGS** subtitles, the
+picture ones on Blu-ray discs and most disc rips, are drawn by the browser too (with libpgs), so turning them on or
+off, or changing language, never restarts the video, and a 4K file keeps playing as it is. DVD (VobSub) subtitles,
+and any picture subtitles on a Chromecast or AirPlay TV, are burned into a converted video instead, as before.
+
+Getting a subtitle track out of a file means reading the whole file, as its subtitles lie among the video: a few
+minutes for a 40 GB 4K disc rip. So MediaRiffle does it **ahead of time** (`PrepareSubtitles`): in the background,
+newest files first, one at a time and only while nothing is streaming, every track of a file in one read, kept in
+the data folder's `subtitles/` up to `SubtitleCacheGB`. A file not done yet gets its tracks the first time one is
+turned on; a PGS track meanwhile shows five minutes at a time from where you are (read straight from that point, in
+seconds), until the whole track is ready.
 
 ## Library layout
 

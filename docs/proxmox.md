@@ -12,7 +12,8 @@ Container ID `120`, host names and addresses here are placeholders; `<version>` 
 
 - **Size:** 2 cores and 2 GB of RAM for playing files as they are; 4 cores and 4 GB for converting. Converting 4K wants
   the node's GPU (below) more than more cores. 16 GB of disk: Ubuntu and MediaRiffle take about 2 GB, and conversions
-  are written to `/var/lib/mediariffle/transcode` while they play (about 1 GB an hour of 1080p each) and deleted after.
+  are written to `/var/lib/mediariffle/transcode` while they play (about 1 GB an hour of 1080p each) and deleted after;
+  kept subtitle tracks take up to `SubtitleCacheGB` (5 GB by default) in `/var/lib/mediariffle/subtitles`.
 - **The media:** an unprivileged container can't mount a Windows or Samba share itself. Mount it on the Proxmox node and
   pass the folder in (below).
 - **Moving an existing install?** Read [Moving an existing install into the container](#moving-an-existing-install-into-the-container)
