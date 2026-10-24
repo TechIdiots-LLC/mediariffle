@@ -192,7 +192,7 @@ export class Player {
 
     this.video.addEventListener('timeupdate', () => this.onTime());
     this.video.addEventListener('play', () => { this.playBtn.textContent = '⏸'; this.mediaState('playing'); this.wake(); });
-    this.video.addEventListener('pause', () => { this.playBtn.textContent = '▶'; this.mediaState('paused'); this.saveProgress(); this.wake(); });
+    this.video.addEventListener('pause', () => { this.pausedAt = Date.now(); this.playBtn.textContent = '▶'; this.mediaState('paused'); this.saveProgress(); this.wake(); });
     this.video.addEventListener('waiting', () => {
       this.status.textContent = 'Loading…';
       // A stall while playing (not right after starting or seeking) is what Auto steps down for
@@ -200,7 +200,13 @@ export class Player {
     });
     this.video.addEventListener('playing', () => { this.status.textContent = ''; this.playingSince ??= performance.now(); this.recovering = false; });
     this.video.addEventListener('ended', () => this.onEnded());
-    this.video.addEventListener('error', () => { if (this.session) this.status.textContent = 'This video can\'t be played here.'; });
+    this.video.addEventListener('error', () => {
+      if (!this.session) return;
+      // The file as it is failing after it had played: most likely its stream went away (stopped as idle while the
+      // computer slept, the server restarted), not a file this browser can't play
+      if (this.session.mode === 'Direct' && this.playingSince && this.recoverStream()) return;
+      this.status.textContent = 'This video can\'t be played here.';
+    });
 
     this.onPageHide = () => this.saveProgress(true);
     addEventListener('pagehide', this.onPageHide);
@@ -341,6 +347,7 @@ export class Player {
       // Auto trying Original: if the file has to be transcoded anyway, the adaptive stream instead
       adaptive: this.choice === 'auto', startLevel: this.levelFor(this.estimate()) } });
     this.session = s;
+    this.stale = false;
     this.quality = s.quality;   // the server may have lowered it to the user's cap
     this.playingLevel = null;
     this.playingSince = null;
@@ -556,12 +563,8 @@ export class Player {
         if (!data.fatal) return;
         // Past the last segment there is (a file a little shorter than it said): that's the end
         if (s.adaptive && this.position() > this.duration() - 12) { this.onEnded(); return; }
-        // The stream went away (stopped as idle, the server restarted): a new one from here, once
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !this.recovering) {
-          this.recovering = true;
-          this.restart(this.position(), { keepPaused: true });
-          return;
-        }
+        // The stream went away (stopped as idle, the server restarted)
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && this.recoverStream()) return;
         this.status.textContent = 'Playback error: ' + (data.details ?? data.type);
       });
       this.hls.loadSource(s.url);
@@ -620,7 +623,39 @@ export class Player {
 
   togglePlay() {
     if (!this.session) { this.resume(); return; }   // after Stop: start again where it stopped
-    this.video.paused ? this.video.play() : this.video.pause();
+    if (this.video.paused) this.play(); else this.video.pause();
+  }
+
+  // Play from a pause. A stream paused for long may be gone: the server stops one nobody has fetched from for a
+  // minute or two, and the "still here" while paused (keepAlive) doesn't reach it once the computer sleeps or the
+  // browser freezes the tab. Then a new one from the same place, rather than a player stuck on Loading… until the
+  // page is reloaded. A short pause just plays.
+  async play() {
+    const longPause = Date.now() - (this.pausedAt ?? Date.now()) > 60000;
+    if (this.stale || (longPause && !(await this.streamAlive()))) {
+      this.stale = false;
+      await this.restart(this.position());
+      return;
+    }
+    try { await this.video.play(); } catch { /* blocked: the Play button still works */ }
+  }
+
+  // Whether the server still has this stream (asking counts as activity, so it's then kept a while longer)
+  async streamAlive() {
+    if (!this.session) return false;
+    try { return (await fetch(`/stream/${this.session.sessionId}/alive`, { cache: 'no-store' })).ok; }
+    catch { return true; }   // the server unreachable: let the player try, and say what fails
+  }
+
+  // The stream failed, most likely gone from the server. Paused, nothing needs it yet: a new one now would only go
+  // idle too, so the next Play starts it. Playing: a new one from here at once, and again later if that one goes
+  // too (`recovering` is cleared when it plays). False when it already tried and the new one failed before playing.
+  recoverStream() {
+    if (this.video.paused) { this.stale = true; this.status.textContent = ''; return true; }
+    if (this.recovering) return false;
+    this.recovering = true;
+    this.restart(this.position());
+    return true;
   }
 
   // ── Transport ──────────────────────────────────────────────────────────────

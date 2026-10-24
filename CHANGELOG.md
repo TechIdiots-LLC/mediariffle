@@ -9,6 +9,11 @@
   Admin), matching shows, movies, music and files by what they are rather than by id. See docs/proxmox.md.
 
 ### 🐞 Bug fixes
+- **Play works after a long pause**: a video paused overnight (the computer asleep, so the player's "still here" never
+  reached the server, which stopped the stream as idle) couldn't be started again without reloading the page. Play
+  after a pause of over a minute now checks the stream is still there and, if not, starts a new one from the same
+  place. A stream that fails while paused is replaced at the next Play rather than at once (where it would go idle
+  too), recovery re-arms instead of giving up after one try, and the file played as it is recovers too.
 - **Auto stops returning to a 4K original that stalls**: once the file as it is stalls on a device (a 60 Mbit/s
   disc rip, say), Auto remembers it there for 30 days, starting on the adaptive stream and not stepping back up to
   the original every two minutes, which made playback stall and switch quality over and over. Original from the
