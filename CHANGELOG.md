@@ -2,6 +2,10 @@
 
 ## master
 ### ✨ Features and improvements
+- **Full screen on a phone**: a ⌄ button hides the controls without pausing; with them hidden, a tap brings them
+  back instead of also pausing the film; and they fade by themselves again after a tap (the last control tapped stayed
+  "hovered" on a touch screen, which kept them up). The 🚫 button that hides a video is just its icon now, as
+  "Hide" written out was taken for hiding the controls.
 - **Blu-ray (PGS) subtitles without converting the video**: they're drawn by the browser over the picture (libpgs),
   so turning them on or off never restarts the stream and a 4K file keeps playing as it is. Subtitle tracks are
   extracted ahead of time in the background (all of a file's in one read, newest files first, only while nothing is

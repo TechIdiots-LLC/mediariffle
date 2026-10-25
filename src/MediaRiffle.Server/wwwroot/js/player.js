@@ -158,9 +158,13 @@ export class Player {
     this.backBtn = btn('↺10', 'Back 10 seconds (←)', () => this.seekBy(-10));
     this.playBtn = h('button', { class: 'icon', title: 'Play / pause (space)', onclick: () => this.togglePlay() }, '▶');
     this.fwdBtn = btn('10↻', 'Forward 10 seconds (→)', () => this.seekBy(10));
-    // Hide this one (the page sets onHide) and go on to the next, in or out of full screen
-    this.hideBtn = h('button', { class: 'secondary', title: 'Hide this and go to the next one',
-      onclick: e => { e.stopPropagation(); this.onHide?.(); } }, '🚫 Hide');
+    // Hide this one (the page sets onHide) and go on to the next, in or out of full screen. Just the icon: written out,
+    // "Hide" was taken for hiding the controls
+    this.hideBtn = h('button', { class: 'secondary icon', title: 'Hide this video (from lists and Continue watching) and go to the next one',
+      'aria-label': 'Hide this video and go to the next one', onclick: e => { e.stopPropagation(); this.onHide?.(); } }, '🚫');
+    // Full screen: hides the controls now, without pausing (a tap or the mouse brings them back)
+    this.hideControlsBtn = h('button', { class: 'secondary icon hide-controls', title: 'Hide the controls (tap or move the mouse to bring them back)',
+      'aria-label': 'Hide the controls', onclick: e => { e.stopPropagation(); this.hideControls(); } }, '⌄');
     this.stopBtn = btn('⏹', 'Stop', () => this.stop());
     this.nextBtn = btn('⏭', 'Next (N)', () => this.goNext());
     this.muteBtn = btn('🔊', 'Mute (M)', () => { this.video.muted = !this.video.muted; });
@@ -213,8 +217,13 @@ export class Player {
   // Full screen takes the video and the controls together, see .player-wrap in site.css. There the controls lie over
   // the video and fade out when the mouse is still for a few seconds and not over them, while playing.
   element() {
-    this.root = h('div', { class: 'player-wrap', onpointermove: () => this.wake(), onpointerdown: () => this.wake() },
-      h('div', { class: 'player', onclick: () => this.togglePlay(), ondblclick: () => this.fullscreen() },
+    this.root = h('div', { class: 'player-wrap',
+      onpointermove: e => { this.pointerType = e.pointerType; this.wake(); },
+      // A tap while the controls are hidden only brings them back (see the click below): on a phone, a tap is the only
+      // way to, and it shouldn't pause the film as well
+      onpointerdown: e => { this.pointerType = e.pointerType; this.revealing = this.root.classList.contains('idle'); this.wake(); } },
+      h('div', { class: 'player', onclick: () => { if (this.revealing) { this.revealing = false; return; } this.togglePlay(); },
+        ondblclick: () => this.fullscreen() },
         this.video, this.status, this.flashEl = h('div', { class: 'flash', 'aria-live': 'polite' })),
       this.controls = h('div', { class: 'controls' },
         this.seekBar,
@@ -230,7 +239,8 @@ export class Player {
           h('span', { class: 'row screens' },
             this.castSlot,
             this.airplayBtn,
-            h('button', { class: 'secondary', title: 'Full screen (F)', onclick: () => this.fullscreen() }, '⛶ Full screen')),
+            h('button', { class: 'secondary', title: 'Full screen (F)', onclick: () => this.fullscreen() }, '⛶ Full screen'),
+            this.hideControlsBtn),
           this.info,
           this.next)),
       // Other ways to watch, under the controls (not in full screen)
@@ -291,16 +301,24 @@ export class Player {
         'what you watch in VLC isn\'t remembered here.'));
   }
 
-  // Shows the controls, and hides them again after 3 s unless paused, not full screen, or the mouse is over them
+  // Shows the controls, and hides them again after 3 s unless paused, not full screen, or the mouse is over them. Only
+  // a mouse: on a touch screen the last control tapped stays :hover, and the controls then never went away
   wake() {
     if (!this.root) return;
     this.root.classList.remove('idle');
     clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
       const full = inTheater();
-      if (!full || this.video.paused || this.controls.matches(':hover')) return;
+      if (!full || this.video.paused || (this.pointerType === 'mouse' && this.controls.matches(':hover'))) return;
       this.root.classList.add('idle');
     }, 3000);
+  }
+
+  // The ⌄ button in full screen: the controls out of the way now, playing or paused
+  hideControls() {
+    if (!this.root || !inTheater()) return;
+    clearTimeout(this.idleTimer);
+    this.root.classList.add('idle');
   }
 
   // Where in the file we are
