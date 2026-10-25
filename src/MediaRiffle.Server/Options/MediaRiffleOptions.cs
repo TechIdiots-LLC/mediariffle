@@ -47,7 +47,7 @@ public sealed class TranscodingOptions
     /// </summary>
     public bool HardwareDecoding { get; set; } = true;
     /// <summary>Peak video bitrate of a transcode, in kbit/s.</summary>
-    public int MaxVideoKbps { get; set; } = 8000;
+    public int MaxVideoKbps { get; set; } = 10000;
     /// <summary>Streams transcoding or remuxing at once, across all users; more are refused until one ends.</summary>
     public int MaxSessions { get; set; } = 4;
     public int MaxSessionsPerUser { get; set; } = 2;

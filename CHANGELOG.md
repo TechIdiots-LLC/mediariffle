@@ -5,6 +5,9 @@
 - _...Add new stuff here..._
 - **A reordered home page**: Libraries come first, then Categories, My lists and Continue watching (with ★ Favorites
   last). Continue watching is a single row that scrolls sideways, showing the 20 most recent.
+- **More room at 1080p**: its peak is 10 Mbit/s (was 8), and `Transcoding:MaxVideoKbps` defaults to 10000 to match,
+  for film grain and dark scenes (VA-API averages 7.5 Mbit/s, was 6). A settings file that sets `MaxVideoKbps`
+  keeps its own; an upgrade no longer carries the old program folder's 8000, which was only its default.
 
 ### 🐞 Bug fixes
 - **Clicking Next quickly no longer leaves an old video playing**: moving on while a video was still starting could

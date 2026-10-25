@@ -57,7 +57,7 @@ public class AdaptiveTests
         Assert.Equal("v1/index.m3u8", lines[4]);
         Assert.Equal("v0/index.m3u8", lines[6]);
         Assert.Equal("v2/index.m3u8", lines[8]);
-        Assert.Contains("BANDWIDTH=8192000", lines[5]);   // video and audio
+        Assert.Contains("BANDWIDTH=10192000", lines[5]);   // video and audio
         Assert.Contains("mp4a.40.2", lines[3]);
     }
 

@@ -32,7 +32,7 @@ Put your settings in file 2. A complete example:
       "ToneMapHdr": true,
       "UseLibplacebo": true,
       "HardwareDecoding": true,
-      "MaxVideoKbps": 8000,
+      "MaxVideoKbps": 10000,
       "MaxSessions": 4,
       "MaxSessionsPerUser": 2,
       "SegmentSeconds": 4,
@@ -62,7 +62,7 @@ Put your settings in file 2. A complete example:
 | `Transcoding.FfmpegFolder` | Folder holding `ffmpeg` and `ffprobe`; empty to use `PATH`. |
 | `Transcoding.Encoder` | `Libx264` (CPU), `Nvenc` (NVIDIA), `Qsv` (Intel Quick Sync), `Vaapi` (Intel/AMD on Linux). |
 | `Transcoding.MaxHeight` | Transcodes are scaled down to this many lines. `1440` adds a 1440p level, `2160` 1440p and 4K (see Quality below); 1080 by default. |
-| `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode. Raise it to about `16000` with `MaxHeight` 1440 and `30000` with 2160, or those levels are held to this. |
+| `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode; 10000 by default (1080p's peak). Raise it to about `16000` with `MaxHeight` 1440 and `30000` with 2160, or those levels are held to this. |
 | `Transcoding.ToneMapHdr` | HDR video (HDR10, HLG) that has to be converted is tone-mapped to ordinary colours, so it isn't washed out (see Quality below). `true` by default. |
 | `Transcoding.HardwareDecoding` | With a GPU encoder (`Qsv`, `Vaapi`, `Nvenc`), decode on that GPU too and scale (and with `Vaapi`, tone-map HDR) there, for what it was found to decode at start (see Decoding on the GPU below). `true` by default. |
 | `Transcoding.UseLibplacebo` | Tone-map HDR with libplacebo when this ffmpeg has it and a Vulkan GPU works: better HDR10, and Dolby Vision applied, which Dolby Vision 5 needs (see HDR below). `true` by default. |
@@ -149,7 +149,7 @@ never touched) and everyone's place in it.
 
 ## Quality
 
-The player has a quality menu: **Auto**, **Original**, and 2160p (4K, 25 Mbit/s) and 1440p (14) when allowed, 1080p (8), 720p (4),
+The player has a quality menu: **Auto**, **Original**, and 2160p (4K, 25 Mbit/s) and 1440p (14) when allowed, 1080p (10), 720p (4),
 480p (1.5), 360p (0.8). The menu lists only what a file can have here: nothing above the server's `MaxHeight`, the
 user's cap, or (by more than a step) the picture itself.
 

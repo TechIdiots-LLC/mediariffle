@@ -32,6 +32,12 @@ public static class SettingsCarryOver
         return baseline;
     }
 
+    /// <summary>
+    /// Defaults an older program-folder file listed that have changed since: that value there is the old default, not
+    /// an admin's choice, and carrying it would hold the install to it.
+    /// </summary>
+    private static readonly (string Path, int Value)[] FormerDefaults = [("MediaRiffle:Transcoding:MaxVideoKbps", 8000)];
+
     /// <summary>The settings in <paramref name="old"/> that aren't <paramref name="baseline"/>'s, by path ("MediaRiffle:Google:ClientId").</summary>
     public static List<(string[] Path, JsonNode? Value)> Changed(JsonObject old, JsonObject baseline)
     {
@@ -40,6 +46,8 @@ public static class SettingsCarryOver
         {
             var was = Get(baseline, path);
             if (was is null && value is null) return;
+            if (FormerDefaults.Any(f => string.Equals(f.Path, string.Join(':', path), StringComparison.OrdinalIgnoreCase) &&
+                                        value is JsonValue v && v.TryGetValue<int>(out var n) && n == f.Value)) return;
             if (was is null || !JsonNode.DeepEquals(value, was)) changed.Add((path, value));
         });
         return changed;
