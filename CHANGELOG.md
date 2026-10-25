@@ -5,7 +5,9 @@
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- **Clicking Next quickly no longer leaves an old video playing**: moving on while a video was still starting could
+  leave its sound playing under the next one until the page was reloaded (the old player started its stream after
+  it had been closed, on a video no longer on the page).
 
 ## 0.8.0
 ### ✨ Features and improvements

@@ -329,7 +329,11 @@ export class Player {
   async start(startAt = null, { autoplay = true } = {}) {
     this.status.textContent = 'Starting…';
     if (!this.quality) this.quality = await this.autoStart();
-    this.useSession(await this.requestStream(startAt));
+    if (this.destroyed) return;
+    const s = await this.requestStream(startAt);
+    // Closed while the server was starting it (the page moved on): close the stream, rather than play it unseen
+    if (this.destroyed) { api(`/api/play/${s.sessionId}`, { method: 'DELETE', keepalive: true }).catch(() => {}); return; }
+    this.useSession(s);
     this.attach(this.session);
     this.setTextTrack();
     this.setPgs();
@@ -1041,6 +1045,9 @@ export class Player {
   }
 
   destroy() {
+    // Anything still starting (start, a handover, a restart) stops at its next step
+    this.destroyed = true;
+    this.video.pause();
     this.pgs?.renderer?.dispose();
     this.pgs = null;
     this.pending = null;

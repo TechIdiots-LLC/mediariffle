@@ -10,6 +10,8 @@ const view = document.getElementById('view');
 const nav = document.getElementById('nav');
 let state = { setupNeeded: false, user: null };
 let player = null;
+// Counts pages shown, so a page that took a while to load (a slow fetch) can tell another has been shown since
+let routeSeq = 0;
 let pageTimer = null;   // a page's auto-refresh, stopped when leaving it
 let leaving = [];       // a page's clean-ups (e.g. no longer following the music player), run when leaving it
 const onLeave = fn => leaving.push(fn);
@@ -97,6 +99,7 @@ function numberPage(hash) {
 async function route() {
   closeUserMenu();
   numberPage(location.hash || '#/');
+  routeSeq++;
   if (player) { player.destroy(); player = null; }
   if (pageTimer) { clearInterval(pageTimer); pageTimer = null; }
   for (const fn of leaving.splice(0)) fn();
@@ -849,7 +852,10 @@ async function movieView(id) {
 }
 
 async function playView(fileId) {
+  const seq = routeSeq;
   const details = await api(`/api/files/${fileId}`);
+  // Another page was shown meanwhile (Next clicked twice quickly): this one's player would play on, unseen and unstopped
+  if (seq !== routeSeq) return;
   // Music (reached from a mixed queue, or an old link) plays on the listening page
   if (details.kind === 'Track') { forward(`#/listen/${fileId}`); return; }
   // A video takes over from the music
