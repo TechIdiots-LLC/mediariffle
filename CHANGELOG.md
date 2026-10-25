@@ -3,6 +3,12 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.9.0
+### ✨ Features and improvements
 - **Updating from Admin**: Admin → Updates shows newer releases with their notes and updates to the newest with one
   button, on installs from the `.deb` (Ubuntu, Debian, the Proxmox template) and the Windows installer. An updater
   with the rights MediaRiffle hasn't got (root's `mediariffle-update`, the SYSTEM task "MediaRiffle Update") downloads
@@ -23,6 +29,7 @@
   stays on 1080p. 1440p is now 16 Mbit/s (was 14), so each level has more bits than the one below it.
 
 ### 🐞 Bug fixes
+- Player fixes ([!26](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/26)) (@acalcutt)
 - **Clicking Next quickly no longer leaves an old video playing**: moving on while a video was still starting could
   leave its sound playing under the next one until the page was reloaded (the old player started its stream after
   it had been closed, on a video no longer on the page).
