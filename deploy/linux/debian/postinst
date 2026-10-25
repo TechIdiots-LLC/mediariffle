@@ -23,6 +23,8 @@ if [ "$1" = "configure" ]; then
         systemctl daemon-reload
         systemctl enable mediariffle.service >/dev/null
         systemctl restart mediariffle.service || true
+        # Admin → Updates: starts the updater when MediaRiffle asks for an update
+        systemctl enable --now mediariffle-update.path >/dev/null 2>&1 || true
     fi
     echo "MediaRiffle is running on the address in /etc/mediariffle/appsettings.json (http://127.0.0.1:5080 by default)."
     echo "Open it through your reverse proxy; the first visit creates the admin account."

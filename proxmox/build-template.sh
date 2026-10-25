@@ -93,7 +93,7 @@ install -m 0644 "$here/mediariffle-firstboot.service" "$root/etc/systemd/system/
 install -m 0644 "$here/firstboot.env" "$root/etc/mediariffle/firstboot.env"
 touch "$root/etc/mediariffle/firstboot-pending"
 # Enabled without a running systemd (systemctl works on the files in a chroot)
-in_root systemctl enable mediariffle.service mediariffle-firstboot.service
+in_root systemctl enable mediariffle.service mediariffle-firstboot.service mediariffle-update.path
 
 cat > "$root/etc/motd" <<'MOTD'
 

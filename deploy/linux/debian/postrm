@@ -5,7 +5,8 @@ if [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
 fi
 if [ "$1" = "purge" ]; then
-    rm -rf /var/lib/mediariffle /etc/mediariffle
+    rm -rf /var/lib/mediariffle /etc/mediariffle /var/cache/mediariffle-update
+    rm -f /var/log/mediariffle-update.log
     if getent passwd mediariffle >/dev/null; then
         deluser --system mediariffle >/dev/null || true
     fi

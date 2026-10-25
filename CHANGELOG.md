@@ -3,6 +3,13 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+- **Updating from Admin**: Admin → Updates shows newer releases with their notes and updates to the newest with one
+  button, on installs from the `.deb` (Ubuntu, Debian, the Proxmox template) and the Windows installer. An updater
+  with the rights MediaRiffle hasn't got (root's `mediariffle-update`, the SYSTEM task "MediaRiffle Update") downloads
+  the release from GitLab or GitHub, checks it against the release's new `SHA256SUMS`, saves the database, installs
+  it, and goes back to the old version (and database) if the new one doesn't start. Never to an older version. The
+  first release with it is installed by hand; see docs/updating.md. Settings: `Updates:Source`, `Prereleases`,
+  `CheckHours`.
 - **A reordered home page**: Libraries come first, then Categories, My lists and Continue watching (with ★ Favorites
   last). Continue watching is a single row that scrolls sideways, showing the 20 most recent.
 - **More room at 1080p**: its peak is 10 Mbit/s (was 8), and `Transcoding:MaxVideoKbps` defaults to 10000 to match,

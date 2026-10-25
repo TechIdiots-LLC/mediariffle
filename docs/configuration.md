@@ -51,6 +51,9 @@ Put your settings in file 2. A complete example:
 | `ScanIntervalMinutes` | How often the libraries are rescanned; 0 for only at start and on Admin → Scan now. |
 | `PrepareSubtitles` | Extract files' subtitle tracks ahead of time, in the background while nothing is streaming, so turning one on is instant (see Subtitles below). `true` by default. |
 | `SubtitleCacheGB` | The most the kept subtitle tracks may take (the least recently used go first). 5 by default. |
+| `Updates.Source` | Where Admin → Updates looks for new releases and downloads them from: `GitLab` (the default) or `GitHub`. See [updating](updating.md). |
+| `Updates.Prereleases` | Offer pre-releases too. `false` by default. |
+| `Updates.CheckHours` | How often to look for a new release; `0` only on **Check now**. 12 by default. |
 | `TrustedProxies` | IP addresses of the reverse proxies in front (HAProxy, Apache, nginx). Only these may set `X-Forwarded-For`/`-Proto`. |
 | `ForwardLimit` | How many proxies are in the chain: 1 for HAProxy alone, 2 for HAProxy → Apache. |
 | `Libraries` | Only used on the **first start**, to add the first libraries. After that they're managed under **Admin → Libraries** (see below), and this setting is ignored. |

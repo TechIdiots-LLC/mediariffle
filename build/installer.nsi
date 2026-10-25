@@ -161,6 +161,13 @@ Section "${APP_NAME} service (required)" SecApp
   WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Services\EventLog\Application\${SERVICE}" "EventMessageFile" "%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll"
   WriteRegDWORD HKLM "SYSTEM\CurrentControlSet\Services\EventLog\Application\${SERVICE}" "TypesSupported" 7
 
+  ; Admin -> Updates: the "MediaRiffle Update" task (SYSTEM), started by the event the service writes when an admin asks
+  ; for an update. Made once; an upgrade keeps it. 64-bit PowerShell, for its ScheduledTasks module.
+  ${DisableX64FSRedirection}
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\Update-MediaRiffle.ps1" -Register'
+  Pop $0
+  ${EnableX64FSRedirection}
+
   ; Settings and data: the service account may change its data folder and nothing else
   CreateDirectory "$APPDATA\MediaRiffle"
   IfFileExists "$APPDATA\MediaRiffle\appsettings.json" +3 0
@@ -218,6 +225,8 @@ Section "Uninstall"
     nsExec::ExecToLog 'sc.exe delete "${SERVICE}"'
     Pop $0
     nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="MediaRiffle"'
+    Pop $0
+    nsExec::ExecToLog 'schtasks.exe /Delete /TN "MediaRiffle Update" /F'
     Pop $0
     DeleteRegKey HKLM "SYSTEM\CurrentControlSet\Services\EventLog\Application\${SERVICE}"
     DeleteRegKey HKLM "${UNINST_KEY}"

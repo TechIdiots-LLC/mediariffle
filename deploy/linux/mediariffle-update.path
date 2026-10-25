@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch for an update asked for in Admin → Updates
+
+[Path]
+# MediaRiffle writes this; mediariffle-update removes it as it starts
+PathExists=/var/lib/mediariffle/update/request
+Unit=mediariffle-update.service
+
+[Install]
+WantedBy=multi-user.target
