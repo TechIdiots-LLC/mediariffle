@@ -579,7 +579,19 @@ async function homeView() {
     api('/api/lists'), api(`/api/lists/${FAVORITES}`)]);
   const myLists = lists.filter(l => !isFavorites(l.tag));
   mount(view,
-    recent.length ? [h('h2', {}, 'Continue watching'), h('div', { class: 'grid' }, recent.map(r => {
+    h('h2', {}, 'Libraries'),
+    libraries.length
+      ? h('div', { class: 'grid' }, libraries.map(l =>
+          h('a', { class: 'tile card', href: `#/library/${l.id}` },
+            h('div', { class: 'name' }, l.name), h('div', { class: 'sub' }, `${l.kind} · ${l.files} files`),
+            l.tags.length ? h('div', { class: 'sub' }, l.tags.join(', ')) : null)))
+      : h('p', { class: 'muted' }, state.user.isAdmin ? 'No libraries yet: add them under Admin.' : 'No libraries yet.'),
+    tags.length ? [h('h2', {}, 'Categories'), h('div', { class: 'chips' }, tags.map(t =>
+      h('a', { class: 'chip', href: `#/tag/${encodeURIComponent(t.tag)}` }, t.tag, h('span', { class: 'muted' }, ` ${t.files}`))))] : null,
+    myLists.length ? [h('h2', {}, 'My lists'), h('div', { class: 'chips' }, myLists.map(l =>
+      h('a', { class: 'chip', href: `#/list/${encodeURIComponent(l.tag)}` }, l.tag, h('span', { class: 'muted' }, ` ${l.items}`))))] : null,
+    // One row that scrolls sideways, most recent first (the server sends the last 20)
+    recent.length ? [h('h2', {}, 'Continue watching'), h('div', { class: 'strip' }, recent.map(r => {
       // ×: off this list (not hidden: the place is kept, and watching it again brings it back)
       const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}` },
         art(r.file.image, r.file.duration ? r.file.position / r.file.duration : 0),
@@ -596,18 +608,7 @@ async function homeView() {
       ? [h('div', { class: 'row' }, h('h2', {}, '★ Favorites'), h('a', { href: `#/list/${FAVORITES}` },
             favorites.tracks.length ? `${favorites.tracks.length} song${favorites.tracks.length === 1 ? '' : 's'}, play or shuffle →` : 'Play or shuffle →')),
          h('div', { class: 'grid' }, showTiles(favorites.shows), movieTiles(favorites.movies),
-           artistTiles(favorites.artists), albumTiles(favorites.albums, true))] : null,
-    myLists.length ? [h('h2', {}, 'My lists'), h('div', { class: 'chips' }, myLists.map(l =>
-      h('a', { class: 'chip', href: `#/list/${encodeURIComponent(l.tag)}` }, l.tag, h('span', { class: 'muted' }, ` ${l.items}`))))] : null,
-    tags.length ? [h('h2', {}, 'Categories'), h('div', { class: 'chips' }, tags.map(t =>
-      h('a', { class: 'chip', href: `#/tag/${encodeURIComponent(t.tag)}` }, t.tag, h('span', { class: 'muted' }, ` ${t.files}`))))] : null,
-    h('h2', {}, 'Libraries'),
-    libraries.length
-      ? h('div', { class: 'grid' }, libraries.map(l =>
-          h('a', { class: 'tile card', href: `#/library/${l.id}` },
-            h('div', { class: 'name' }, l.name), h('div', { class: 'sub' }, `${l.kind} · ${l.files} files`),
-            l.tags.length ? h('div', { class: 'sub' }, l.tags.join(', ')) : null)))
-      : h('p', { class: 'muted' }, state.user.isAdmin ? 'No libraries yet: add them under Admin.' : 'No libraries yet.'));
+           artistTiles(favorites.artists), albumTiles(favorites.albums, true))] : null);
 }
 
 async function libraryView(id) {

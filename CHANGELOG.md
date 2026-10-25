@@ -3,6 +3,8 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+- **A reordered home page**: Libraries come first, then Categories, My lists and Continue watching (with ★ Favorites
+  last). Continue watching is a single row that scrolls sideways, showing the 20 most recent.
 
 ### 🐞 Bug fixes
 - **Clicking Next quickly no longer leaves an old video playing**: moving on while a video was still starting could

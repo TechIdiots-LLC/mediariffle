@@ -76,6 +76,12 @@ h2 { font-size: 18px; margin: 24px 0 10px; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+/* One row of tiles that scrolls sideways */
+.strip { display: grid; grid-auto-flow: column; grid-auto-columns: 200px; gap: 14px; overflow-x: auto; padding-bottom: 8px;
+  scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
+.strip > * { scroll-snap-align: start; }
+.strip .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 600px) { .strip { grid-auto-columns: 160px; } }
 .tile { display: block; color: var(--text); }
 .tile:hover { text-decoration: none; }
 .tile .art { aspect-ratio: 16 / 10; background: var(--border); border-radius: var(--radius); overflow: hidden; position: relative; }
