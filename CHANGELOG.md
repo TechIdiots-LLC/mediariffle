@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.8.0
+### ✨ Features and improvements
 - **Full screen on a phone**: a ⌄ button hides the controls without pausing; with them hidden, a tap brings them
   back instead of also pausing the film; and they fade by themselves again after a tap (the last control tapped stayed
   "hovered" on a touch screen, which kept them up). The 🚫 button that hides a video is just its icon now, as
@@ -27,6 +34,8 @@
   Admin), matching shows, movies, music and files by what they are rather than by id. See docs/proxmox.md.
 
 ### 🐞 Bug fixes
+- Carry user data ([!24](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/24)) (@acalcutt)
+- docs/proxmox.md: moving an install in, upgrading, HAProxy, as tippr's ([!23](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/23)) (@acalcutt)
 - **The end of a film is the end**: a stream that fails in the last 20 s (or last 1% of a long film), as a file's
   stated length can run past what there is to play, now counts as finished (saved as watched, on to the next
   episode) instead of a playback error, or a new stream started at the very end. It finishes once, too, so a play
