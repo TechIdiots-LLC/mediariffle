@@ -365,6 +365,8 @@ export class Player {
     this.encodeSpeeds = new Map();   // adaptive level index → its ffmpeg's latest speed
     this.slowLevels = new Map();     // levels ffmpeg couldn't keep up with → when that was seen
     this.levelSince = 0;
+    this.fit = null;      // the level the picture's shown size calls for, last seen
+    this.forced = null;   // a step up made for a bigger picture: { level, at }
     this.seekBar.max = String(Math.max(1, Math.floor(this.duration())));
     this.showQuality();
   }
@@ -490,6 +492,8 @@ export class Player {
   // Auto never steps up to a level the server's ffmpeg has been seen making slower than it plays (it would stall,
   // step down, and try again, over and over); that's tried again after 10 minutes, as the server's load changes.
   // It also stays on a level 20 s before stepping up from it. Stepping down isn't held back.
+  // Nor does it go above the size the picture is shown at (except for High): a small window doesn't need 1080p, and
+  // going full screen steps up at once, when the connection allows, instead of after what's buffered plays out.
   capLevels(now) {
     const levels = this.hls?.levels.length ?? 0;
     if (!levels) return;
@@ -502,9 +506,37 @@ export class Player {
     for (const [l, t] of this.slowLevels) if (now - t > 600000) this.slowLevels.delete(l);
     let cap = levels - 1;
     for (const l of this.slowLevels.keys()) cap = Math.min(cap, l - 1);
-    if (cur >= 0 && now - this.levelSince < 20000) cap = Math.min(cap, cur);
+    const fit = this.preference === 'high' ? levels - 1 : this.fitLevel();
+    const grew = this.fit != null && fit > this.fit;
+    this.fit = fit;
+    cap = Math.min(cap, fit);
+    if (cur >= 0 && now - this.levelSince < 20000 && !grew) cap = Math.min(cap, cur);
     const want = cap >= levels - 1 ? -1 : Math.max(0, cap);
     if (this.hls.autoLevelCapping !== want) this.hls.autoLevelCapping = want;
+    // Back to choosing by itself once the step up is made (or didn't come)
+    if (this.forced && (this.hls.currentLevel === this.forced.level || now - this.forced.at > 20000)) {
+      this.hls.loadLevel = -1;
+      this.forced = null;
+    }
+    if (grew && cur >= 0 && cur < cap) {
+      // The best level up to the cap its measured connection carries with room to spare
+      const est = this.hls.bandwidthEstimate || 0;
+      let to = cur;
+      for (let i = cur + 1; i <= cap; i++) if (this.hls.levels[i].bitrate * 1.5 <= est) to = i;
+      if (to > cur) {
+        this.hls.nextLevel = to;   // drops what's buffered ahead at the smaller size, from the next segment
+        this.forced = { level: to, at: now };
+      }
+    }
+  }
+
+  // hls.js's index of the lowest level at least as wide as the picture is shown, in device pixels (less a tenth)
+  fitLevel() {
+    const levels = this.hls.levels, top = levels[levels.length - 1], v = this.video;
+    if (!v.clientWidth || !v.clientHeight || !top?.width || !top.height) return levels.length - 1;
+    const shown = Math.min(v.clientWidth, v.clientHeight * top.width / top.height) * (devicePixelRatio || 1);
+    const i = levels.findIndex(l => l.width >= shown * 0.9);
+    return i < 0 ? levels.length - 1 : i;
   }
 
   // hls.js's index of the best level (it orders levels by bitrate, lowest first)
@@ -541,6 +573,12 @@ export class Player {
     this.videoEvents?.abort();
     this.videoEvents = new AbortController();
     const on = (type, fn) => video.addEventListener(type, fn, { signal: this.videoEvents.signal });
+    // Full screen, theater, a resized window: Auto's levels follow the size the picture is shown at
+    this.sizeWatch?.disconnect();
+    this.sizeWatch = new ResizeObserver(() => {
+      if (this.choice === 'auto' && this.session?.adaptive && !this.destroyed) this.capLevels(performance.now());
+    });
+    this.sizeWatch.observe(video);
     on('volumechange', () => {
       this.volume.value = String(video.muted ? 0 : video.volume);
       this.muteBtn.textContent = video.muted || video.volume === 0 ? '🔇' : '🔊';
@@ -1054,6 +1092,7 @@ export class Player {
     this.saveProgress(true);
     clearInterval(this.monitor);
     clearTimeout(this.idleTimer);
+    this.sizeWatch?.disconnect();
     removeEventListener('pagehide', this.onPageHide);
     removeEventListener('keydown', this.onKey);
     for (const a of ['play', 'pause', 'stop', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack'])

@@ -8,6 +8,9 @@
 - **More room at 1080p**: its peak is 10 Mbit/s (was 8), and `Transcoding:MaxVideoKbps` defaults to 10000 to match,
   for film grain and dark scenes (VA-API averages 7.5 Mbit/s, was 6). A settings file that sets `MaxVideoKbps`
   keeps its own; an upgrade no longer carries the old program folder's 8000, which was only its default.
+- **Auto follows the player's size**: it doesn't stream more than the picture is shown at (a small window plays a
+  smaller level), and going full screen steps up within seconds when the connection allows, instead of after what
+  was already buffered plays out. High still always aims for the best.
 
 ### 🐞 Bug fixes
 - **Clicking Next quickly no longer leaves an old video playing**: moving on while a video was still starting could
