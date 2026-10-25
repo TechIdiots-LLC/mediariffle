@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- The release version: CI releases it when no release has it yet, and the version bump changes it -->
-    <Version>0.7.0</Version>
+    <Version>0.8.0</Version>
     <Product>MediaRiffle</Product>
     <Company>TechIdiots LLC</Company>
     <Copyright>Copyright (c) 2026 TechIdiots LLC. BSD 3-Clause License.</Copyright>
