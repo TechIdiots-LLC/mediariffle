@@ -5,7 +5,8 @@
 //
 // The .deb (an ar archive of debian-binary, control.tar.gz and data.tar.gz): /opt/mediariffle (the program),
 // /lib/systemd/system/mediariffle.service, /etc/mediariffle/appsettings.json (a conffile, so upgrades keep the admin's
-// edits); deploy/linux/debian/{preinst,postinst,prerm,postrm} create the service user and data folder, run the service,
+// edits), and Admin → Updates' updater (/usr/lib/mediariffle/mediariffle-update, mediariffle-update.{service,path});
+// deploy/linux/debian/{preinst,postinst,prerm,postrm} create the service user and data folder, run the service,
 // and carry settings left in the old program folder into the settings file on an upgrade.
 //
 // The .tar.gz, for other systemd distributions: <name>/app/ (the program), install.sh, mediariffle.service and a
@@ -73,6 +74,11 @@ var data = TarGz(tar =>
     }
     Parents("lib/systemd/system/mediariffle.service");
     AddFile(tar, "lib/systemd/system/mediariffle.service", Lf(Path.Combine(deploy, "mediariffle.service")), Plain);
+    // Admin → Updates: the root updater, and the units that start it when MediaRiffle asks (docs/updating.md)
+    AddFile(tar, "lib/systemd/system/mediariffle-update.service", Lf(Path.Combine(deploy, "mediariffle-update.service")), Plain);
+    AddFile(tar, "lib/systemd/system/mediariffle-update.path", Lf(Path.Combine(deploy, "mediariffle-update.path")), Plain);
+    Parents("usr/lib/mediariffle/mediariffle-update");
+    AddFile(tar, "usr/lib/mediariffle/mediariffle-update", Lf(Path.Combine(deploy, "mediariffle-update")), Exe);
     Parents("etc/mediariffle/appsettings.json");
     AddFile(tar, "etc/mediariffle/appsettings.json", Lf(Path.Combine(deploy, "appsettings.json")), Plain);
     // Where Debian keeps a package's license (it's also in /opt/mediariffle, from the publish folder)
@@ -86,7 +92,7 @@ var controlText = $"""
     Architecture: {arch}
     Maintainer: TechIdiots LLC <noreply@techidiots.net>
     Installed-Size: {installedKb}
-    Depends: ffmpeg, libc6 (>= 2.35), libicu74 | libicu72 | libicu70, libssl3t64 | libssl3, zlib1g, adduser
+    Depends: ffmpeg, libc6 (>= 2.35), libicu74 | libicu72 | libicu70, libssl3t64 | libssl3, zlib1g, adduser, curl
     Recommends: cifs-utils
     Section: video
     Priority: optional

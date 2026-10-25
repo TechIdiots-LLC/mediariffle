@@ -262,6 +262,10 @@ attach the old one as `old`, and run it (the instructions are at the top of the 
 
 ## Upgrading to a new release
 
+From the release after 0.8.0, **Admin → Updates** does this for you: it downloads the new `.deb`, checks it, installs
+it and goes back to the old version if the new one doesn't start ([updating](updating.md)). Take a snapshot first
+(step 1 below) all the same. To install a release by hand, or the first one with Admin → Updates:
+
 A container is upgraded in place with the release's `.deb`, as any Ubuntu machine is. MediaRiffle's data
 (`/var/lib/mediariffle`) and settings (`/etc/mediariffle/appsettings.json`) are kept; the program in
 `/opt/mediariffle` is replaced, and the database is brought up to date when it starts.

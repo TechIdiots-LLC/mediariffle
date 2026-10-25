@@ -175,7 +175,7 @@ public static class LibraryEndpoints
                 // The qualities this user may pick, best first; Original only without a cap
                 qualities = (cap is null ? new[] { new { id = Quality.Original, label = "Original", kbps = probe.BitRateKbps } } : [])
                     // The levels this file can have here: within the server's maximum and the user's cap, none (much) bigger than the picture
-                    .Concat(Quality.AdaptiveLevels(f.Height, options.Value.Transcoding.MaxHeight, cap?.Id)
+                    .Concat(Quality.AdaptiveLevels(f.Height, options.Value.Transcoding.MaxHeight, options.Value.Transcoding.MaxVideoKbps, cap?.Id)
                         .Select(l => new { id = l.Id, label = $"{l.Label} ({l.TotalKbps / 1000.0:0.#} Mbit/s)", kbps = l.TotalKbps })),
                 audio = probe.Audio.Select(a => new { a.Index, a.Label, a.IsDefault }),
                 // PGS: drawn by the browser (libpgs) rather than burned in

@@ -10,6 +10,8 @@ const view = document.getElementById('view');
 const nav = document.getElementById('nav');
 let state = { setupNeeded: false, user: null };
 let player = null;
+// Counts pages shown, so a page that took a while to load (a slow fetch) can tell another has been shown since
+let routeSeq = 0;
 let pageTimer = null;   // a page's auto-refresh, stopped when leaving it
 let leaving = [];       // a page's clean-ups (e.g. no longer following the music player), run when leaving it
 const onLeave = fn => leaving.push(fn);
@@ -97,6 +99,7 @@ function numberPage(hash) {
 async function route() {
   closeUserMenu();
   numberPage(location.hash || '#/');
+  routeSeq++;
   if (player) { player.destroy(); player = null; }
   if (pageTimer) { clearInterval(pageTimer); pageTimer = null; }
   for (const fn of leaving.splice(0)) fn();
@@ -304,7 +307,7 @@ function preferenceSelect(value, onChange) {
 function qualitySection(account) {
   const note = h('p', { class: 'muted' });
   const describe = id => {
-    const cap = account.maxQuality ? ` An admin limits you to ${account.maxQuality}p at most.` : '';
+    const cap = account.maxQuality ? ` An admin limits you to ${account.maxQualityLabel ?? account.maxQuality} at most.` : '';
     note.textContent = PREFERENCES.find(p => p[0] === id)[2] + cap +
       ' Picking a quality in the player overrides this for that video, on that device.';
   };
@@ -576,7 +579,19 @@ async function homeView() {
     api('/api/lists'), api(`/api/lists/${FAVORITES}`)]);
   const myLists = lists.filter(l => !isFavorites(l.tag));
   mount(view,
-    recent.length ? [h('h2', {}, 'Continue watching'), h('div', { class: 'grid' }, recent.map(r => {
+    h('h2', {}, 'Libraries'),
+    libraries.length
+      ? h('div', { class: 'grid' }, libraries.map(l =>
+          h('a', { class: 'tile card', href: `#/library/${l.id}` },
+            h('div', { class: 'name' }, l.name), h('div', { class: 'sub' }, `${l.kind} · ${l.files} files`),
+            l.tags.length ? h('div', { class: 'sub' }, l.tags.join(', ')) : null)))
+      : h('p', { class: 'muted' }, state.user.isAdmin ? 'No libraries yet: add them under Admin.' : 'No libraries yet.'),
+    tags.length ? [h('h2', {}, 'Categories'), h('div', { class: 'chips' }, tags.map(t =>
+      h('a', { class: 'chip', href: `#/tag/${encodeURIComponent(t.tag)}` }, t.tag, h('span', { class: 'muted' }, ` ${t.files}`))))] : null,
+    myLists.length ? [h('h2', {}, 'My lists'), h('div', { class: 'chips' }, myLists.map(l =>
+      h('a', { class: 'chip', href: `#/list/${encodeURIComponent(l.tag)}` }, l.tag, h('span', { class: 'muted' }, ` ${l.items}`))))] : null,
+    // One row that scrolls sideways, most recent first (the server sends the last 20)
+    recent.length ? [h('h2', {}, 'Continue watching'), h('div', { class: 'strip' }, recent.map(r => {
       // ×: off this list (not hidden: the place is kept, and watching it again brings it back)
       const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}` },
         art(r.file.image, r.file.duration ? r.file.position / r.file.duration : 0),
@@ -593,18 +608,7 @@ async function homeView() {
       ? [h('div', { class: 'row' }, h('h2', {}, '★ Favorites'), h('a', { href: `#/list/${FAVORITES}` },
             favorites.tracks.length ? `${favorites.tracks.length} song${favorites.tracks.length === 1 ? '' : 's'}, play or shuffle →` : 'Play or shuffle →')),
          h('div', { class: 'grid' }, showTiles(favorites.shows), movieTiles(favorites.movies),
-           artistTiles(favorites.artists), albumTiles(favorites.albums, true))] : null,
-    myLists.length ? [h('h2', {}, 'My lists'), h('div', { class: 'chips' }, myLists.map(l =>
-      h('a', { class: 'chip', href: `#/list/${encodeURIComponent(l.tag)}` }, l.tag, h('span', { class: 'muted' }, ` ${l.items}`))))] : null,
-    tags.length ? [h('h2', {}, 'Categories'), h('div', { class: 'chips' }, tags.map(t =>
-      h('a', { class: 'chip', href: `#/tag/${encodeURIComponent(t.tag)}` }, t.tag, h('span', { class: 'muted' }, ` ${t.files}`))))] : null,
-    h('h2', {}, 'Libraries'),
-    libraries.length
-      ? h('div', { class: 'grid' }, libraries.map(l =>
-          h('a', { class: 'tile card', href: `#/library/${l.id}` },
-            h('div', { class: 'name' }, l.name), h('div', { class: 'sub' }, `${l.kind} · ${l.files} files`),
-            l.tags.length ? h('div', { class: 'sub' }, l.tags.join(', ')) : null)))
-      : h('p', { class: 'muted' }, state.user.isAdmin ? 'No libraries yet: add them under Admin.' : 'No libraries yet.'));
+           artistTiles(favorites.artists), albumTiles(favorites.albums, true))] : null);
 }
 
 async function libraryView(id) {
@@ -849,7 +853,10 @@ async function movieView(id) {
 }
 
 async function playView(fileId) {
+  const seq = routeSeq;
   const details = await api(`/api/files/${fileId}`);
+  // Another page was shown meanwhile (Next clicked twice quickly): this one's player would play on, unseen and unstopped
+  if (seq !== routeSeq) return;
   // Music (reached from a mixed queue, or an old link) plays on the listening page
   if (details.kind === 'Track') { forward(`#/listen/${fileId}`); return; }
   // A video takes over from the music
@@ -950,6 +957,83 @@ function libraryForm(lib) {
   name.focus();
 }
 
+// Release notes (Markdown from CHANGELOG.md), as far as they use it: headings, bullets, **bold**, `code` and links
+function releaseNotes(text) {
+  const inline = s => s.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)\s]+\))/).map(p => {
+    const link = p.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+    return link ? h('a', { href: link[2], target: '_blank', rel: 'noopener' }, link[1])
+      : p.startsWith('**') && p.endsWith('**') && p.length > 4 ? h('strong', {}, p.slice(2, -2))
+      : p.startsWith('`') && p.endsWith('`') && p.length > 2 ? h('code', {}, p.slice(1, -1)) : p;
+  });
+  const out = [];
+  let list = null;
+  for (const line of text.replace(/\r/g, '').split('\n')) {
+    if (/^\s*-\s+/.test(line)) {
+      if (!list) { list = h('ul'); out.push(list); }
+      list.append(h('li', {}, inline(line.replace(/^\s*-\s+/, ''))));
+    }
+    else if (/^\s{2,}\S/.test(line) && list) list.lastChild.append(' ', ...inline(line.trim()));   // a bullet's next line
+    else if (/^#+\s/.test(line)) { list = null; out.push(h('h4', {}, inline(line.replace(/^#+\s+/, '')))); }
+    else if (line.trim()) { list = null; out.push(h('p', {}, inline(line.trim()))); }
+  }
+  return out;
+}
+
+// Admin → Updates: this version, newer releases and their notes, and updating to the newest (UpdateService)
+function updatesSection(playing) {
+  const box = h('div', { class: 'card updates' }, h('span', { class: 'muted' }, 'Looking for updates…'));
+  const active = s => ['downloading', 'installing', 'checking', 'rolling_back'].includes(s?.state);
+  let asked = null, timer = null;
+  const poll = on => {
+    clearInterval(timer);
+    timer = on ? setInterval(async () => {
+      if (!box.isConnected) { clearInterval(timer); return; }
+      try { show(await api('/api/admin/updates')); } catch { /* restarting: the next tick tries again */ }
+    }, 3000) : null;
+  };
+  const show = u => {
+    const s = u.status && (!asked || u.status.version === asked) ? u.status : null;
+    const newest = u.releases[0];
+    const working = u.pending || active(s);
+    // The new version answers: its page has new scripts
+    if (asked && s?.state === 'done' && u.current === asked) { location.reload(); return; }
+    const progress = u.pending ? h('p', {}, '⏳ Waiting for the updater to start…')
+      : s ? h('p', { class: s.state === 'failed' || s.state === 'rolled_back' ? 'error' : s.state === 'done' ? '' : 'muted' },
+          { done: '✓ ', failed: '✗ ', rolled_back: '↩ ' }[s.state] ?? '⏳ ', s.message,
+          s.state === 'failed' || s.state === 'rolled_back' ? h('span', { class: 'muted' }, ` (log: ${s.log})`) : null)
+      : null;
+    mount(box,
+      h('div', { class: 'row' },
+        h('span', {}, `MediaRiffle ${u.current}`, newest ? ` · ${newest.version} is available` : ' · up to date'),
+        h('span', { class: 'muted' }, u.checkedUtc ? `checked ${new Date(u.checkedUtc).toLocaleString()}` : ''),
+        h('button', { class: 'secondary', disabled: working, onclick: async e => {
+          e.target.disabled = true; e.target.textContent = 'Checking…';
+          try { show(await api('/api/admin/updates/check', { method: 'POST' })); } catch (err) { alert(err.message); show(u); }
+        } }, 'Check now'),
+        h('a', { href: u.page, target: '_blank', rel: 'noopener' }, `Releases on ${u.source}`)),
+      u.error ? h('p', { class: 'error' }, u.error) : null,
+      progress,
+      newest && !working ? (u.whyNot ? h('p', { class: 'muted' }, u.whyNot)
+        : !newest.ready ? h('p', { class: 'muted' }, `${newest.version} has no ${newest.file ?? 'file for this system'} with checksums to update from; download it from the releases page.`)
+        : h('div', { class: 'row' }, h('button', { onclick: async () => {
+            if (!confirm(`Update to MediaRiffle ${newest.version}? The server restarts, so ${playing ? `the ${playing} stream(s) playing now stop` : 'anyone who starts watching meanwhile is interrupted'} for a minute or so. If the new version doesn't start, the old one is put back.`)) return;
+            try {
+              await api('/api/admin/updates/install', { method: 'POST', body: { version: newest.version } });
+              asked = newest.version;
+              show(await api('/api/admin/updates'));
+            } catch (err) { alert(err.message); }
+          } }, `Update to ${newest.version}`),
+          h('span', { class: 'muted' }, 'Settings, accounts and watch positions are kept.'))) : null,
+      u.releases.map((r, i) => h('details', { open: i === 0 && u.releases.length === 1 },
+        h('summary', {}, `${r.name}${r.publishedUtc ? ' · ' + new Date(r.publishedUtc).toLocaleDateString() : ''}${r.prerelease ? ' (pre-release)' : ''}`),
+        h('div', { class: 'notes' }, releaseNotes(r.notes)),
+        h('a', { href: r.url, target: '_blank', rel: 'noopener' }, 'Release page'))));
+    poll(working || !!asked && !s);
+  };
+  api('/api/admin/updates').then(show, e => mount(box, h('span', { class: 'error' }, e.message)));
+  return box;
+}
+
 async function adminView() {
   if (!state.user?.isAdmin) { forward('#/'); return; }
   let users, invites, scan, sessions, qualities, libraries;
@@ -1011,6 +1095,8 @@ async function adminView() {
 
   mount(view,
     h('h1', {}, 'Admin'),
+    h('h2', {}, 'Updates'),
+    updatesSection(sessions.length),
     h('h2', {}, 'Libraries'),
     h('p', { class: 'muted' }, 'Folders of shows or movies, on this server or a file share. Tags (comma-separated, as in Media Library Manager) are the categories everyone can browse and shuffle.'),
     libraries.length ? h('table', {},

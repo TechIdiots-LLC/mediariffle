@@ -22,7 +22,22 @@ public class AdaptiveTests
     [InlineData(240, 1080, null, "360")]                 // tiny: one level, at its own size
     [InlineData(0, 720, null, "720,480,360")]            // not known: all that's allowed
     public void Levels(int source, int max, string? cap, string expected) =>
-        Assert.Equal(expected, string.Join(",", Quality.AdaptiveLevels(source, max, cap).Select(l => l.Id)));
+        Assert.Equal(expected, string.Join(",", Quality.AdaptiveLevels(source, max, 10000, cap).Select(l => l.Id)));
+
+    [Theory]
+    [InlineData(10000, null, "1080,720,480,360")]           // the default MaxVideoKbps: no room for 1080p High
+    [InlineData(14000, null, "1080hq,1080,720,480,360")]    // room for it: both 1080p levels
+    [InlineData(14000, "1080", "1080,720,480,360")]         // a user capped at 1080p doesn't get High
+    public void TheSecond1080pLevelNeedsRoom(int maxKbps, string? cap, string expected) =>
+        Assert.Equal(expected, string.Join(",", Quality.AdaptiveLevels(1080, 1080, maxKbps, cap).Select(l => l.Id)));
+
+    [Fact]
+    public void ThoseSharingAHeightCompareByTheLadder()
+    {
+        Assert.Equal("1080", Quality.Clamp("1080hq", "1080"));
+        Assert.Equal("1080", Quality.Lower("1080hq", "1080"));
+        Assert.Equal("1080hq", Quality.Clamp("1080hq", "1440"));
+    }
 
     [Fact]
     public void AutoIsNotClampedAway() => Assert.Equal(Quality.Auto, Quality.Clamp(Quality.Auto, "480"));
@@ -57,7 +72,7 @@ public class AdaptiveTests
         Assert.Equal("v1/index.m3u8", lines[4]);
         Assert.Equal("v0/index.m3u8", lines[6]);
         Assert.Equal("v2/index.m3u8", lines[8]);
-        Assert.Contains("BANDWIDTH=8192000", lines[5]);   // video and audio
+        Assert.Contains("BANDWIDTH=10192000", lines[5]);   // video and audio
         Assert.Contains("mp4a.40.2", lines[3]);
     }
 

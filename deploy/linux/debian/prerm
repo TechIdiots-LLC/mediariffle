@@ -5,6 +5,7 @@ if [ -d /run/systemd/system ]; then
     systemctl stop mediariffle.service || true
     if [ "$1" = "remove" ]; then
         systemctl disable mediariffle.service >/dev/null || true
+        systemctl disable --now mediariffle-update.path >/dev/null 2>&1 || true
     fi
 fi
 exit 0

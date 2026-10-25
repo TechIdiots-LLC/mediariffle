@@ -35,8 +35,10 @@ Remove-Item "$publish/appsettings.Development.json" -ErrorAction SilentlyContinu
 Copy-Item LICENSE $publish
 
 if ($Rid -like 'win-*') {
-    # Shipped beside the program: downloads and installs ffmpeg for it
+    # Shipped beside the program: downloads and installs ffmpeg for it; and Admin -> Updates' updater (the installer
+    # registers its task)
     Copy-Item deploy/windows/Install-Ffmpeg.ps1 $publish
+    Copy-Item deploy/windows/Update-MediaRiffle.ps1 $publish
     ./build/Sign-Files.ps1 -Path "$publish/MediaRiffle.Server.exe"
     Compress-Archive -Path "$publish/*" -DestinationPath "$out/MediaRiffle-$Label-$Rid.zip" -Force
     $setup = "$out/MediaRiffle-$Label-$Rid-setup.exe"

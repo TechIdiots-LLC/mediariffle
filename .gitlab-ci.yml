@@ -14,6 +14,8 @@
 #                           MediaRiffle-v<ver>-linux-x64.tar.gz, -linux-arm64.tar.gz     other distros (install.sh)
 #                           MediaRiffle-v<ver>-proxmox-amd64.tar.zst                    Proxmox LXC template (release-proxmox,
 #                                                                                       on the Linux runner; docs/proxmox.md)
+#                           SHA256SUMS                                                  of them all (release-publish), for
+#                                                                                       Admin -> Updates (docs/updating.md)
 #   bump-version          Build > Pipelines > New pipeline with BUMP_VERSION set: bump the version, roll the changelog,
 #                         push release-v<version> and open a merge request. Merging it makes the release.
 #

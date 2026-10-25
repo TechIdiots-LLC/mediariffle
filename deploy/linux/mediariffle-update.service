@@ -1,0 +1,13 @@
+[Unit]
+Description=Update MediaRiffle to the release asked for in Admin → Updates
+Documentation=https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/blob/main/docs/updating.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# root: it installs a package. Started by mediariffle-update.path; it stops and starts mediariffle.service itself
+# (through the package's scripts), so it isn't part of it.
+User=root
+ExecStart=/usr/lib/mediariffle/mediariffle-update
+TimeoutStartSec=30min

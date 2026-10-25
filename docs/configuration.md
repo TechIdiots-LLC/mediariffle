@@ -32,7 +32,7 @@ Put your settings in file 2. A complete example:
       "ToneMapHdr": true,
       "UseLibplacebo": true,
       "HardwareDecoding": true,
-      "MaxVideoKbps": 8000,
+      "MaxVideoKbps": 10000,
       "MaxSessions": 4,
       "MaxSessionsPerUser": 2,
       "SegmentSeconds": 4,
@@ -51,6 +51,9 @@ Put your settings in file 2. A complete example:
 | `ScanIntervalMinutes` | How often the libraries are rescanned; 0 for only at start and on Admin → Scan now. |
 | `PrepareSubtitles` | Extract files' subtitle tracks ahead of time, in the background while nothing is streaming, so turning one on is instant (see Subtitles below). `true` by default. |
 | `SubtitleCacheGB` | The most the kept subtitle tracks may take (the least recently used go first). 5 by default. |
+| `Updates.Source` | Where Admin → Updates looks for new releases and downloads them from: `GitLab` (the default) or `GitHub`. See [updating](updating.md). |
+| `Updates.Prereleases` | Offer pre-releases too. `false` by default. |
+| `Updates.CheckHours` | How often to look for a new release; `0` only on **Check now**. 12 by default. |
 | `TrustedProxies` | IP addresses of the reverse proxies in front (HAProxy, Apache, nginx). Only these may set `X-Forwarded-For`/`-Proto`. |
 | `ForwardLimit` | How many proxies are in the chain: 1 for HAProxy alone, 2 for HAProxy → Apache. |
 | `Libraries` | Only used on the **first start**, to add the first libraries. After that they're managed under **Admin → Libraries** (see below), and this setting is ignored. |
@@ -62,7 +65,7 @@ Put your settings in file 2. A complete example:
 | `Transcoding.FfmpegFolder` | Folder holding `ffmpeg` and `ffprobe`; empty to use `PATH`. |
 | `Transcoding.Encoder` | `Libx264` (CPU), `Nvenc` (NVIDIA), `Qsv` (Intel Quick Sync), `Vaapi` (Intel/AMD on Linux). |
 | `Transcoding.MaxHeight` | Transcodes are scaled down to this many lines. `1440` adds a 1440p level, `2160` 1440p and 4K (see Quality below); 1080 by default. |
-| `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode. Raise it to about `16000` with `MaxHeight` 1440 and `30000` with 2160, or those levels are held to this. |
+| `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode; 10000 by default (1080p's peak). Raise it to `16000` with `MaxHeight` 1440 and about `30000` with 2160, or those levels are held to this. At `14000` or more there is also **1080p High** (14 Mbit/s), a second 1080p level with more bits for a fast connection (a home network), which Auto uses when the connection carries it. |
 | `Transcoding.ToneMapHdr` | HDR video (HDR10, HLG) that has to be converted is tone-mapped to ordinary colours, so it isn't washed out (see Quality below). `true` by default. |
 | `Transcoding.HardwareDecoding` | With a GPU encoder (`Qsv`, `Vaapi`, `Nvenc`), decode on that GPU too and scale (and with `Vaapi`, tone-map HDR) there, for what it was found to decode at start (see Decoding on the GPU below). `true` by default. |
 | `Transcoding.UseLibplacebo` | Tone-map HDR with libplacebo when this ffmpeg has it and a Vulkan GPU works: better HDR10, and Dolby Vision applied, which Dolby Vision 5 needs (see HDR below). `true` by default. |
@@ -149,7 +152,7 @@ never touched) and everyone's place in it.
 
 ## Quality
 
-The player has a quality menu: **Auto**, **Original**, and 2160p (4K, 25 Mbit/s) and 1440p (14) when allowed, 1080p (8), 720p (4),
+The player has a quality menu: **Auto**, **Original**, and, when allowed, 2160p (4K, 25 Mbit/s), 1440p (16) and 1080p High (14); 1080p (10), 720p (4),
 480p (1.5), 360p (0.8). The menu lists only what a file can have here: nothing above the server's `MaxHeight`, the
 user's cap, or (by more than a step) the picture itself.
 

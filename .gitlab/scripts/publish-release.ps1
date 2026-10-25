@@ -1,5 +1,5 @@
-# Uploads the files in release-files/ to the generic package registry and creates the GitLab release,
-# with the matching CHANGELOG.md section as its notes. Files are attached with permanent links:
+# Uploads the files in release-files/ and a SHA256SUMS of them to the generic package registry and creates the GitLab
+# release, with the matching CHANGELOG.md section as its notes. Files are attached with permanent links:
 # <project>/-/releases/<tag>/downloads/<file>
 param(
     [Parameter(Mandatory)][string]$PackageName,
@@ -20,8 +20,12 @@ $tag = $env:RELEASE_TAG
 $api = "$env:CI_API_V4_URL/projects/$env:CI_PROJECT_ID"
 $jobHeaders = @{ 'JOB-TOKEN' = $env:CI_JOB_TOKEN }
 
-$files = @(Get-ChildItem $FilesDir -File -ErrorAction SilentlyContinue)
+$files = @(Get-ChildItem $FilesDir -File -ErrorAction SilentlyContinue | Where-Object Name -ne 'SHA256SUMS')
 if (-not $files) { throw "No release files found in $FilesDir" }
+# SHA256SUMS, as sha256sum writes it: Admin -> Updates' updaters check what they download against it
+$sums = $files | Sort-Object Name | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" }
+[IO.File]::WriteAllText((Join-Path $FilesDir 'SHA256SUMS'), (($sums -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
+$files = @(Get-ChildItem $FilesDir -File)
 
 # Release notes: the lines under "## <version>" up to the next "## " heading
 $notes = @()

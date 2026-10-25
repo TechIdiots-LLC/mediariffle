@@ -47,7 +47,7 @@ public sealed class TranscodingOptions
     /// </summary>
     public bool HardwareDecoding { get; set; } = true;
     /// <summary>Peak video bitrate of a transcode, in kbit/s.</summary>
-    public int MaxVideoKbps { get; set; } = 8000;
+    public int MaxVideoKbps { get; set; } = 10000;
     /// <summary>Streams transcoding or remuxing at once, across all users; more are refused until one ends.</summary>
     public int MaxSessions { get; set; } = 4;
     public int MaxSessionsPerUser { get; set; } = 2;
@@ -81,9 +81,22 @@ public sealed class AdminMfaOptions
     public int Hours { get; set; } = 12;
 }
 
+/// <summary>Admin → Updates: where to look for new releases, and how often.</summary>
+public sealed class UpdatesOptions
+{
+    /// <summary>GitLab (the project) or GitHub (its mirror): the same releases, and where the updater downloads from.</summary>
+    public Updates.UpdateSource Source { get; set; } = Updates.UpdateSource.GitLab;
+    /// <summary>Offer pre-releases (1.2.0-rc.1) too.</summary>
+    public bool Prereleases { get; set; }
+    /// <summary>How often to look for a new release, in hours; 0 only when an admin asks (Admin → Updates → Check now).</summary>
+    public int CheckHours { get; set; } = 12;
+}
+
 public sealed class MediaRiffleOptions
 {
     public const string Section = "MediaRiffle";
+
+    public UpdatesOptions Updates { get; set; } = new();
 
     public AdminMfaOptions AdminMfa { get; set; } = new();
 

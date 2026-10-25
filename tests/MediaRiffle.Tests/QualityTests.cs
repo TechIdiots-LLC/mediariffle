@@ -97,7 +97,7 @@ public class QualityPreferenceTests
     [Fact]
     public void MediumAdaptsBelow720()
     {
-        var levels = Quality.AdaptiveLevels(1080, 1080, Quality.Lower(null, Quality.PreferenceCap("medium")));
+        var levels = Quality.AdaptiveLevels(1080, 1080, 10000, Quality.Lower(null, Quality.PreferenceCap("medium")));
         Assert.Equal(["720", "480", "360"], levels.Select(l => l.Id));
     }
 }

@@ -70,7 +70,9 @@ are in `wwwroot/lib`.
 ## Releases
 
 Each release has, for x64 and arm64: a Windows service installer (`-setup.exe`), a portable Windows zip (also for
-IIS), a `.deb` for Ubuntu/Debian, and a `.tar.gz` with `install.sh` for other Linux distributions.
+IIS), a `.deb` for Ubuntu/Debian, and a `.tar.gz` with `install.sh` for other Linux distributions, with a
+`SHA256SUMS` of them all. Installs from the `.deb` or the setup update themselves from **Admin → Updates**
+([docs/updating.md](docs/updating.md)).
 
 The version is `<Version>` in `src/MediaRiffle.Server/MediaRiffle.Server.csproj`. When a push to `main` carries a
 version with no release yet, the pipeline builds every package (`build/Package.ps1`) and publishes the release with

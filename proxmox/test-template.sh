@@ -75,6 +75,7 @@ test -x "$root/opt/mediariffle/MediaRiffle.Server" || fail "no MediaRiffle progr
 test -x "$root/usr/bin/ffmpeg" || fail "no ffmpeg"
 test -L "$root/etc/systemd/system/multi-user.target.wants/mediariffle.service" || fail "the service isn't enabled"
 test -L "$root/etc/systemd/system/multi-user.target.wants/mediariffle-firstboot.service" || fail "first boot isn't armed"
+test -L "$root/etc/systemd/system/multi-user.target.wants/mediariffle-update.path" || fail "Admin → Updates' updater isn't armed"
 test -f "$root/etc/mediariffle/firstboot-pending" || fail "first boot isn't armed"
 grep -q '"Url": "http://\*:5080"' "$root/etc/mediariffle/appsettings.json" || fail "it doesn't listen on the container's network"
 test ! -s "$root/etc/machine-id" || fail "the template has a machine ID"

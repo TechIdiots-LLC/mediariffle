@@ -3,9 +3,29 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+- **Updating from Admin**: Admin → Updates shows newer releases with their notes and updates to the newest with one
+  button, on installs from the `.deb` (Ubuntu, Debian, the Proxmox template) and the Windows installer. An updater
+  with the rights MediaRiffle hasn't got (root's `mediariffle-update`, the SYSTEM task "MediaRiffle Update") downloads
+  the release from GitLab or GitHub, checks it against the release's new `SHA256SUMS`, saves the database, installs
+  it, and goes back to the old version (and database) if the new one doesn't start. Never to an older version. The
+  first release with it is installed by hand; see docs/updating.md. Settings: `Updates:Source`, `Prereleases`,
+  `CheckHours`.
+- **A reordered home page**: Libraries come first, then Categories, My lists and Continue watching (with ★ Favorites
+  last). Continue watching is a single row that scrolls sideways, showing the 20 most recent.
+- **More room at 1080p**: its peak is 10 Mbit/s (was 8), and `Transcoding:MaxVideoKbps` defaults to 10000 to match,
+  for film grain and dark scenes (VA-API averages 7.5 Mbit/s, was 6). A settings file that sets `MaxVideoKbps`
+  keeps its own; an upgrade no longer carries the old program folder's 8000, which was only its default.
+- **Auto follows the player's size**: it doesn't stream more than the picture is shown at (a small window plays a
+  smaller level), and going full screen steps up within seconds when the connection allows, instead of after what
+  was already buffered plays out. High still always aims for the best.
+- **1080p High**: a second 1080p level at 14 Mbit/s, for a fast connection such as a home network, when
+  `Transcoding:MaxVideoKbps` is 14000 or more. Auto steps up to it when the connection carries it; a slower one
+  stays on 1080p. 1440p is now 16 Mbit/s (was 14), so each level has more bits than the one below it.
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- **Clicking Next quickly no longer leaves an old video playing**: moving on while a video was still starting could
+  leave its sound playing under the next one until the page was reloaded (the old player started its stream after
+  it had been closed, on a video no longer on the page).
 
 ## 0.8.0
 ### ✨ Features and improvements
