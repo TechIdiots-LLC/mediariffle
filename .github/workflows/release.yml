@@ -105,6 +105,8 @@ jobs:
           pattern: release-*
           path: release-files
           merge-multiple: true
+      - name: SHA256SUMS (Admin → Updates' updaters check what they download against it)
+        run: cd release-files && rm -f SHA256SUMS && sha256sum -- * > SHA256SUMS && cat SHA256SUMS
       - name: Release notes from CHANGELOG.md
         run: |
           awk -v ver="## ${{ needs.release-check.outputs.version }}" \
