@@ -124,7 +124,7 @@ public static class AuthEndpoints
             {
                 name = user.UserName, google = google?.ProviderDisplayName, pin = user.SwitchPinHash is not null,
                 avatar = Avatars.Of(user),
-                preferredQuality = user.PreferredQuality ?? "auto", maxQuality = user.MaxQuality,
+                preferredQuality = user.PreferredQuality ?? "auto", maxQuality = user.MaxQuality, maxQualityLabel = Media.Quality.Level(user.MaxQuality)?.Label,
             });
         }).RequireAuthorization();
 

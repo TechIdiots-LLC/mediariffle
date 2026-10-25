@@ -105,7 +105,7 @@ public static partial class PlaybackEndpoints
             // seeks without restarting). Sent as it is, or copied, it stays one stream.
             if (plan.Video is not null && (auto || plan.Mode == PlaybackMode.Transcode))
             {
-                var all = Media.Quality.AdaptiveLevels(plan.Video.Height, t.MaxHeight, auto || req.Adaptive ? autoCap : account?.MaxQuality);
+                var all = Media.Quality.AdaptiveLevels(plan.Video.Height, t.MaxHeight, t.MaxVideoKbps, auto || req.Adaptive ? autoCap : account?.MaxQuality);
                 IReadOnlyList<QualityLevel> levels = auto || req.Adaptive ? all
                     : Media.Quality.Level(quality) is { } one ? [one] : [all[0]];
                 plan = plan with

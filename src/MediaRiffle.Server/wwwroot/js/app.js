@@ -307,7 +307,7 @@ function preferenceSelect(value, onChange) {
 function qualitySection(account) {
   const note = h('p', { class: 'muted' });
   const describe = id => {
-    const cap = account.maxQuality ? ` An admin limits you to ${account.maxQuality}p at most.` : '';
+    const cap = account.maxQuality ? ` An admin limits you to ${account.maxQualityLabel ?? account.maxQuality} at most.` : '';
     note.textContent = PREFERENCES.find(p => p[0] === id)[2] + cap +
       ' Picking a quality in the player overrides this for that video, on that device.';
   };

@@ -11,6 +11,9 @@
 - **Auto follows the player's size**: it doesn't stream more than the picture is shown at (a small window plays a
   smaller level), and going full screen steps up within seconds when the connection allows, instead of after what
   was already buffered plays out. High still always aims for the best.
+- **1080p High**: a second 1080p level at 14 Mbit/s, for a fast connection such as a home network, when
+  `Transcoding:MaxVideoKbps` is 14000 or more. Auto steps up to it when the connection carries it; a slower one
+  stays on 1080p. 1440p is now 16 Mbit/s (was 14), so each level has more bits than the one below it.
 
 ### 🐞 Bug fixes
 - **Clicking Next quickly no longer leaves an old video playing**: moving on while a video was still starting could

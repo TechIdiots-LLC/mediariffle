@@ -23,7 +23,11 @@ public static class Quality
         new("2160", "2160p (4K)", 2160, 25000, 192),
         // Between: for a 4K file a GPU can't convert to 4K in real time but can to 1440p (an Intel Arc A380: 1.2x from a
         // 60 Mbit/s 4K HDR disc rip, against 0.6x to 4K). Only when MaxHeight allows it, as 2160p
-        new("1440", "1440p", 1440, 14000, 192),
+        new("1440", "1440p", 1440, 16000, 192),
+        // More bits at 1080p, for a fast connection (a home network): film grain and dark scenes come through cleaner.
+        // Only when MaxVideoKbps allows all of it (see Offered). Each level has fewer bits than the one above, as hls.js
+        // orders them by bitrate
+        new("1080hq", "1080p High", 1080, 14000, 192),
         // A peak: room for film grain and dark scenes (VA-API averages three quarters of it, 7.5 Mbit/s)
         new("1080", "1080p", 1080, 10000, 192),
         new("720", "720p", 720, 4000, 160),
@@ -32,6 +36,21 @@ public static class Quality
     ];
 
     public static QualityLevel? Level(string? id) => Ladder.FirstOrDefault(l => l.Id == id);
+
+    /// <summary>Where a level stands on the ladder, 0 the best. Levels compare by this, as two can share a height.</summary>
+    public static int Rank(QualityLevel level)
+    {
+        for (var i = 0; i < Ladder.Count; i++) if (Ladder[i] == level) return i;
+        return Ladder.Count;
+    }
+
+    /// <summary>
+    /// Whether the server offers a level: within MaxHeight, and a second level at a height (more bits for the same
+    /// picture) only when MaxVideoKbps allows all of its bitrate, as held to less it would be no better than the first.
+    /// </summary>
+    public static bool Offered(QualityLevel level, int maxHeight, int maxVideoKbps) =>
+        level.Height <= maxHeight &&
+        (level.VideoKbps <= maxVideoKbps || !Ladder.Any(l => l.Height == level.Height && l.VideoKbps < level.VideoKbps));
 
     /// <summary>
     /// A user's preference for Auto (Profile → Video quality): "auto" picks by the connection; "high" tries the best
@@ -51,7 +70,7 @@ public static class Quality
     public static string? Lower(string? a, string? b) =>
         Level(a) is not { } la ? (Level(b) is null ? null : b)
         : Level(b) is not { } lb ? a
-        : la.Height <= lb.Height ? a : b;
+        : Rank(la) >= Rank(lb) ? a : b;
 
     /// <summary>
     /// The quality to use for a request, kept within the user's cap: a capped user asking for Original (or a
@@ -63,7 +82,7 @@ public static class Quality
         if (req == Auto) return Auto;
         if (Level(userCap) is not { } cap) return req == Original || Level(req) is not null ? req : Original;
         if (req == Original) return cap.Id;
-        return Level(req) is { } lvl && lvl.Height <= cap.Height ? lvl.Id : cap.Id;
+        return Level(req) is { } lvl && Rank(lvl) >= Rank(cap) ? lvl.Id : cap.Id;
     }
 
     /// <summary>
@@ -71,10 +90,10 @@ public static class Quality
     /// first: those within the server's maximum and the user's cap, none bigger than the picture except one level
     /// above it when the picture falls between levels (that level then keeps the picture's own size). Never empty.
     /// </summary>
-    public static IReadOnlyList<QualityLevel> AdaptiveLevels(int sourceHeight, int maxHeight, string? userCap)
+    public static IReadOnlyList<QualityLevel> AdaptiveLevels(int sourceHeight, int maxHeight, int maxVideoKbps, string? userCap)
     {
         var cap = Level(userCap);
-        var allowed = Ladder.Where(l => l.Height <= maxHeight && (cap is null || l.Height <= cap.Height)).ToList();
+        var allowed = Ladder.Where(l => Offered(l, maxHeight, maxVideoKbps) && (cap is null || Rank(l) >= Rank(cap))).ToList();
         if (allowed.Count == 0) allowed = [Ladder[^1]];
         if (sourceHeight <= 0) return allowed;
         var levels = allowed.Where(l => l.Height <= sourceHeight).ToList();

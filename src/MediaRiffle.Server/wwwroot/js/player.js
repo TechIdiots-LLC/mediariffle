@@ -399,7 +399,9 @@ export class Player {
   // The best level that fits a connection of `kbps` with room to spare: where an adaptive stream starts. High starts at
   // the best; a ceiling (Medium, Low, the admin's cap) leaves out the levels above it.
   levelFor(kbps) {
-    const levels = this.qualities.filter(q => q.id !== 'original' && (!this.autoCap || +q.id <= +this.autoCap));
+    // The qualities come best first, so the cap's place in them splits them (not there: the picture is smaller)
+    const capAt = this.qualities.findIndex(q => q.id === this.autoCap);
+    const levels = this.qualities.filter((q, i) => q.id !== 'original' && (capAt < 0 || i >= capAt));
     if (this.preference === 'high') return levels[0]?.id ?? null;
     if (!kbps) return levels[Math.min(1, levels.length - 1)]?.id ?? null;   // not measured yet: one below the best
     return (levels.find(q => q.kbps * 1.3 <= kbps) ?? levels[levels.length - 1])?.id ?? null;
@@ -530,13 +532,14 @@ export class Player {
     }
   }
 
-  // hls.js's index of the lowest level at least as wide as the picture is shown, in device pixels (less a tenth)
+  // hls.js's index of the best level of the smallest size at least as wide as the picture is shown, in device pixels
+  // (less a tenth): of two at that size (1080p and 1080p High), the better
   fitLevel() {
     const levels = this.hls.levels, top = levels[levels.length - 1], v = this.video;
     if (!v.clientWidth || !v.clientHeight || !top?.width || !top.height) return levels.length - 1;
     const shown = Math.min(v.clientWidth, v.clientHeight * top.width / top.height) * (devicePixelRatio || 1);
-    const i = levels.findIndex(l => l.width >= shown * 0.9);
-    return i < 0 ? levels.length - 1 : i;
+    const width = levels.find(l => l.width >= shown * 0.9)?.width;
+    return width ? levels.findLastIndex(l => l.width <= width) : levels.length - 1;
   }
 
   // hls.js's index of the best level (it orders levels by bitrate, lowest first)
