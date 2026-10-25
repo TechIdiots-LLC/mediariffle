@@ -176,28 +176,37 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
         return s;
     }
 
+    /// <summary>How many streams are running (anything else reading the libraries waits while there are any).</summary>
+    public int Count => _sessions.Count;
+
     /// <summary>Whether a session is still running, without counting as activity on it.</summary>
     public bool Exists(string id) => _sessions.ContainsKey(id);
 
     /// <param name="startSeconds">Where ffmpeg is asked to start (-ss).</param>
     /// <param name="streamStart">Where the stream really starts, when that differs (copied video starts at a keyframe before it).</param>
+    /// <param name="replacing">
+    /// The user's stream of this file that this one takes over from: it keeps running (the player closes it once it has
+    /// swapped to the new one), and doesn't count against the limits meanwhile. Ignored unless it's that.
+    /// </param>
     public async Task<StreamSession> StartAsync(string userId, int fileId, string fullPath, PlaybackPlan plan, double startSeconds, double durationSeconds = 0,
-        double? streamStart = null)
+        double? streamStart = null, string? replacing = null)
     {
         await _startLock.WaitAsync();
         try
         {
+            var keep = replacing is not null && _sessions.TryGetValue(replacing, out var r) && r.UserId == userId && r.FileId == fileId
+                ? replacing : null;
             // A user watching the same file again (a seek, a new tab) replaces their old stream of it
-            foreach (var old in _sessions.Values.Where(s => s.UserId == userId && s.FileId == fileId).ToList())
+            foreach (var old in _sessions.Values.Where(s => s.UserId == userId && s.FileId == fileId && s.Id != keep).ToList())
                 Stop(old.Id);
-            var mine = _sessions.Values.Where(s => s.UserId == userId).OrderBy(s => s.LastAccessUtc).ToList();
-            while (mine.Count >= T.MaxSessionsPerUser)
+            var mine = _sessions.Values.Where(s => s.UserId == userId && s.Id != keep).OrderBy(s => s.LastAccessUtc).ToList();
+            while (mine.Count > 0 && mine.Count >= T.MaxSessionsPerUser)
             {
                 Stop(mine[0].Id);
                 mine.RemoveAt(0);
             }
             if (plan.Mode != PlaybackMode.Direct &&
-                _sessions.Values.Count(s => s.Plan.Mode != PlaybackMode.Direct) >= T.MaxSessions)
+                _sessions.Values.Count(s => s.Plan.Mode != PlaybackMode.Direct && s.Id != keep) >= T.MaxSessions)
                 throw new SessionLimitException($"The server is already running {T.MaxSessions} streams; try again when one ends.");
 
             var id = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)).Replace('+', '-').Replace('/', '_');

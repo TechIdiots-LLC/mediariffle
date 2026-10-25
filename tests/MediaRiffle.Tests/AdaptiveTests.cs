@@ -117,6 +117,16 @@ public class AdaptiveTests
         Assert.Equal("1", args[args.IndexOf("-forced-idr") + 1]);
     }
 
+    [Fact]
+    public void QuickSyncHonoursForcedKeyframes()
+    {
+        // Without -forced_idr, h264_qsv keeps a 256-frame GOP and the segments come out 10-21 s long
+        var args = PlaybackPlanner.SegmentArguments(Plan(V(1920, 1080), A(), "720"), Quality.Level("720")!, "/m/a.mkv", 0,
+            new TranscodingOptions { Encoder = VideoEncoder.Qsv });
+        Assert.Equal("1", args[args.IndexOf("-forced_idr") + 1]);
+        Assert.Contains("-force_key_frames", args);
+    }
+
     [Theory]
     [InlineData("matroska,webm", 2.5, 122.5, 120.0)]   // Matroska counts from 0
     [InlineData("mpegts", 5.0, 60.0, 60.0)]            // MPEG-TS says how long it is

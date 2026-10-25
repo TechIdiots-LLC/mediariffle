@@ -12,7 +12,8 @@ Container ID `120`, host names and addresses here are placeholders; `<version>` 
 
 - **Size:** 2 cores and 2 GB of RAM for playing files as they are; 4 cores and 4 GB for converting. Converting 4K wants
   the node's GPU (below) more than more cores. 16 GB of disk: Ubuntu and MediaRiffle take about 2 GB, and conversions
-  are written to `/var/lib/mediariffle/transcode` while they play (about 1 GB an hour of 1080p each) and deleted after.
+  are written to `/var/lib/mediariffle/transcode` while they play (about 1 GB an hour of 1080p each) and deleted after;
+  kept subtitle tracks take up to `SubtitleCacheGB` (5 GB by default) in `/var/lib/mediariffle/subtitles`.
 - **The media:** an unprivileged container can't mount a Windows or Samba share itself. Mount it on the Proxmox node and
   pass the folder in (below).
 - **Moving an existing install?** Read [Moving an existing install into the container](#moving-an-existing-install-into-the-container)
@@ -221,6 +222,43 @@ and the pictures. The settings file is separate. Use the same release on both, o
 6. **Switch HAProxy's backend** to the container's address and port 5080. With the same public name, Google sign-in
    and passkeys carry on working (they're tied to the name, not the server). Keep the old server stopped (or its
    service disabled) until you're happy, then remove it.
+
+### Lists, favorites and watch history that didn't come across
+
+If a library was started afresh in the container (its folder changed under Admin → Libraries, or the library added
+again), its shows, movies and files were scanned with new ids, and the lists, favorites, hidden items and watch
+progress that pointed at the old ones went with them. They can be brought back from the old database, matched by what
+things are (users by user name; shows, movies, albums, artists and files by their library's name and their folder or
+path in it), so the ids don't matter. What the new libraries don't have is left out, and nothing is added twice.
+
+1. **Export, on the old server**, with `deploy/export-user-data.sql`. It only reads the old database and makes an import
+   script. In DB Browser for SQLite: **Open Database** → `C:\ProgramData\MediaRiffle\mediariffle.db` (MediaRiffle
+   stopped, or a copy of it); **Execute SQL** → open `export-user-data.sql` → **Execute all** (F5). The result is one
+   cell: click it, and in the **Edit Database Cell** pane, **Export to file** → `import-user-data.sql`. Its first lines
+   say what's in it, e.g. `from 3 users: 22 list entries, 1 hidden, 266 watch progress`.
+
+2. **Import, in the container**, its libraries scanned:
+
+   ```bash
+   # on the node
+   pct push 120 import-user-data.sql /root/import-user-data.sql
+   pct enter 120
+   su -
+   apt install -y sqlite3
+   systemctl stop mediariffle
+   cp /var/lib/mediariffle/mediariffle.db /root/mediariffle.db.before-import
+   sqlite3 -bail /var/lib/mediariffle/mediariffle.db < /root/import-user-data.sql
+   chown mediariffle:mediariffle /var/lib/mediariffle/mediariffle.db*
+   systemctl start mediariffle
+   ```
+
+   It ends with `Added or updated N of M`: fewer than M when some aren't in the new libraries (not scanned yet, or
+   gone) or were there already. Running it again adds nothing twice, and watch progress already in the new database is
+   kept unless the old one is newer. A user with a different user name in the new database is left out.
+   `/root/mediariffle.db.before-import` is the database as it was, if anything looks wrong.
+
+With both databases on one machine, `deploy/carry-user-data.sql` does the same in one step: open the new database,
+attach the old one as `old`, and run it (the instructions are at the top of the file).
 
 ## Upgrading to a new release
 

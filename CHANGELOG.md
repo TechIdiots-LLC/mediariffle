@@ -2,10 +2,53 @@
 
 ## master
 ### ✨ Features and improvements
-- _...Add new stuff here..._
+- **Full screen on a phone**: a ⌄ button hides the controls without pausing; with them hidden, a tap brings them
+  back instead of also pausing the film; and they fade by themselves again after a tap (the last control tapped stayed
+  "hovered" on a touch screen, which kept them up). The 🚫 button that hides a video is just its icon now, as
+  "Hide" written out was taken for hiding the controls.
+- **Blu-ray (PGS) subtitles without converting the video**: they're drawn by the browser over the picture (libpgs),
+  so turning them on or off never restarts the stream and a 4K file keeps playing as it is. Subtitle tracks are
+  extracted ahead of time in the background (all of a file's in one read, newest files first, only while nothing is
+  streaming) and kept, up to `SubtitleCacheGB`, so turning one on is instant; text subtitles of a big file no longer
+  take minutes the first time either. DVD subtitles, and any picture subtitles on a TV, are still burned in.
+  `PrepareSubtitles` turns the preparing off.
+- **A 1440p level**, between 1080p and 4K: `"MaxHeight": 1440` (with `"MaxVideoKbps": 16000`) offers it, `2160` both.
+  For a GPU that can't convert 4K in real time but can to 1440p (an Intel Arc A380: 1.2x from a 60 Mbit/s 4K HDR
+  disc rip, against 0.6x to 4K); Auto only steps up to it while the encoder keeps ahead.
+- **Changing stream without stopping**: picking a quality, an audio track or an image subtitle, and Auto moving
+  between the file as it is and the converted stream, used to stop playback and show Loading… while a new stream
+  started. Now the new stream starts in the background, a few seconds ahead, while the old one keeps playing, and
+  takes over once it has the next few seconds ready: no pause. (Paused, casting, AirPlay and the last seconds of a
+  file change the plain way.)
+- **Bring back lists, favorites and watch history after a move**: `deploy/export-user-data.sql` (run on the old
+  database, in DB Browser for SQLite or sqlite3) makes an import script for the new one; `deploy/carry-user-data.sql`
+  does it in one step with both databases at hand. They carry them from an
+  old database into one whose libraries were scanned afresh (moved to a new server, or a library's folder changed in
+  Admin), matching shows, movies, music and files by what they are rather than by id. See docs/proxmox.md.
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- **The end of a film is the end**: a stream that fails in the last 20 s (or last 1% of a long film), as a file's
+  stated length can run past what there is to play, now counts as finished (saved as watched, on to the next
+  episode) instead of a playback error, or a new stream started at the very end. It finishes once, too, so a play
+  queue never skips one.
+- **Quick Sync streams kept their segments and clock in step**: Intel's encoder ignored the forced keyframes every 4 s
+  without `-forced_idr`, keeping its own 256-frame GOP, so segments came out 10 or 21 s long against a playlist of 4 s
+  ones. The stream's clock drifted from the file's, and near the end a film could run on past its length or stop with
+  a playback error.
+- **Play works after a long pause**: a video paused overnight (the computer asleep, so the player's "still here" never
+  reached the server, which stopped the stream as idle) couldn't be started again without reloading the page. Play
+  after a pause of over a minute now checks the stream is still there and, if not, starts a new one from the same
+  place. A stream that fails while paused is replaced at the next Play rather than at once (where it would go idle
+  too), recovery re-arms instead of giving up after one try, and the file played as it is recovers too.
+- **Auto stops returning to a 4K original that stalls**: once the file as it is stalls on a device (a 60 Mbit/s
+  disc rip, say), Auto remembers it there for 30 days, starting on the adaptive stream and not stepping back up to
+  the original every two minutes, which made playback stall and switch quality over and over. Original from the
+  menu still plays it.
+- **4K HDR on an Intel Arc (VA-API) converts at 1.7x real time**: the GPU now decodes and scales it, and only the
+  1080p frames are copied back for libplacebo and encoded on the GPU again. Handing VA-API's 10-bit frames straight to
+  Vulkan crashed on Arc with Ubuntu 24.04's Mesa, so HDR fell back to the CPU and couldn't keep up. The startup
+  libplacebo check waits long enough for a first run's shader compile (it gave up after 30 s), and with VA-API, HDR
+  decoded on the CPU is tone-mapped with libplacebo too rather than zscale.
 
 ## 0.7.0
 ### ✨ Features and improvements

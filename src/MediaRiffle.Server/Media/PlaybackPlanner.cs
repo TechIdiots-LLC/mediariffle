@@ -212,6 +212,9 @@ public static class PlaybackPlanner
         if (hdr is not null || (gpuDecode && v.IsHdr)) a.AddRange(["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]);
         // A player switching level starts a segment with no picture before it: NVENC's forced keyframes must be IDR
         if (fixedKeyframes && o.Encoder == VideoEncoder.Nvenc) a.AddRange(["-forced-idr", "1"]);
+        // Quick Sync ignores forced keyframes altogether without this, keeping its own GOP of 256 frames: segments then
+        // come out 10 or 21 s long against a playlist of 4 s ones, and the stream's clock drifts from the file's
+        if (o.Encoder == VideoEncoder.Qsv) a.AddRange(["-forced_idr", "1"]);
         // t counts from the first frame of this run, which starts on a segment boundary
         a.AddRange(["-force_key_frames", $"expr:gte(t,n_forced*{o.SegmentSeconds})"]);
         return a;
@@ -257,9 +260,10 @@ public static class PlaybackPlanner
 
     /// <summary>
     /// Whether this video is decoded on the GPU: the encoder's GPU decodes its kind, and nothing needs the picture on
-    /// the CPU. An image subtitle burned in does; so does HDR (Dolby Vision 5 included) unless the GPU tone-maps it
-    /// with libplacebo, which only VA-API can hand frames to (through Vulkan). Quick Sync's and VA-API's own tone
-    /// mapping isn't used: it comes out much darker than libplacebo's.
+    /// the CPU. An image subtitle burned in does; so does HDR (Dolby Vision 5 included) unless the GPU path can tone-map
+    /// it with libplacebo, which is VA-API's (see <see cref="GpuFilter"/>; on Quick Sync's integrated GPUs the copy back
+    /// costs what it saves). Quick Sync's and VA-API's own tone mapping isn't used: it comes out much darker than
+    /// libplacebo's.
     /// </summary>
     public static bool DecodesOnGpu(ProbeStream v, ProbeStream? burn, GpuDecoding gpu, TranscodingOptions o) =>
         o.HardwareDecoding && o.Encoder != VideoEncoder.Libx264 && burn is null &&
@@ -271,8 +275,8 @@ public static class PlaybackPlanner
 
     public static List<string> GpuDecoder(string codec, TranscodingOptions o, bool hdr = false) => o.Encoder switch
     {
-        // HDR: a Vulkan device made from the VA-API one, so libplacebo can work on the decoded frames where they are
-        VideoEncoder.Vaapi when hdr => ["-init_hw_device", $"vaapi=va:{o.VaapiDevice}", "-init_hw_device", "vulkan=vk@va",
+        // HDR: the VA-API device named, so the frames tone-mapped on the CPU side can be uploaded back to it for encoding
+        VideoEncoder.Vaapi when hdr => ["-init_hw_device", $"vaapi=va:{o.VaapiDevice}", "-filter_hw_device", "va",
             "-hwaccel", "vaapi", "-hwaccel_device", "va", "-hwaccel_output_format", "vaapi"],
         VideoEncoder.Vaapi => ["-hwaccel", "vaapi", "-hwaccel_device", o.VaapiDevice, "-hwaccel_output_format", "vaapi"],
         // Quick Sync decodes with its own decoders (on Linux through the render node)
@@ -286,17 +290,19 @@ public static class PlaybackPlanner
 
     /// <summary>
     /// The filters for frames on the GPU: scaled to <paramref name="size"/> (exactly: vpp_qsv takes no -2) as 8-bit.
-    /// HDR (VA-API only, see <see cref="DecodesOnGpu"/>): mapped into Vulkan, scaled and tone-mapped by libplacebo
-    /// (Dolby Vision's metadata applied), and mapped back for the encoder.
+    /// HDR (VA-API only, see <see cref="DecodesOnGpu"/>): scaled on the GPU still 10-bit, then only those frames (a
+    /// quarter of 4K's at 1080p) copied back, tone-mapped by libplacebo on its own Vulkan device (Dolby Vision's metadata
+    /// applied) and uploaded again for the encoder. Mapping VA-API's 10-bit frames straight into Vulkan instead fails on
+    /// Intel Arc with Ubuntu 24.04's Mesa (VK_ERROR_DEVICE_LOST); this way an Arc A380 converted 4K HDR at 1.7x.
     /// </summary>
     public static string GpuFilter(TranscodingOptions o, (int Width, int Height) size, bool hdr)
     {
         var (w, h) = size;
         return o.Encoder switch
         {
-            VideoEncoder.Vaapi when hdr => "hwmap=derive_device=vulkan,format=vulkan," +
-                $"libplacebo=w={w}:h={h}:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=bt.2390:" +
-                "apply_dolbyvision=1:format=nv12,hwmap=derive_device=vaapi,format=vaapi",
+            VideoEncoder.Vaapi when hdr => $"scale_vaapi=w={w}:h={h}:format=p010,hwdownload,format=p010le," +
+                "libplacebo=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=bt.2390:" +
+                "apply_dolbyvision=1:format=nv12,hwupload",
             VideoEncoder.Vaapi => $"scale_vaapi=w={w}:h={h}:format=nv12",
             VideoEncoder.Qsv => $"vpp_qsv=w={w}:h={h}:format=nv12",
             _ => $"scale_cuda=w={w}:h={h}:format=nv12",

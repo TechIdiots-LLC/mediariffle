@@ -21,6 +21,9 @@ public static class Quality
         // 4K: only when the server allows it (Transcoding:MaxHeight 2160 and MaxVideoKbps to match), as it wants a fast
         // encoder (NVENC, Quick Sync, VA-API) and a fast connection
         new("2160", "2160p (4K)", 2160, 25000, 192),
+        // Between: for a 4K file a GPU can't convert to 4K in real time but can to 1440p (an Intel Arc A380: 1.2x from a
+        // 60 Mbit/s 4K HDR disc rip, against 0.6x to 4K). Only when MaxHeight allows it, as 2160p
+        new("1440", "1440p", 1440, 14000, 192),
         new("1080", "1080p", 1080, 8000, 192),
         new("720", "720p", 720, 4000, 160),
         new("480", "480p", 480, 1500, 128),

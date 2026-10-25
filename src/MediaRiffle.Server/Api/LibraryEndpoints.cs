@@ -178,8 +178,9 @@ public static class LibraryEndpoints
                     .Concat(Quality.AdaptiveLevels(f.Height, options.Value.Transcoding.MaxHeight, cap?.Id)
                         .Select(l => new { id = l.Id, label = $"{l.Label} ({l.TotalKbps / 1000.0:0.#} Mbit/s)", kbps = l.TotalKbps })),
                 audio = probe.Audio.Select(a => new { a.Index, a.Label, a.IsDefault }),
-                subtitles = probe.Subtitles.Select(s => new { id = $"s{s.Index}", s.Label, text = s.IsTextSubtitle })
-                    .Concat((path is null ? new() : LibraryFiles.Sidecars(path)).Select(x => new { id = $"x{x.Number}", x.Label, text = true })),
+                // PGS: drawn by the browser (libpgs) rather than burned in
+                subtitles = probe.Subtitles.Select(s => new { id = $"s{s.Index}", s.Label, text = s.IsTextSubtitle, pgs = s.IsPgs })
+                    .Concat((path is null ? new() : LibraryFiles.Sidecars(path)).Select(x => new { id = $"x{x.Number}", x.Label, text = true, pgs = false })),
                 next = neighbours.Next,
                 previous = neighbours.Previous,
                 // Whether the user hid this episode, its show or this movie

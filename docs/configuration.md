@@ -14,6 +14,8 @@ Put your settings in file 2. A complete example:
   "MediaRiffle": {
     "DataDirectory": "",
     "ScanIntervalMinutes": 60,
+    "PrepareSubtitles": true,
+    "SubtitleCacheGB": 5,
     "TrustedProxies": [ "127.0.0.1" ],
     "ForwardLimit": 1,
     "Google": { "ClientId": "", "ClientSecret": "" },
@@ -47,6 +49,8 @@ Put your settings in file 2. A complete example:
 | --- | --- |
 | `DataDirectory` | Database, sign-in keys, cached pictures and running transcodes. Empty means `/var/lib/mediariffle` (Linux) or `%ProgramData%\MediaRiffle` (Windows). The service account needs read/write here and nowhere else. |
 | `ScanIntervalMinutes` | How often the libraries are rescanned; 0 for only at start and on Admin → Scan now. |
+| `PrepareSubtitles` | Extract files' subtitle tracks ahead of time, in the background while nothing is streaming, so turning one on is instant (see Subtitles below). `true` by default. |
+| `SubtitleCacheGB` | The most the kept subtitle tracks may take (the least recently used go first). 5 by default. |
 | `TrustedProxies` | IP addresses of the reverse proxies in front (HAProxy, Apache, nginx). Only these may set `X-Forwarded-For`/`-Proto`. |
 | `ForwardLimit` | How many proxies are in the chain: 1 for HAProxy alone, 2 for HAProxy → Apache. |
 | `Libraries` | Only used on the **first start**, to add the first libraries. After that they're managed under **Admin → Libraries** (see below), and this setting is ignored. |
@@ -57,8 +61,8 @@ Put your settings in file 2. A complete example:
 | `AdminMfa.Hours` | How long a check lasts before Admin asks again. |
 | `Transcoding.FfmpegFolder` | Folder holding `ffmpeg` and `ffprobe`; empty to use `PATH`. |
 | `Transcoding.Encoder` | `Libx264` (CPU), `Nvenc` (NVIDIA), `Qsv` (Intel Quick Sync), `Vaapi` (Intel/AMD on Linux). |
-| `Transcoding.MaxHeight` | Transcodes are scaled down to this many lines. `2160` allows 4K transcodes (see Quality below); 1080 by default. |
-| `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode. Raise it to about `30000` with `MaxHeight` 2160, or the 4K level is held to this. |
+| `Transcoding.MaxHeight` | Transcodes are scaled down to this many lines. `1440` adds a 1440p level, `2160` 1440p and 4K (see Quality below); 1080 by default. |
+| `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode. Raise it to about `16000` with `MaxHeight` 1440 and `30000` with 2160, or those levels are held to this. |
 | `Transcoding.ToneMapHdr` | HDR video (HDR10, HLG) that has to be converted is tone-mapped to ordinary colours, so it isn't washed out (see Quality below). `true` by default. |
 | `Transcoding.HardwareDecoding` | With a GPU encoder (`Qsv`, `Vaapi`, `Nvenc`), decode on that GPU too and scale (and with `Vaapi`, tone-map HDR) there, for what it was found to decode at start (see Decoding on the GPU below). `true` by default. |
 | `Transcoding.UseLibplacebo` | Tone-map HDR with libplacebo when this ffmpeg has it and a Vulkan GPU works: better HDR10, and Dolby Vision applied, which Dolby Vision 5 needs (see HDR below). `true` by default. |
@@ -145,7 +149,7 @@ never touched) and everyone's place in it.
 
 ## Quality
 
-The player has a quality menu: **Auto**, **Original**, and 2160p (4K, 25 Mbit/s, when allowed), 1080p (8), 720p (4),
+The player has a quality menu: **Auto**, **Original**, and 2160p (4K, 25 Mbit/s) and 1440p (14) when allowed, 1080p (8), 720p (4),
 480p (1.5), 360p (0.8). The menu lists only what a file can have here: nothing above the server's `MaxHeight`, the
 user's cap, or (by more than a step) the picture itself.
 
@@ -197,6 +201,11 @@ That adds a 2160p level (H.264 at about 25 Mbit/s) to Auto and the menu, for bro
 (Firefox) and for 4K Chromecasts. Use a hardware encoder (`Nvenc`, `Qsv` or `Vaapi`): `Libx264` on the CPU can't
 make 4K in real time on most machines.
 
+`"MaxHeight": 1440` (with `"MaxVideoKbps": 16000`) adds a **1440p** level instead, for a GPU that can't convert 4K in
+real time but manages 1440p: an Intel Arc A380 converts a 60 Mbit/s 4K HDR disc rip to 1440p at 1.2x real time, to
+4K at only 0.6x. `2160` offers both. Auto steps up to a level only while the server's encoder keeps it ahead of
+playing, so on a busy server or a heavy file it stays at 1080p.
+
 ### HDR
 
 HDR video (HDR10, HDR10+, HLG, and Dolby Vision's HDR10 base layer) sent as it is is the browser's to show, and
@@ -214,7 +223,7 @@ right only with libplacebo (without it, the log and the player's info line say s
 most rips) carry HDR10 underneath and play as HDR10 does. libplacebo comes with gyan.dev's *full* build on Windows
 (`winget install Gyan.FFmpeg`; the *essentials* build `Install-Ffmpeg.ps1` fetches may lack it), BtbN's builds, and
 recent Linux packages; Vulkan comes with current NVIDIA, AMD and Intel drivers. `"UseLibplacebo": false` keeps zscale.
-With the `Vaapi` encoder, libplacebo runs on video decoded on the GPU (below); decoded on the CPU, it's zscale there.
+With the `Vaapi` encoder, libplacebo also tone-maps video decoded on the GPU (below).
 
 ### Decoding on the GPU
 
@@ -226,14 +235,32 @@ through the GPU and logs what it decodes, e.g. `Decoded on the GPU (Vaapi): H.26
 player's info line says `decoded on the GPU` for a stream that is. Anything else is decoded on the CPU as before, as is
 a stream the GPU fails on (the log says so), and one with an image subtitle burned in.
 
-**HDR** is tone-mapped on the GPU only with **`Vaapi`** (Linux): the decoded frames are handed to libplacebo through
-Vulkan, so it looks as libplacebo does on the CPU (Dolby Vision 5 included), needing Mesa's Vulkan driver
-(`mesa-vulkan-drivers`, in the Proxmox template). Quick Sync's and VA-API's own HDR tone mapping isn't used, as it
-comes out much darker. With `Qsv` or `Nvenc`, HDR is decoded on the CPU and tone-mapped as described above.
+**HDR** is tone-mapped on the GPU path only with **`Vaapi`** (Linux): the GPU decodes and scales the video still in
+10-bit, only those frames (a quarter of 4K's, at 1080p) come back, libplacebo tone-maps them on Vulkan (Dolby Vision 5
+included, looking as it does on the CPU) and the GPU encodes the result. That needs Mesa's Vulkan driver
+(`mesa-vulkan-drivers`, in the Proxmox template). An Intel Arc A380 converts a 60 Mbit/s 4K HDR disc rip to 1080p this
+way at 1.7x real time; to 4K it manages only 0.6x, so leave `MaxHeight` at 1080 and play 4K files as they are (Original)
+on devices that can. Quick Sync's and VA-API's own HDR tone mapping isn't used, as it comes out much darker. With
+`Qsv` or `Nvenc`, HDR is decoded on the CPU and tone-mapped as described above (on an integrated GPU, copying frames
+back saves nothing).
 
 On Linux, Intel GPUs from Broadwell on (including the N100/N150 mini PCs) work with `Vaapi` and the
 `intel-media-va-driver` package; AMD with `mesa-va-drivers`. In a Proxmox container, pass the GPU in first
 ([proxmox.md](proxmox.md)). `"HardwareDecoding": false` decodes everything on the CPU.
+
+### Subtitles
+
+Text subtitles (SRT, ASS, in the file or beside it) are shown by the browser over any stream. **PGS** subtitles, the
+picture ones on Blu-ray discs and most disc rips, are drawn by the browser too (with libpgs), so turning them on or
+off, or changing language, never restarts the video, and a 4K file keeps playing as it is. DVD (VobSub) subtitles,
+and any picture subtitles on a Chromecast or AirPlay TV, are burned into a converted video instead, as before.
+
+Getting a subtitle track out of a file means reading the whole file, as its subtitles lie among the video: a few
+minutes for a 40 GB 4K disc rip. So MediaRiffle does it **ahead of time** (`PrepareSubtitles`): in the background,
+newest files first, one at a time and only while nothing is streaming, every track of a file in one read, kept in
+the data folder's `subtitles/` up to `SubtitleCacheGB`. A file not done yet gets its tracks the first time one is
+turned on; a PGS track meanwhile shows five minutes at a time from where you are (read straight from that point, in
+seconds), until the whole track is ready.
 
 ## Library layout
 

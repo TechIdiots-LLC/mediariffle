@@ -164,6 +164,8 @@ builder.Services.AddSingleton<StreamSessionManager>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<StreamSessionManager>());
 builder.Services.AddSingleton<ImageService>();
 builder.Services.AddSingleton<AudioService>();
+builder.Services.AddSingleton<SubtitleCache>();
+builder.Services.AddHostedService<SubtitlePreparer>();
 builder.Services.AddSingleton<LibraryCatalog>();
 builder.Services.AddSingleton<LibraryFiles>();
 

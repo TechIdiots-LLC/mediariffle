@@ -70,6 +70,27 @@ function tvHelp() {
 function remember(key, value) { try { localStorage.setItem(key, value); } catch { } }
 function recall(key) { try { return localStorage.getItem(key); } catch { return null; } }
 
+// Files whose original stalled on this device (a 60 Mbit/s 4K disc rip, say), and when: Auto then starts on the
+// adaptive stream and doesn't step back up to the file as it is, which would only stall again, over and over. For
+// 30 days, so a better connection or device gets another go; Original from the menu always plays it.
+const STALLED_KEY = 'mediariffle.originalStalled';
+const STALLED_DAYS = 30;
+function stalledFiles() {
+  try {
+    const all = JSON.parse(recall(STALLED_KEY) || '{}');
+    const cutoff = Date.now() - STALLED_DAYS * 86400000;
+    return Object.fromEntries(Object.entries(all).filter(([, at]) => at > cutoff));
+  } catch { return {}; }
+}
+const originalStalled = fileId => !!stalledFiles()[fileId];
+function markOriginalStalled(fileId) {
+  const all = stalledFiles();
+  all[fileId] = Date.now();
+  // The most recent few hundred: enough, and localStorage stays small
+  const kept = Object.entries(all).sort((a, b) => b[1] - a[1]).slice(0, 300);
+  remember(STALLED_KEY, JSON.stringify(Object.fromEntries(kept)));
+}
+
 // Full screen is the whole page's (the document), not the player's own: going on to the next one (from the controls, a
 // play queue, a media key or a voice assistant's "next track") builds a new player inside the page, and full screen
 // stays. While it lasts the page is "theater": the player lies over everything (see body.theater in site.css).
@@ -125,7 +146,10 @@ export class Player {
     this.stalls = [];
     this.lastSwitch = 0;
 
-    this.video = h('video', { playsinline: true, preload: 'auto' });
+    // AirPlay (Safari on Mac, iPhone, iPad): to an Apple TV, or a TV or Roku with AirPlay 2. The button shows only when
+    // Safari sees a receiver; while the video plays there, it's H.264 (not every receiver decodes HEVC)
+    this.airplayCapable = !!window.WebKitPlaybackTargetAvailabilityEvent;
+    this.video = this.newVideo();
     this.status = h('div', { class: 'spinner' }, 'Starting…');
     // Previous/next: the play queue's, or the show's episode order (setNavigation); stop ends the stream
     this.nav = { previous: details.previous ?? null, next: details.next ?? null };
@@ -134,9 +158,13 @@ export class Player {
     this.backBtn = btn('↺10', 'Back 10 seconds (←)', () => this.seekBy(-10));
     this.playBtn = h('button', { class: 'icon', title: 'Play / pause (space)', onclick: () => this.togglePlay() }, '▶');
     this.fwdBtn = btn('10↻', 'Forward 10 seconds (→)', () => this.seekBy(10));
-    // Hide this one (the page sets onHide) and go on to the next, in or out of full screen
-    this.hideBtn = h('button', { class: 'secondary', title: 'Hide this and go to the next one',
-      onclick: e => { e.stopPropagation(); this.onHide?.(); } }, '🚫 Hide');
+    // Hide this one (the page sets onHide) and go on to the next, in or out of full screen. Just the icon: written out,
+    // "Hide" was taken for hiding the controls
+    this.hideBtn = h('button', { class: 'secondary icon', title: 'Hide this video (from lists and Continue watching) and go to the next one',
+      'aria-label': 'Hide this video and go to the next one', onclick: e => { e.stopPropagation(); this.onHide?.(); } }, '🚫');
+    // Full screen: hides the controls now, without pausing (a tap or the mouse brings them back)
+    this.hideControlsBtn = h('button', { class: 'secondary icon hide-controls', title: 'Hide the controls (tap or move the mouse to bring them back)',
+      'aria-label': 'Hide the controls', onclick: e => { e.stopPropagation(); this.hideControls(); } }, '⌄');
     this.stopBtn = btn('⏹', 'Stop', () => this.stop());
     this.nextBtn = btn('⏭', 'Next (N)', () => this.goNext());
     this.muteBtn = btn('🔊', 'Mute (M)', () => { this.video.muted = !this.video.muted; });
@@ -147,20 +175,15 @@ export class Player {
     const savedVolume = +recall('mediariffle.volume');
     this.video.volume = recall('mediariffle.volume') !== null && savedVolume >= 0 && savedVolume <= 1 ? savedVolume : 1;
     this.volume.value = String(this.video.volume);
-    this.video.addEventListener('volumechange', () => {
-      this.volume.value = String(this.video.muted ? 0 : this.video.volume);
-      this.muteBtn.textContent = this.video.muted || this.video.volume === 0 ? '🔇' : '🔊';
-      remember('mediariffle.volume', String(this.video.volume));
-    });
     this.time = h('span', { class: 'time' }, '0:00 / ' + formatTime(details.summary.duration));
     this.seekBar = h('input', { type: 'range', class: 'seek', min: 0, max: Math.max(1, Math.floor(details.summary.duration)), step: 1, value: 0,
       oninput: () => { this.dragging = true; this.showTime(+this.seekBar.value); },
       onchange: () => { this.dragging = false; this.seek(+this.seekBar.value); } });
-    this.audioSelect = h('select', { onchange: () => { this.audio = +this.audioSelect.value; this.restart(); } },
+    this.audioSelect = h('select', { onchange: () => { this.audio = +this.audioSelect.value; this.restart(this.position(), { keepPaused: true, handover: true }); } },
       details.audio.map(a => h('option', { value: a.index, selected: a.index === this.audio }, a.label)));
     this.subSelect = h('select', { onchange: () => this.pickSubtitle(this.subSelect.value) },
       h('option', { value: '' }, 'Subtitles off'),
-      details.subtitles.map(s => h('option', { value: s.id }, s.label + (s.text ? '' : ' (burned in)'))));
+      details.subtitles.map(s => h('option', { value: s.id }, s.label + (s.text || s.pgs ? '' : ' (burned in)'))));
     this.autoOption = h('option', { value: 'auto' }, 'Auto');
     this.qualitySelect = h('select', { title: 'Quality', onchange: () => this.pickQuality(this.qualitySelect.value) },
       this.autoOption, this.qualities.map(q => h('option', { value: q.id }, q.label)));
@@ -169,39 +192,19 @@ export class Player {
     this.castSlot = h('span', { class: 'cast-btn', hidden: true });
     this.next = h('span');
 
-    this.video.addEventListener('timeupdate', () => this.onTime());
-    this.video.addEventListener('play', () => { this.playBtn.textContent = '⏸'; this.mediaState('playing'); this.wake(); });
-    this.video.addEventListener('pause', () => { this.playBtn.textContent = '▶'; this.mediaState('paused'); this.saveProgress(); this.wake(); });
-    this.video.addEventListener('waiting', () => {
-      this.status.textContent = 'Loading…';
-      // A stall while playing (not right after starting or seeking) is what Auto steps down for
-      if (this.playingSince && performance.now() - this.playingSince > 4000 && !this.video.seeking) this.stalls.push(performance.now());
-    });
-    this.video.addEventListener('playing', () => { this.status.textContent = ''; this.playingSince ??= performance.now(); this.recovering = false; });
-    this.video.addEventListener('ended', () => this.onEnded());
-    this.video.addEventListener('error', () => { if (this.session) this.status.textContent = 'This video can\'t be played here.'; });
+    this.wireVideo(this.video);
 
     this.onPageHide = () => this.saveProgress(true);
     addEventListener('pagehide', this.onPageHide);
     this.onKey = e => this.key(e);
     addEventListener('keydown', this.onKey);
     this.setupMediaSession();
-    this.monitor = setInterval(() => { this.checkQuality(); this.keepAlive(); }, 2000);
+    this.monitor = setInterval(() => { this.checkQuality(); this.keepAlive(); this.checkPgs(); }, 2000);
     this.lastAlive = 0;
     this.playingLevel = null;   // the adaptive stream's level playing now: { id, label }
 
-    // AirPlay (Safari on Mac, iPhone, iPad): to an Apple TV, or a TV or Roku with AirPlay 2. The button shows only when
-    // Safari sees a receiver; while the video plays there, it's H.264 (not every receiver decodes HEVC)
-    this.airplayCapable = !!window.WebKitPlaybackTargetAvailabilityEvent;
     this.airplayBtn = h('button', { class: 'secondary', hidden: true, title: 'AirPlay to a TV',
       onclick: () => this.video.webkitShowPlaybackTargetPicker?.() }, 'AirPlay');
-    if (this.airplayCapable) {
-      this.video.setAttribute('x-webkit-airplay', 'allow');
-      this.video.addEventListener('webkitplaybacktargetavailabilitychanged', e => {
-        this.airplayBtn.hidden = e.availability !== 'available';
-      });
-      this.video.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', () => this.airplayChanged());
-    }
 
     castAvailable().then(ok => {
       if (!ok) return;
@@ -214,8 +217,13 @@ export class Player {
   // Full screen takes the video and the controls together, see .player-wrap in site.css. There the controls lie over
   // the video and fade out when the mouse is still for a few seconds and not over them, while playing.
   element() {
-    this.root = h('div', { class: 'player-wrap', onpointermove: () => this.wake(), onpointerdown: () => this.wake() },
-      h('div', { class: 'player', onclick: () => this.togglePlay(), ondblclick: () => this.fullscreen() },
+    this.root = h('div', { class: 'player-wrap',
+      onpointermove: e => { this.pointerType = e.pointerType; this.wake(); },
+      // A tap while the controls are hidden only brings them back (see the click below): on a phone, a tap is the only
+      // way to, and it shouldn't pause the film as well
+      onpointerdown: e => { this.pointerType = e.pointerType; this.revealing = this.root.classList.contains('idle'); this.wake(); } },
+      h('div', { class: 'player', onclick: () => { if (this.revealing) { this.revealing = false; return; } this.togglePlay(); },
+        ondblclick: () => this.fullscreen() },
         this.video, this.status, this.flashEl = h('div', { class: 'flash', 'aria-live': 'polite' })),
       this.controls = h('div', { class: 'controls' },
         this.seekBar,
@@ -231,7 +239,8 @@ export class Player {
           h('span', { class: 'row screens' },
             this.castSlot,
             this.airplayBtn,
-            h('button', { class: 'secondary', title: 'Full screen (F)', onclick: () => this.fullscreen() }, '⛶ Full screen')),
+            h('button', { class: 'secondary', title: 'Full screen (F)', onclick: () => this.fullscreen() }, '⛶ Full screen'),
+            this.hideControlsBtn),
           this.info,
           this.next)),
       // Other ways to watch, under the controls (not in full screen)
@@ -292,16 +301,24 @@ export class Player {
         'what you watch in VLC isn\'t remembered here.'));
   }
 
-  // Shows the controls, and hides them again after 3 s unless paused, not full screen, or the mouse is over them
+  // Shows the controls, and hides them again after 3 s unless paused, not full screen, or the mouse is over them. Only
+  // a mouse: on a touch screen the last control tapped stays :hover, and the controls then never went away
   wake() {
     if (!this.root) return;
     this.root.classList.remove('idle');
     clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
       const full = inTheater();
-      if (!full || this.video.paused || this.controls.matches(':hover')) return;
+      if (!full || this.video.paused || (this.pointerType === 'mouse' && this.controls.matches(':hover'))) return;
       this.root.classList.add('idle');
     }, 3000);
+  }
+
+  // The ⌄ button in full screen: the controls out of the way now, playing or paused
+  hideControls() {
+    if (!this.root || !inTheater()) return;
+    clearTimeout(this.idleTimer);
+    this.root.classList.add('idle');
   }
 
   // Where in the file we are
@@ -312,14 +329,30 @@ export class Player {
   async start(startAt = null, { autoplay = true } = {}) {
     this.status.textContent = 'Starting…';
     if (!this.quality) this.quality = await this.autoStart();
-    const burn = this.subtitle && !this.details.subtitles.find(s => s.id === this.subtitle)?.text;
+    this.useSession(await this.requestStream(startAt));
+    this.attach(this.session);
+    this.setTextTrack();
+    this.setPgs();
+    if (autoplay) { try { await this.video.play(); } catch { /* autoplay blocked: the Play button still works */ } }
+    if (isCasting() && !this.forCast) this.castHere();
+  }
+
+  // A stream from `startAt` with the current audio, subtitles and quality; `replacing` keeps that stream running on
+  // the server until this one takes over from it (handover)
+  requestStream(startAt, replacing = null) {
+    const burn = !!this.subtitle && this.burns(this.subtitle);
     const caps = this.forCast ? { hevc: false, hevc10: false } : this.caps;
-    const s = await api('/api/play', { method: 'POST', body: {
+    return api('/api/play', { method: 'POST', body: {
       fileId: this.fileId, audio: this.audio, subtitle: this.subtitle, burn: !!burn, start: startAt,
       quality: this.quality, hevc: caps.hevc, hevc10: caps.hevc10,
       // Auto trying Original: if the file has to be transcoded anyway, the adaptive stream instead
-      adaptive: this.choice === 'auto', startLevel: this.levelFor(this.estimate()) } });
+      adaptive: this.choice === 'auto', startLevel: this.levelFor(this.estimate()), replacing } });
+  }
+
+  // The stream that's playing now, and everything measured about the one before forgotten
+  useSession(s) {
     this.session = s;
+    this.stale = false;
     this.quality = s.quality;   // the server may have lowered it to the user's cap
     this.playingLevel = null;
     this.playingSince = null;
@@ -330,10 +363,6 @@ export class Player {
     this.levelSince = 0;
     this.seekBar.max = String(Math.max(1, Math.floor(this.duration())));
     this.showQuality();
-    this.attach(s);
-    this.setTextTrack();
-    if (autoplay) { try { await this.video.play(); } catch { /* autoplay blocked: the Play button still works */ } }
-    if (isCasting() && !this.forCast) this.castHere();
   }
 
   // ── Quality ──────────────────────────────────────────────────────────────
@@ -345,6 +374,8 @@ export class Player {
   // ceiling.
   async autoStart() {
     const original = this.qualities.find(q => q.id === 'original');
+    // The file as it is stalled here before: the adaptive stream, whatever the preference
+    if (originalStalled(this.fileId)) return 'auto';
     if (this.preference === 'high') return original ? 'original' : 'auto';
     let kbps = this.estimate();
     if (!kbps) kbps = await this.speedTest();
@@ -396,7 +427,7 @@ export class Player {
     this.quality = id;
     this.lastSwitch = performance.now();
     if (why) this.info.textContent = why;
-    await this.restart(this.position(), { keepPaused: true });
+    await this.restart(this.position(), { keepPaused: true, handover: true });
   }
 
   showQuality() {
@@ -436,14 +467,16 @@ export class Player {
         // What it really downloads at: the speed the adaptive stream starts from
         if (need > 0) remember(SPEED_KEY, String(Math.round(need * Math.max(0.05, 1 + Math.min(0, slope)))));
         this.aheadSamples = [];
+        markOriginalStalled(this.fileId);
         this.switchTo('auto', 'Slower connection: adapting to it');
       }
       return;
     }
     this.capLevels(now);
     const top = this.hls && this.hls.levels.length && this.hls.currentLevel === this.topLevel();
-    // Back up to the file as it is: never under a Medium or Low ceiling; sooner for High (best first)
+    // Back up to the file as it is: never under a Medium or Low ceiling, nor once it stalled here; sooner for High
     if (!this.underCeiling() && original && original.kbps > 0 && this.session.originalMode !== 'Transcode' && top &&
+        !originalStalled(this.fileId) &&
         est > original.kbps * 1.6 && ahead > 20 && this.stalls.length === 0 && sinceSwitch > (this.preference === 'high' ? 30000 : 120000)) {
       this.lastSwitch = now;
       this.switchTo('original', 'Faster connection: the file as it is');
@@ -492,16 +525,136 @@ export class Player {
 
   // ── Playback ─────────────────────────────────────────────────────────────
 
-  attach(s) {
-    this.detach();
+  newVideo() {
+    const video = h('video', { playsinline: true, preload: 'auto' });
+    if (this.airplayCapable) video.setAttribute('x-webkit-airplay', 'allow');
+    return video;
+  }
+
+  // The player's listeners on the video element that's playing, all taken off together when another one takes over
+  // (see handover)
+  wireVideo(video) {
+    this.videoEvents?.abort();
+    this.videoEvents = new AbortController();
+    const on = (type, fn) => video.addEventListener(type, fn, { signal: this.videoEvents.signal });
+    on('volumechange', () => {
+      this.volume.value = String(video.muted ? 0 : video.volume);
+      this.muteBtn.textContent = video.muted || video.volume === 0 ? '🔇' : '🔊';
+      remember('mediariffle.volume', String(video.volume));
+    });
+    on('timeupdate', () => this.onTime());
+    on('play', () => { this.playBtn.textContent = '⏸'; this.mediaState('playing'); this.wake(); });
+    on('pause', () => { this.pausedAt = Date.now(); this.playBtn.textContent = '▶'; this.mediaState('paused'); this.saveProgress(); this.wake(); });
+    on('waiting', () => {
+      this.status.textContent = 'Loading…';
+      // A stall while playing (not right after starting or seeking) is what Auto steps down for
+      if (this.playingSince && performance.now() - this.playingSince > 4000 && !video.seeking) this.stalls.push(performance.now());
+    });
+    on('playing', () => { this.status.textContent = ''; this.playingSince ??= performance.now(); this.recovering = false; });
+    on('ended', () => this.onEnded());
+    on('error', () => {
+      if (!this.session) return;
+      // The file as it is failing after it had played: most likely its stream went away (stopped as idle while the
+      // computer slept, the server restarted), not a file this browser can't play
+      if (this.nearEnd()) { this.onEnded(); return; }   // ran out just before the end it said: finished
+      if (this.session.mode === 'Direct' && this.playingSince && this.recoverStream()) return;
+      this.status.textContent = 'This video can\'t be played here.';
+    });
+    if (this.airplayCapable) {
+      on('webkitplaybacktargetavailabilitychanged', e => { this.airplayBtn.hidden = e.availability !== 'available'; });
+      on('webkitcurrentplaybacktargetiswirelesschanged', () => this.airplayChanged());
+    }
+  }
+
+  // Changing stream while playing (a quality, Auto moving between the file as it is and the adaptive stream, an audio
+  // track, a burned-in subtitle): the new stream starts in a second video element, hidden and muted, a few seconds
+  // ahead of where this one is, while this one goes on playing. Once the new one has the next few seconds after where
+  // this one has got to, it takes over in one step: it jumps to that moment and plays, this one stops and its stream is
+  // closed. No pause, no Loading…. If the new one isn't ready within 25 s (or something else changes meanwhile) it's
+  // dropped and the change made the plain way instead.
+  async handover() {
+    const old = { video: this.video, hls: this.hls, session: this.session };
+    const token = this.pending = {};
+    const lead = 4;   // seconds ahead: about how long a stream takes to start
+    let s, video, hls;
+    const drop = () => {
+      hls?.destroy();
+      video?.remove();
+      if (s) api(`/api/play/${s.sessionId}`, { method: 'DELETE' }).catch(() => {});
+      if (this.pending === token) this.pending = null;
+    };
+    try {
+      s = await this.requestStream(this.position() + lead, old.session.sessionId);
+      if (this.pending !== token || this.session !== old.session) { drop(); return; }
+      video = this.newVideo();
+      video.muted = true;
+      video.classList.add('standby');
+      old.video.after(video);
+      hls = this.attach(s, video);
+      const ready = await this.whenReady(video, s, hls, () => this.position(), token);
+      if (this.pending !== token || this.session !== old.session) { drop(); return; }
+      if (!ready) throw new Error('not ready');
+      // Where this one has got to, on the new stream's clock
+      video.currentTime = Math.max(0, this.position() - (s.startSeconds ?? 0));
+      await new Promise(r => { video.addEventListener('seeked', r, { once: true }); setTimeout(r, 1500); });
+    } catch {
+      const superseded = this.pending !== token || this.session !== old.session;
+      drop();
+      // Not ready in time, or it failed: the change made the plain way (unless something newer took its place)
+      if (!superseded) await this.restart(this.position(), { keepPaused: true });
+      return;
+    }
+    // The swap
+    this.pending = null;
+    this.wireVideo(video);
+    this.video = video;
+    this.hls = hls;
+    this.useSession(s);
+    video.volume = old.video.volume;
+    video.muted = old.video.muted;
+    video.playbackRate = old.video.playbackRate;
+    video.classList.remove('standby');
+    try { await video.play(); } catch { /* blocked: the Play button still works */ }
+    old.video.pause();
+    old.hls?.destroy();
+    old.video.removeAttribute('src');
+    old.video.load();
+    old.video.remove();
+    api(`/api/play/${old.session.sessionId}`, { method: 'DELETE' }).catch(() => {});
+    this.setTextTrack();
+    this.setPgs();
+  }
+
+  // Resolves true once `video` has the next few seconds after `at()` (where the playing stream is, on the file's
+  // clock) buffered; false if its stream fails, after 25 s, or when it's dropped for something newer
+  whenReady(video, s, hls, at, token) {
+    return new Promise(resolve => {
+      const started = performance.now();
+      const timer = setInterval(() => {
+        if (this.pending !== token || hls?.failed || video.error) { clearInterval(timer); resolve(false); return; }
+        // A remux has only what ffmpeg has written so far, and starts slowly: more in hand before it takes over
+        const need = s.adaptive || s.mode === 'Direct' ? 3 : 6;
+        const rel = at() - (s.startSeconds ?? 0), b = video.buffered;
+        for (let i = 0; i < b.length; i++) {
+          if (b.start(i) <= rel + 0.25 && b.end(i) >= rel + need) { clearInterval(timer); resolve(true); return; }
+        }
+        if (performance.now() - started > 25000) { clearInterval(timer); resolve(false); }
+      }, 200);
+    });
+  }
+
+  attach(s, video = this.video) {
+    const active = video === this.video;
+    if (active) this.detach();
     // The file as it is, or an adaptive stream played by the browser itself (Safari), starts at seekTo once loaded
     const native = url => {
-      this.video.src = url;
-      if (s.seekTo > 0) this.video.addEventListener('loadedmetadata', () => { this.video.currentTime = s.seekTo; }, { once: true });
+      video.src = url;
+      if (s.seekTo > 0) video.addEventListener('loadedmetadata', () => { video.currentTime = s.seekTo; }, { once: true });
     };
+    let hls = null;
     if (s.mode === 'Direct') {
       native(s.url);
-    } else if (this.airplayCapable && this.video.canPlayType('application/vnd.apple.mpegurl')) {
+    } else if (this.airplayCapable && video.canPlayType('application/vnd.apple.mpegurl')) {
       // Safari: its own HLS player, not hls.js. AirPlay can only hand a TV a real stream URL (which it then fetches
       // itself, as a Chromecast does), not media fed through Media Source Extensions
       native(s.url);
@@ -513,39 +666,43 @@ export class Player {
       // room goes to what's ahead, and that's asked for only as far as fits, instead of running into the limit
       const mbPerSec = (s.streamKbps || this.qualities.find(q => q.id === 'original')?.kbps || 0) / 8000;
       const fit = (mb, min, max) => mbPerSec > 0 ? Math.max(min, Math.min(max, Math.round(mb / mbPerSec))) : max;
-      this.hls = new Hls({
+      hls = new Hls({
         startPosition: s.adaptive ? (s.seekTo || 0) : 0, maxBufferLength: fit(110, 10, 60), backBufferLength: fit(20, 5, 90),
         // Its bandwidth estimate starts from the last one measured here, so the first level fits the connection
         ...(est ? { abrEwmaDefaultEstimate: est * 1000 } : {}),
         // Steps up only with plenty of room, judged over a longer stretch, so a few quick segments don't move it
         abrEwmaFastVoD: 4, abrEwmaSlowVoD: 15, abrBandWidthUpFactor: 0.5,
-        ...(s.adaptive ? { fLoader: encoderAwareLoader(Hls, (level, speed) => { if (level >= 0) this.encodeSpeeds.set(level, speed); }) } : {}),
+        ...(s.adaptive ? { fLoader: encoderAwareLoader(Hls, (level, speed) => {
+          if (level >= 0 && video === this.video) this.encodeSpeeds.set(level, speed);
+        }) } : {}),
       });
-      this.hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
+      // Its events count only while it's the one playing, not while it's getting ready to take over (handover)
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
+        if (video !== this.video) return;
         this.levelSince = performance.now();
-        const name = this.hls?.levels[data.level]?.name;
+        const name = hls.levels[data.level]?.name;
         this.playingLevel = s.levels?.find(l => l.id === name) ?? null;
         this.showQuality();
       });
-      this.hls.on(Hls.Events.ERROR, (_, data) => {
+      hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) return;
-        // Past the last segment there is (a file a little shorter than it said): that's the end
-        if (s.adaptive && this.position() > this.duration() - 12) { this.onEnded(); return; }
-        // The stream went away (stopped as idle, the server restarted): a new one from here, once
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !this.recovering) {
-          this.recovering = true;
-          this.restart(this.position(), { keepPaused: true });
-          return;
-        }
+        if (video !== this.video) { hls.failed = true; return; }
+        // Failing in the last stretch: the file ran out a little before the length it said (a container's duration
+        // counts trailing audio, a last segment that never comes): that's the end, not an error to recover from
+        if (this.nearEnd()) { this.onEnded(); return; }
+        // The stream went away (stopped as idle, the server restarted)
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && this.recoverStream()) return;
         this.status.textContent = 'Playback error: ' + (data.details ?? data.type);
       });
-      this.hls.loadSource(s.url);
-      this.hls.attachMedia(this.video);
-    } else if (this.video.canPlayType('application/vnd.apple.mpegurl')) {
+      hls.loadSource(s.url);
+      hls.attachMedia(video);
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       native(s.url);   // Safari plays HLS itself
     } else {
       this.status.textContent = 'This browser can\'t play HLS.';
     }
+    if (active) this.hls = hls;
+    return hls;
   }
 
   detach() {
@@ -564,13 +721,75 @@ export class Player {
     this.video.append(track);
   }
 
+  // Whether a subtitle has to be burned into the video: an image one the browser can't draw itself (a DVD's), or any
+  // image one on a TV, which plays the stream on its own (the PGS drawn here would stay on this screen)
+  burns(id) {
+    const s = this.details.subtitles.find(x => x.id === id);
+    return !!s && !s.text && !(s.pgs && !this.forCast);
+  }
+
+  // PGS (Blu-ray) subtitles, drawn over the video by libpgs from the track's data (see PgsSubtitles on the server).
+  // Until the server has the whole track (extracting it reads the whole file: minutes, for a 4K disc rip), it hands
+  // out five minutes at a time from where we are; checkPgs asks again as those run out, and for the whole track.
+  // Kept per player, so a new stream (a handover, a seek) draws from the same data straight away.
+  async setPgs() {
+    this.pgs?.renderer?.dispose();
+    if (this.pgs) this.pgs.renderer = null;
+    const sub = this.details.subtitles.find(x => x.id === this.subtitle);
+    if (!sub?.pgs || this.forCast || !this.session) { this.pgs = null; return; }
+    if (this.pgs?.id !== sub.id) this.pgs = { id: sub.id, data: null, complete: false, until: 0, asked: 0 };
+    const pgs = this.pgs, video = this.video;
+    try {
+      const { PgsRenderer } = await import('/lib/libpgs/libpgs.js');
+      if (this.pgs !== pgs || this.video !== video) return;   // changed meanwhile
+      pgs.renderer = new PgsRenderer({ workerUrl: '/lib/libpgs/libpgs.worker.js', video });
+      // Its clock is the video's; the subtitles' is the file's, which a stream started part-way is ahead of
+      pgs.renderer.timeOffset = this.session.startSeconds ?? 0;
+      if (pgs.data) pgs.renderer.loadFromBuffer(pgs.data.slice(0));
+      if (!pgs.data || (!pgs.complete && this.position() > pgs.until - 60)) await this.loadPgs();
+    } catch (e) { console.warn('PGS subtitles', e); }
+  }
+
+  // The whole track if the server has it, else the next five minutes from here (`completeOnly`: the whole track or nothing)
+  async loadPgs(completeOnly = false) {
+    const pgs = this.pgs;
+    if (!pgs || pgs.complete || pgs.loading || !this.session) return;
+    pgs.loading = true;
+    pgs.asked = Date.now();
+    try {
+      const from = Math.max(0, Math.floor(this.position()) - 2);
+      const r = await fetch(`/stream/${this.session.sessionId}/pgs/${pgs.id}.sup?from=${from}${completeOnly ? '&complete=true' : ''}`,
+        { cache: 'no-store' });
+      if (r.status === 204 || !r.ok) return;
+      const data = await r.arrayBuffer();
+      if (this.pgs !== pgs) return;
+      pgs.data = data;
+      pgs.complete = r.headers.get('X-Subtitle-Complete') === '1';
+      pgs.until = pgs.complete ? Infinity : +(r.headers.get('X-Subtitle-Until') ?? 0);
+      // A copy: the renderer may hand its buffer to its worker
+      await pgs.renderer?.loadFromBuffer(data.slice(0));
+    } catch { /* tried again by checkPgs */ }
+    finally { pgs.loading = false; }
+  }
+
+  // Whether a PGS subtitle is on and drawn by this page (not burned in)
+  drawsPgs() { return !!this.details.subtitles.find(x => x.id === this.subtitle)?.pgs; }
+
+  // Every 2 s: five minutes running out, the next five; every 30 s, whether the whole track is there yet
+  checkPgs() {
+    const pgs = this.pgs;
+    if (!pgs || pgs.complete || pgs.loading || !this.session) return;
+    if (this.position() > pgs.until - 60) this.loadPgs();
+    else if (Date.now() - pgs.asked > 30000) this.loadPgs(true);
+  }
+
   pickSubtitle(id) {
     const before = this.subtitle;
     this.subtitle = id || null;
-    const wasBurned = before && !this.details.subtitles.find(s => s.id === before)?.text;
-    const isBurned = this.subtitle && !this.details.subtitles.find(s => s.id === this.subtitle)?.text;
-    if (wasBurned || isBurned) this.restart(this.position(), { keepPaused: true });   // image subtitles are part of the video
-    else this.setTextTrack();
+    const wasBurned = !!before && this.burns(before);
+    const isBurned = !!this.subtitle && this.burns(this.subtitle);
+    if (wasBurned || isBurned) this.restart(this.position(), { keepPaused: true, handover: true });   // image subtitles are part of the video
+    else { this.setTextTrack(); this.setPgs(); }
   }
 
   async seek(t) {
@@ -583,8 +802,16 @@ export class Player {
     else await this.restart(t);
   }
 
-  // A new stream from `at` (where we are, by default) with the current audio, subtitles and quality
-  async restart(at = this.position(), { keepPaused = false } = {}) {
+  // A new stream from `at` (where we are, by default) with the current audio, subtitles and quality. `handover`:
+  // while playing, the new one takes over without a pause (see handover); paused, casting or on AirPlay, the plain way
+  async restart(at = this.position(), { keepPaused = false, handover = false } = {}) {
+    // (Not in the last seconds, where there isn't enough left for a new stream to get ready in)
+    if (handover && this.session && !this.video.paused && !this.forCast && !this.video.webkitCurrentPlaybackTargetIsWireless &&
+        this.duration() - this.position() > 15) {
+      await this.handover();
+      return;
+    }
+    this.pending = null;   // a handover getting ready is dropped
     const wasPaused = this.video.paused;
     const old = this.session?.sessionId;
     this.session = null;
@@ -595,7 +822,39 @@ export class Player {
 
   togglePlay() {
     if (!this.session) { this.resume(); return; }   // after Stop: start again where it stopped
-    this.video.paused ? this.video.play() : this.video.pause();
+    if (this.video.paused) this.play(); else this.video.pause();
+  }
+
+  // Play from a pause. A stream paused for long may be gone: the server stops one nobody has fetched from for a
+  // minute or two, and the "still here" while paused (keepAlive) doesn't reach it once the computer sleeps or the
+  // browser freezes the tab. Then a new one from the same place, rather than a player stuck on Loading… until the
+  // page is reloaded. A short pause just plays.
+  async play() {
+    const longPause = Date.now() - (this.pausedAt ?? Date.now()) > 60000;
+    if (this.stale || (longPause && !(await this.streamAlive()))) {
+      this.stale = false;
+      await this.restart(this.position());
+      return;
+    }
+    try { await this.video.play(); } catch { /* blocked: the Play button still works */ }
+  }
+
+  // Whether the server still has this stream (asking counts as activity, so it's then kept a while longer)
+  async streamAlive() {
+    if (!this.session) return false;
+    try { return (await fetch(`/stream/${this.session.sessionId}/alive`, { cache: 'no-store' })).ok; }
+    catch { return true; }   // the server unreachable: let the player try, and say what fails
+  }
+
+  // The stream failed, most likely gone from the server. Paused, nothing needs it yet: a new one now would only go
+  // idle too, so the next Play starts it. Playing: a new one from here at once, and again later if that one goes
+  // too (`recovering` is cleared when it plays). False when it already tried and the new one failed before playing.
+  recoverStream() {
+    if (this.video.paused) { this.stale = true; this.status.textContent = ''; return true; }
+    if (this.recovering) return false;
+    this.recovering = true;
+    this.restart(this.position());
+    return true;
   }
 
   // ── Transport ──────────────────────────────────────────────────────────────
@@ -625,7 +884,10 @@ export class Player {
   // Stop: the stream ends (freeing the server), the place is kept, and Play picks up from it
   stop() {
     if (!this.session) return;
+    this.pending = null;   // a handover getting ready is dropped
     this.stoppedAt = this.position();
+    this.pgs?.renderer?.dispose();
+    if (this.pgs) this.pgs.renderer = null;
     this.saveProgress();
     const id = this.session.sessionId;
     this.session = null;
@@ -709,6 +971,13 @@ export class Player {
   // How long this plays: an adaptive stream says (it counts from the first frame), else what the scan found
   duration() { return this.session?.adaptive && this.session.duration > 0 ? this.session.duration : this.details.summary.duration; }
 
+  // In the last stretch of the file: the last 20 s, or 1% of a long one, as a file's stated length can run past what
+  // there is to play by that much
+  nearEnd() {
+    const d = this.duration();
+    return d > 0 && d - this.position() < Math.max(20, d * 0.01);
+  }
+
   showTime(pos) {
     this.time.textContent = `${formatTime(pos)} / ${formatTime(this.duration())}`;
   }
@@ -721,6 +990,10 @@ export class Player {
   }
 
   onEnded() {
+    // Once per stream: a stream that fails at its end (nearEnd) can also say "ended", and a play queue moving on twice
+    // would skip one
+    if (!this.session || this.endedFor === this.session.sessionId) return;
+    this.endedFor = this.session.sessionId;
     // An HLS stream also ends at its last segment when the file does
     this.saveProgress(false, true);
     if (this.onFinished?.()) return;   // a play queue moves on by itself
@@ -736,7 +1009,8 @@ export class Player {
     this.status.textContent = wireless ? 'Playing on the AirPlay device' : '';
     if (wireless && !this.forCast) {
       this.forCast = true;
-      if (this.session && this.session.videoCodec !== 'h264' && this.session.mode !== 'Direct')
+      // (and PGS subtitles burned in, which this screen would draw but the TV can't)
+      if (this.session && ((this.session.videoCodec !== 'h264' && this.session.mode !== 'Direct') || this.drawsPgs()))
         await this.restart(this.position(), { keepPaused: true });
     } else if (!wireless && !isCasting()) {
       this.forCast = false;
@@ -747,7 +1021,8 @@ export class Player {
   // HEVC, so a copied x265 stream is restarted as H.264 first.
   async castHere() {
     if (!this.session) return;
-    if (!this.forCast && this.session.videoCodec !== 'h264' && this.session.mode !== 'Direct') {
+    // So are PGS subtitles drawn here: the Chromecast needs them burned into the video
+    if (!this.forCast && ((this.session.videoCodec !== 'h264' && this.session.mode !== 'Direct') || this.drawsPgs())) {
       this.forCast = true;
       await this.restart(this.position(), { keepPaused: true });
       return;   // start() casts the new stream
@@ -766,6 +1041,9 @@ export class Player {
   }
 
   destroy() {
+    this.pgs?.renderer?.dispose();
+    this.pgs = null;
+    this.pending = null;
     this.saveProgress(true);
     clearInterval(this.monitor);
     clearTimeout(this.idleTimer);

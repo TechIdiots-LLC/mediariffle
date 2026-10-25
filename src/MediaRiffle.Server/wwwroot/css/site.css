@@ -114,6 +114,8 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--bord
 .player { position: relative; background: #000; border-radius: var(--radius); overflow: hidden; }
 /* As tall as the screen allows with the controls in view; dvh, as iPhone Safari counts its toolbars in vh */
 .player video { width: 100%; max-height: calc(100vh - 190px); max-height: calc(100dvh - 190px); display: block; background: #000; }
+/* A stream getting ready to take over (handover in player.js): laid over the one playing, out of sight, until the swap */
+.player video.standby { position: absolute; inset: 0; height: 100%; opacity: 0; pointer-events: none; }
 .player .spinner { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; pointer-events: none; font-size: 14px; }
 .controls { display: grid; gap: 8px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--radius) var(--radius); }
 .controls .seek { width: 100%; }
@@ -160,6 +162,9 @@ body.theater .player video { width: 100%; height: 100%; max-height: none; object
 body.theater .controls { position: absolute; left: 3vw; right: 3vw; bottom: 3vh; border: 1px solid var(--border); border-radius: var(--radius); opacity: .92; transition: opacity .3s; }
 body.theater .player-wrap.idle, body.theater .player-wrap.idle .player { cursor: none; }
 body.theater .player-wrap.idle .controls { opacity: 0; pointer-events: none; }
+/* The ⌄ button that hides the controls: only in full screen, where they lie over the picture */
+.controls .hide-controls { display: none; }
+body.theater .controls .hide-controls { display: inline-block; }
 /* What's playing (or next), over the top of the picture for a few seconds */
 .flash { position: absolute; top: 5vh; left: 4vw; max-width: 70%; padding: 12px 18px; border-radius: var(--radius);
   background: rgba(0, 0, 0, .65); color: #fff; pointer-events: none; opacity: 0; transition: opacity .4s; }
