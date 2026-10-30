@@ -24,8 +24,10 @@ $files = @(Get-ChildItem $FilesDir -File -ErrorAction SilentlyContinue | Where-O
 if (-not $files) { throw "No release files found in $FilesDir" }
 # SHA256SUMS, as sha256sum writes it: Admin -> Updates' updaters check what they download against it
 $sums = $files | Sort-Object Name | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" }
-[IO.File]::WriteAllText((Join-Path $FilesDir 'SHA256SUMS'), (($sums -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
+$sumsFile = Join-Path (Convert-Path $FilesDir) 'SHA256SUMS'
+[IO.File]::WriteAllText($sumsFile, (($sums -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
 $files = @(Get-ChildItem $FilesDir -File)
+if ($files.Name -notcontains 'SHA256SUMS') { throw "SHA256SUMS wasn't written to $FilesDir ($sumsFile): a release without it can't be updated to from Admin -> Updates" }
 
 # Release notes: the lines under "## <version>" up to the next "## " heading
 $notes = @()

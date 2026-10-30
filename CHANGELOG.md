@@ -6,6 +6,8 @@
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._
+- **Releases now carry their SHA256SUMS**: v0.9.0 and v0.10.0 were published without it, so Admin → Updates couldn't
+  update to them (it refuses a download it can't check). The release job now stops if the file is missing.
 
 ## 0.10.0
 ### ✨ Features and improvements
