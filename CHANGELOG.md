@@ -3,6 +3,10 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+- **MediaRiffle no longer stays down after a background error**: the subtitle preparer hit a database error that
+  stopped the whole server with exit code 0, which systemd's `Restart=on-failure` doesn't restart, so it stayed down
+  behind a 503. The preparer now logs such an error and tries again later, and the unit is `Restart=always` (a
+  `systemctl stop` still stops it).
 - **Requests**: a Requests page (in the top bar) to ask for a movie, show or album: title, year, kind, and an optional
   link and notes to help find or buy it. Everyone sees their own requests; an admin sees everyone's with a box to tick
   off once it's in the library (done ones move to their own list), and can remove any.
