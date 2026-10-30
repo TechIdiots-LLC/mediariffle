@@ -13,6 +13,8 @@ WorkingDirectory=/opt/mediariffle
 ExecStart=/opt/mediariffle/MediaRiffle.Server
 Restart=on-failure
 RestartSec=5
+# MediaRiffle tells systemd every 30 s that it is answering (Watchdog.cs); a server that hangs stops, and is restarted
+WatchdogSec=120
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
 # Where it listens is set in /etc/mediariffle/appsettings.json (Kestrel:Endpoints)

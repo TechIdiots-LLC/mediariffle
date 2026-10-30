@@ -169,6 +169,7 @@ builder.Services.AddSingleton<SubtitleCache>();
 builder.Services.AddHostedService<SubtitlePreparer>();
 builder.Services.AddSingleton<UpdateService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<UpdateService>());
+builder.Services.AddHostedService<Watchdog>();
 builder.Services.AddSingleton<LibraryCatalog>();
 builder.Services.AddSingleton<LibraryFiles>();
 
@@ -190,6 +191,7 @@ using (var scope = app.Services.CreateScope())
     scope.ServiceProvider.GetRequiredService<ImageService>().RemoveOldFrames();
 }
 
+app.UseHealth();
 app.UseForwardedHeaders();
 if (!app.Environment.IsDevelopment())
 {

@@ -90,7 +90,7 @@ In HAProxy:
   `X-Forwarded-Proto: https`;
 - the backend is the container's address, port 5080, with *forwardfor* (X-Forwarded-For) on;
 - set the backend's server timeout to 120 s or more: starting a stream waits for its first segment;
-- optionally, health-check `GET /api/auth/state` (200).
+- optionally, health-check `GET /healthz` (200 while the server and its database answer).
 
 [reverse-proxy.md](reverse-proxy.md) has the HAProxy configuration, and Apache or nginx in between. For a container
 already set up, change `TrustedProxies` in `/etc/mediariffle/appsettings.json` ([Changing settings](#changing-settings)).
