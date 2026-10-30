@@ -23,6 +23,8 @@ public sealed class StreamSession
     public DateTime CreatedUtc { get; } = DateTime.UtcNow;
     public DateTime LastAccessUtc { get; set; } = DateTime.UtcNow;
     public Process? Process { get; set; }
+    /// <summary>Its ffmpeg is stopped for now: far enough ahead of the player (see StreamSessionManager.Pace).</summary>
+    internal bool Paused { get; set; }
 
     private readonly StringBuilder _errors = new();
     public void AddError(string line) { lock (_errors) { if (_errors.Length < 8000) _errors.AppendLine(line); } }
@@ -416,6 +418,51 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
         }
     }
 
+    // ── Plain HLS streams (a remux or a transcode run by one ffmpeg) ──
+
+    /// <summary>ffmpeg copies or encodes as fast as it can, so it's paused when this far (in seconds) ahead of the player…</summary>
+    private const int PauseAheadSeconds = 180;
+    /// <summary>…and goes on when the player has come within this far of what it has made.</summary>
+    private const int ResumeAheadSeconds = 60;
+
+    private static readonly System.Text.RegularExpressions.Regex SegmentNumber =
+        new(@"^seg(\d+)\.(ts|m4s)$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>The player asked for this segment of a plain HLS stream: that's where it is, so ffmpeg may need to go on.</summary>
+    public void NoteSegment(StreamSession s, string segment)
+    {
+        if (SegmentNumber.Match(segment) is { Success: true } m && int.TryParse(m.Groups[1].ValueSpan, out var n))
+            s.LastRequestedSegment = n;
+        Pace(s, null);
+    }
+
+    /// <summary>
+    /// Keeps a plain HLS stream's ffmpeg from running far ahead of the player: it writes every segment it makes into the
+    /// data folder until the stream ends, and without this a remux copies a whole film in minutes (a 20 GB file fills a
+    /// small disk, and the database with it). Paused when <see cref="PauseAheadSeconds"/> ahead, until the player is
+    /// within <see cref="ResumeAheadSeconds"/>. <paramref name="playlist"/>: its playlist as just read, if it was.
+    /// </summary>
+    private void Pace(StreamSession s, string? playlist)
+    {
+        if (s.Plan.IsAdaptive || s.Plan.Mode == PlaybackMode.Direct || s.Process is not { HasExited: false } p) return;
+        playlist ??= ReadPlaylist(s);
+        if (playlist is null) return;
+        int made = 0;
+        for (int i = playlist.IndexOf("#EXTINF", StringComparison.Ordinal); i >= 0; i = playlist.IndexOf("#EXTINF", i + 7, StringComparison.Ordinal)) made++;
+        double ahead = (made - 1 - s.LastRequestedSegment) * (double)s.SegmentSeconds;
+        lock (s)
+        {
+            if (!s.Paused && ahead > PauseAheadSeconds)
+            {
+                if (ProcessPause.Suspend(p)) { s.Paused = true; log.LogDebug("Session {Id}: paused ffmpeg, {Ahead:0}s ahead of the player", s.Id, ahead); }
+            }
+            else if (s.Paused && ahead < ResumeAheadSeconds)
+            {
+                if (ProcessPause.Resume(p)) { s.Paused = false; log.LogDebug("Session {Id}: ffmpeg goes on, {Ahead:0}s ahead of the player", s.Id, ahead); }
+            }
+        }
+    }
+
     private long ReserveBytes => (long)(T.MinFreeGB * 1024 * 1024 * 1024);
 
     /// <summary>Free space where the streams are written (what the account may use, so a disk quota counts); null when unknown or not checked.</summary>
@@ -463,7 +510,7 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
         while (DateTime.UtcNow < until)
         {
             ct.ThrowIfCancellationRequested();
-            if (ReadPlaylist(s) is { } text && text.Contains("#EXTINF")) return;
+            if (ReadPlaylist(s) is { } text && text.Contains("#EXTINF")) { Pace(s, text); return; }
             if (s.HasExited) throw new InvalidOperationException("The stream couldn't start: " + Ffmpeg.LastLines(s.Errors, 2));
             await Task.Delay(200, ct);
         }
@@ -481,6 +528,7 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
         {
             ct.ThrowIfCancellationRequested();
             var text = ReadPlaylist(s);
+            if (text is not null) Pace(s, text);   // asked for what ffmpeg is paused short of: it goes on
             if (text is not null && text.Contains(segment)) return true;
             if (s.HasExited) return false;
             s.LastAccessUtc = DateTime.UtcNow;   // a slow encode isn't an idle viewer
@@ -516,6 +564,7 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
                         Stop(s.Id);
                     }
                     ThrottleEncoders();
+                    foreach (var s in _sessions.Values) Pace(s, null);
                     ProtectDisk();
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

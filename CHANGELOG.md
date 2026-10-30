@@ -3,6 +3,10 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+- **A remux no longer runs far ahead of the player**: ffmpeg copied a whole film in minutes and kept every segment
+  until the stream ended, so a long one needed tens of GB. It is now paused when 3 minutes ahead of the player and goes
+  on when the player is within 1 minute of what it made, so a stream uses a few hundred MB, however long the film.
+  (Adaptive streams already did this.)
 - **A full disk no longer takes the server down**: a remux copies the whole file as fast as it reads it and keeps its
   segments until the stream ends, so a long, high-bitrate one filled a small disk (a container's 16 GB) and the
   database stopped working until a restart cleared the files. When free space where streams are written falls below
