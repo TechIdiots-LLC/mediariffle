@@ -8,6 +8,10 @@
 - _...Add new stuff here..._
 - **Releases now carry their SHA256SUMS**: v0.9.0 and v0.10.0 were published without it, so Admin → Updates couldn't
   update to them (it refuses a download it can't check). The release job now stops if the file is missing.
+- **Videos start at the beginning, except from Continue watching**: Play all, Shuffle, Next and picking a video from
+  a list used to pick up wherever you last stopped it, which in a shuffle looked like a random start. They start at 0
+  now, and when there's an old place, a button for a few seconds offers "Resume from 12:34". Continue watching
+  still resumes at once.
 
 ## 0.10.0
 ### ✨ Features and improvements

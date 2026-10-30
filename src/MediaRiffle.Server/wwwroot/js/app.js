@@ -15,6 +15,7 @@ let routeSeq = 0;
 let pageTimer = null;   // a page's auto-refresh, stopped when leaving it
 let leaving = [];       // a page's clean-ups (e.g. no longer following the music player), run when leaving it
 const onLeave = fn => leaving.push(fn);
+const RESUME_KEY = 'mediariffle.resume';   // the video Continue watching was just clicked on
 
 async function loadState() {
   state = await api('/api/auth/state');
@@ -593,7 +594,7 @@ async function homeView() {
     // One row that scrolls sideways, most recent first (the server sends the last 20)
     recent.length ? [h('h2', {}, 'Continue watching'), h('div', { class: 'strip' }, recent.map(r => {
       // ×: off this list (not hidden: the place is kept, and watching it again brings it back)
-      const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}` },
+      const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}`, onclick: () => { clearQueue(); sessionStorage.setItem(RESUME_KEY, String(r.file.id)); } },
         art(r.file.image, r.file.duration ? r.file.position / r.file.duration : 0),
         h('button', { class: 'tile-x', title: 'Remove from Continue watching', 'aria-label': 'Remove from Continue watching',
           onclick: async e => {
@@ -914,7 +915,14 @@ async function playView(fileId) {
     h('p', { class: 'muted' }, [details.videoCodec, details.width ? `${details.width}×${details.height}` : null, details.container].filter(Boolean).join(' · ')));
   // Arriving in full screen, or from a queue (the next one): what this is, for a few seconds, so it's easy to skip on
   if (inTheater() || place) p.flash(details.summary.title, place ? `${place.label} · ${place.index + 1} of ${place.count}` : null);
-  try { await p.start(); }
+  // Only Continue watching picks up where you stopped; anything else starts at the beginning and offers the old place
+  const resumeAsked = sessionStorage.getItem(RESUME_KEY) === String(fileId);
+  sessionStorage.removeItem(RESUME_KEY);
+  const saved = details.summary.position;
+  try {
+    await p.start(resumeAsked ? null : 0);
+    if (!resumeAsked && saved > 30 && !details.summary.finished && details.summary.duration - saved > 60) p.offerResume(saved);
+  }
   catch (e) { p.status.textContent = e.message; }
 }
 
