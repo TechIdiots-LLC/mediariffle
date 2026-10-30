@@ -5,6 +5,7 @@ import { startQueue, positionOf, clearQueue } from './queue.js';
 import { music, nowPlayingView, trackRows } from './music.js';
 import { avatarEl, BUILT_IN, photoToJpeg } from './avatar.js';
 import { adminGate, mfaSettings, askCheck } from './mfa.js';
+import { requestsView } from './requests.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
@@ -27,6 +28,7 @@ function renderNav() {
   if (!state.user) { mount(nav); return; }
   mount(nav,
     h('a', { href: '#/' }, 'Home'),
+    h('a', { href: '#/requests' }, 'Requests'),
     h('span', { class: 'spacer' }),
     state.user.isAdmin ? h('a', { href: '#/admin' }, 'Admin') : null,
     h('details', { class: 'usermenu' },
@@ -63,6 +65,7 @@ const routes = [
   [/^#\/play\/(\d+)$/, m => playView(+m[1])],
   [/^#\/listen\/(\d+)$/, m => listenView(+m[1])],
   [/^#\/now$/, nowView],
+  [/^#\/requests$/, () => requestsView(view, { isAdmin: state.user.isAdmin })],
   [/^#\/admin$/, adminView],
   [/^#\/profile$/, profileView],
   [/^#?\/?$/, homeView],

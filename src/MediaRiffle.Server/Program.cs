@@ -217,6 +217,7 @@ app.MapUpdateEndpoints();
 app.MapLibraryEndpoints();
 app.MapListEndpoints();
 app.MapHiddenEndpoints();
+app.MapRequestEndpoints();
 app.MapMusicEndpoints();
 app.MapMusicCastEndpoints();
 app.MapExternalPlayerEndpoints();

@@ -3,6 +3,9 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+- **Requests**: a Requests page (in the top bar) to ask for a movie, show or album: title, year, kind, and an optional
+  link and notes to help find or buy it. Everyone sees their own requests; an admin sees everyone's with a box to tick
+  off once it's in the library (done ones move to their own list), and can remove any.
 - **A hung server restarts itself**: on Linux, systemd now restarts MediaRiffle when it stops answering (the unit has
   `WatchdogSec=120`; MediaRiffle sends its keep-alive only while it answers its own `/healthz`). Behind HAProxy this
   ends the 503 that only a restart cleared. `/healthz` (200 while the web server and database answer) is the better

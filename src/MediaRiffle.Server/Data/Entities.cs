@@ -231,3 +231,29 @@ public sealed class PlaybackProgress
     public bool LeftContinue { get; set; }
     public DateTime UpdatedUtc { get; set; }
 }
+
+public enum RequestKind { Movie, Show, Music, Other }
+
+/// <summary>
+/// Something a user would like added to the library (Requests): what it is, and anything that helps find or buy it.
+/// An admin ticks it off once it's in. Goes with the user who asked.
+/// </summary>
+public sealed class MediaRequest
+{
+    public const int MaxTitle = 200;
+    public const int MaxNotes = 1000;
+    public const int MaxLink = 500;
+
+    public int Id { get; set; }
+    public string UserId { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public int? Year { get; set; }
+    public RequestKind Kind { get; set; }
+    /// <summary>Edition, format, season, where it was seen: whatever helps.</summary>
+    public string? Notes { get; set; }
+    /// <summary>A web page for it (a store, IMDb, a listing): http or https only.</summary>
+    public string? Link { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    /// <summary>When an admin ticked it off (it's in the library, or can't be had); null while it's wanted.</summary>
+    public DateTime? DoneUtc { get; set; }
+}
