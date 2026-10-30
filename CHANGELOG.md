@@ -3,6 +3,12 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.10.0
+### ✨ Features and improvements
 - **A remux no longer runs far ahead of the player**: ffmpeg copied a whole film in minutes and kept every segment
   until the stream ended, so a long one needed tens of GB. It is now paused when 3 minutes ahead of the player and goes
   on when the player is within 1 minute of what it made, so a stream uses a few hundred MB, however long the film.
@@ -25,7 +31,7 @@
   stream is open.
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- Reliability ([!28](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/28)) (@acalcutt)
 
 ## 0.9.0
 ### ✨ Features and improvements
