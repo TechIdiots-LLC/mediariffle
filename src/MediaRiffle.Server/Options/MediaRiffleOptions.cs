@@ -55,6 +55,12 @@ public sealed class TranscodingOptions
     public int SegmentSeconds { get; set; } = 4;
     /// <summary>A stream nobody has fetched from for this long is stopped and its files deleted.</summary>
     public int IdleTimeoutSeconds { get; set; } = 90;
+    /// <summary>
+    /// Free space, in GB, kept on the disk the streams are written to. A remux copies the whole file as fast as it
+    /// reads it, so a long one can fill a small disk (and the database on it stops working). Below this, the stream
+    /// using the most space is stopped, and no new one starts. 0 turns the check off.
+    /// </summary>
+    public double MinFreeGB { get; set; } = 3;
 }
 
 /// <summary>

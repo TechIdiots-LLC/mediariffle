@@ -3,6 +3,11 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+- **A full disk no longer takes the server down**: a remux copies the whole file as fast as it reads it and keeps its
+  segments until the stream ends, so a long, high-bitrate one filled a small disk (a container's 16 GB) and the
+  database stopped working until a restart cleared the files. When free space where streams are written falls below
+  `Transcoding:MinFreeGB` (3 GB), the stream using the most is stopped, and no new one starts. An error while checking
+  the streams no longer stops the server either.
 - **MediaRiffle no longer stays down after a background error**: the subtitle preparer hit a database error that
   stopped the whole server with exit code 0, which systemd's `Restart=on-failure` doesn't restart, so it stayed down
   behind a 503. The preparer now logs such an error and tries again later, and the unit is `Restart=always` (a
