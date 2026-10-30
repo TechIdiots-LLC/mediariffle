@@ -73,6 +73,7 @@ Put your settings in file 2. A complete example:
 | `Transcoding.MaxSessionsPerUser` | A user starting more stops their oldest. |
 | `Transcoding.SegmentSeconds` | Length of a stream segment. Shorter switches level and starts sooner; longer is a little more efficient. |
 | `Transcoding.IdleTimeoutSeconds` | A stream nobody fetches from for this long is stopped and its files deleted (a paused player keeps its stream). |
+| `Transcoding.MinFreeGB` | Free disk space kept where streams are written (3 by default; 0 turns it off). A remux copies the whole file as fast as it reads it and keeps every segment until the stream ends, so a long, high-bitrate one can fill a small disk, and the database on it stops working. Below this the stream using the most space is stopped, and no new one starts. Give a container enough disk for the longest remux you play (a 4K remux can need 20 GB or more). |
 | `Kestrel:Endpoints` | Where MediaRiffle listens. `127.0.0.1` when the proxy is on the same machine; the machine's LAN address when it isn't (then firewall the port to the proxy only). Not used under IIS. |
 
 ## Sign in with Google

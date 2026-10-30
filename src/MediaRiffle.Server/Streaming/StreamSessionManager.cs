@@ -205,6 +205,8 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
                 Stop(mine[0].Id);
                 mine.RemoveAt(0);
             }
+            if (plan.Mode != PlaybackMode.Direct && FreeBytes() is { } free && free < ReserveBytes)
+                throw new SessionLimitException("The server is low on disk space for streams; try again in a moment.");
             if (plan.Mode != PlaybackMode.Direct &&
                 _sessions.Values.Count(s => s.Plan.Mode != PlaybackMode.Direct && s.Id != keep) >= T.MaxSessions)
                 throw new SessionLimitException($"The server is already running {T.MaxSessions} streams; try again when one ends.");
@@ -414,6 +416,44 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
         }
     }
 
+    private long ReserveBytes => (long)(T.MinFreeGB * 1024 * 1024 * 1024);
+
+    /// <summary>Free space where the streams are written (what the account may use, so a disk quota counts); null when unknown or not checked.</summary>
+    private long? FreeBytes()
+    {
+        if (T.MinFreeGB <= 0) return null;
+        try { return new DriveInfo(Path.GetFullPath(options.Value.TranscodeDirectory)).AvailableFreeSpace; }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException) { return null; }
+    }
+
+    /// <summary>
+    /// A remux copies the file as fast as it reads it, and keeps every segment until the stream ends, so a long one can
+    /// fill the disk, and with it the database's, which then fails on every write. Below the reserve the stream using the
+    /// most space is stopped (its player gets an error; everything else keeps working), until there is room again.
+    /// </summary>
+    private void ProtectDisk()
+    {
+        while (FreeBytes() is { } free && free < ReserveBytes)
+        {
+            var biggest = _sessions.Values.Where(s => s.Plan.Mode != PlaybackMode.Direct)
+                .Select(s => (Session: s, Size: FolderSize(s.Directory))).OrderByDescending(x => x.Size).FirstOrDefault();
+            if (biggest.Session is null)
+            {
+                log.LogError("Only {FreeMB} MB free where streams are written, and no stream is using it; free some space", free / (1024 * 1024));
+                return;
+            }
+            log.LogWarning("Only {FreeMB} MB free where streams are written (MinFreeGB {Min}): stopping session {Id}, which uses {SizeMB} MB",
+                free / (1024 * 1024), T.MinFreeGB, biggest.Session.Id, biggest.Size / (1024 * 1024));
+            Stop(biggest.Session.Id);
+        }
+    }
+
+    private static long FolderSize(string dir)
+    {
+        try { return new DirectoryInfo(dir).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return 0; }
+    }
+
     public IReadOnlyCollection<StreamSession> All => _sessions.Values.ToList();
 
     /// <summary>Waits until the playlist lists its first segment; throws if ffmpeg gave up first.</summary>
@@ -465,13 +505,23 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
-                var idle = TimeSpan.FromSeconds(T.IdleTimeoutSeconds);
-                foreach (var s in _sessions.Values.Where(s => DateTime.UtcNow - s.LastAccessUtc > idle).ToList())
+                // One round going wrong (a folder that can't be read, a process already gone) is for the next round: an
+                // uncaught error here would stop the whole server
+                try
                 {
-                    log.LogInformation("Session {Id} idle, stopping", s.Id);
-                    Stop(s.Id);
+                    var idle = TimeSpan.FromSeconds(T.IdleTimeoutSeconds);
+                    foreach (var s in _sessions.Values.Where(s => DateTime.UtcNow - s.LastAccessUtc > idle).ToList())
+                    {
+                        log.LogInformation("Session {Id} idle, stopping", s.Id);
+                        Stop(s.Id);
+                    }
+                    ThrottleEncoders();
+                    ProtectDisk();
                 }
-                ThrottleEncoders();
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    log.LogWarning(ex, "Checking the streams failed; trying again in 10 s");
+                }
             }
         }
         catch (OperationCanceledException) { }
