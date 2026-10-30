@@ -29,7 +29,7 @@ frontend https
 
 backend mediariffle
     mode http
-    option httpchk GET /api/auth/state
+    option httpchk GET /healthz
     http-check expect status 200
     timeout server 120s
     server media01 media01.example.lan:5080 check

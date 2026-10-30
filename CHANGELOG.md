@@ -3,6 +3,13 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+- **A hung server restarts itself**: on Linux, systemd now restarts MediaRiffle when it stops answering (the unit has
+  `WatchdogSec=120`; MediaRiffle sends its keep-alive only while it answers its own `/healthz`). Behind HAProxy this
+  ends the 503 that only a restart cleared. `/healthz` (200 while the web server and database answer) is the better
+  health check than `/api/auth/state`; docs/reverse-proxy.md uses it.
+- **A stuck ffmpeg no longer holds a stream**: when the encoder for a stream made no segment in a minute, it is
+  stopped, and the player's next request starts a new one, instead of waiting on the stuck one for as long as the
+  stream is open.
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._

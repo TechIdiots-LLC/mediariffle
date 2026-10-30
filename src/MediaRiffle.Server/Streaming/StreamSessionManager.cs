@@ -337,6 +337,21 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
             s.LastAccessUtc = DateTime.UtcNow;   // a slow encode isn't an idle viewer
             await Task.Delay(100, ct);
         }
+        // Nothing came in a minute. If that ffmpeg is still the one running, it's stuck (a hung GPU, a stalled share):
+        // stopped, so the player's next request starts a new one instead of waiting on this one again
+        if (await s.EncoderLock.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None))
+        {
+            try
+            {
+                if (s.Encoder == mine && !s.Segments.ContainsKey((level, segment)))
+                {
+                    log.LogWarning("Session {Id}: no segment {Segment} from ffmpeg in 60 s ({Errors}); stopping it", s.Id, segment,
+                        Ffmpeg.LastLines(mine.Errors, 2));
+                    StopEncoder(s);
+                }
+            }
+            finally { s.EncoderLock.Release(); }
+        }
         return new(null);
 
         // With how long it was waited for, and how fast this level's ffmpeg is going (when it's the one running)
