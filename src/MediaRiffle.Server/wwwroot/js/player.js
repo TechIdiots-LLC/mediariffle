@@ -1007,6 +1007,18 @@ export class Player {
     this.flashTimer = setTimeout(() => this.flashEl.classList.remove('on'), ms);
   }
 
+  /** Starting from the beginning, with an old place saved: for a few seconds, a button to go to it instead. */
+  offerResume(at, ms = 10000) {
+    this.offerEl?.remove();
+    const done = () => { clearTimeout(timer); this.offerEl?.remove(); this.offerEl = null; };
+    const timer = setTimeout(done, ms);
+    this.offerEl = h('div', { class: 'resume-offer' },
+      h('span', {}, `Stopped at ${formatTime(at)} last time`),
+      h('button', { type: 'button', onclick: () => { done(); this.seek(at); } }, `Resume from ${formatTime(at)}`),
+      h('button', { type: 'button', class: 'secondary', onclick: done }, 'Start over'));
+    this.flashEl.after(this.offerEl);
+  }
+
   onTime() {
     const pos = this.position();
     if (!this.dragging) { this.seekBar.value = Math.floor(pos); this.showTime(pos); }
@@ -1029,6 +1041,8 @@ export class Player {
 
   saveProgress(leaving = false, finished = undefined) {
     if (!this.session) return;
+    // The old place is on offer (the video started at 0): saving 0:03 now would lose it before it can be picked
+    if (this.offerEl && finished === undefined) return;
     this.lastSaved = Date.now();
     api('/api/progress', { method: 'POST', keepalive: leaving,
       body: { fileId: this.fileId, position: this.position(), finished } }).catch(() => {});
