@@ -23,7 +23,13 @@ public sealed class SubtitlePreparer(IServiceScopeFactory scopes, SubtitleCache 
             await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);   // after the first scan has had a start
             while (!stoppingToken.IsCancellationRequested)
             {
-                await PrepareAllAsync(stoppingToken);
+                // A failure here (the database busy, a file that can't be read) is for the next round, not the end of the
+                // server: an uncaught one in a background service stops the whole host
+                try { await PrepareAllAsync(stoppingToken); }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    log.LogWarning(ex, "Preparing subtitles failed; trying again in 30 minutes");
+                }
                 await Task.Delay(TimeSpan.FromMinutes(30), stoppingToken);
             }
         }

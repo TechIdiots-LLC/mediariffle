@@ -3,6 +3,10 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+- **MediaRiffle no longer stays down after a background error**: the subtitle preparer hit a database error that
+  stopped the whole server with exit code 0, which systemd's `Restart=on-failure` doesn't restart, so it stayed down
+  behind a 503. The preparer now logs such an error and tries again later, and the unit is `Restart=always` (a
+  `systemctl stop` still stops it).
 - **A hung server restarts itself**: on Linux, systemd now restarts MediaRiffle when it stops answering (the unit has
   `WatchdogSec=120`; MediaRiffle sends its keep-alive only while it answers its own `/healthz`). Behind HAProxy this
   ends the 503 that only a restart cleared. `/healthz` (200 while the web server and database answer) is the better
