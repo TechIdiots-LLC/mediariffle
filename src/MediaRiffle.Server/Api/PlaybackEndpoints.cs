@@ -289,6 +289,7 @@ public static partial class PlaybackEndpoints
         {
             if (!SegmentName().IsMatch(segment)) return Results.NotFound();
             if (sessions.Get(sessionId) is not { } s || s.Plan.Mode == PlaybackMode.Direct) return Results.NotFound();
+            sessions.NoteSegment(s, segment);
             if (!await sessions.WaitForSegmentAsync(s, segment, ct) || !File.Exists(Path.Combine(s.Directory, segment)))
                 return Results.NotFound();
             ctx.Response.Headers.CacheControl = "private, max-age=3600";

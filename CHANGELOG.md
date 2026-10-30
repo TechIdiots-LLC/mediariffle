@@ -3,6 +3,26 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+- **A remux no longer runs far ahead of the player**: ffmpeg copied a whole film in minutes and kept every segment
+  until the stream ended, so a long one needed tens of GB. It is now paused when 3 minutes ahead of the player and goes
+  on when the player is within 1 minute of what it made, so a stream uses a few hundred MB, however long the film.
+  (Adaptive streams already did this.)
+- **A full disk no longer takes the server down**: a remux copies the whole file as fast as it reads it and keeps its
+  segments until the stream ends, so a long, high-bitrate one filled a small disk (a container's 16 GB) and the
+  database stopped working until a restart cleared the files. When free space where streams are written falls below
+  `Transcoding:MinFreeGB` (3 GB), the stream using the most is stopped, and no new one starts. An error while checking
+  the streams no longer stops the server either.
+- **MediaRiffle no longer stays down after a background error**: the subtitle preparer hit a database error that
+  stopped the whole server with exit code 0, which systemd's `Restart=on-failure` doesn't restart, so it stayed down
+  behind a 503. The preparer now logs such an error and tries again later, and the unit is `Restart=always` (a
+  `systemctl stop` still stops it).
+- **A hung server restarts itself**: on Linux, systemd now restarts MediaRiffle when it stops answering (the unit has
+  `WatchdogSec=120`; MediaRiffle sends its keep-alive only while it answers its own `/healthz`). Behind HAProxy this
+  ends the 503 that only a restart cleared. `/healthz` (200 while the web server and database answer) is the better
+  health check than `/api/auth/state`; docs/reverse-proxy.md uses it.
+- **A stuck ffmpeg no longer holds a stream**: when the encoder for a stream made no segment in a minute, it is
+  stopped, and the player's next request starts a new one, instead of waiting on the stuck one for as long as the
+  stream is open.
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._
