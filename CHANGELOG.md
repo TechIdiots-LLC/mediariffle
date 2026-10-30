@@ -3,12 +3,20 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.11.0
+### ✨ Features and improvements
 - **Requests**: a Requests page (in the top bar) to ask for a movie, show or album: title, year, kind, and an optional
   link and notes to help find or buy it. Everyone sees their own requests; an admin sees everyone's with a box to tick
   off once it's in the library (done ones move to their own list), and can remove any.
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
+- Add a Requests page: ask for something, admins tick it off ([!32](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/32)) (@acalcutt)
+- Videos start at the beginning, except from Continue watching ([!31](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/31)) (@acalcutt)
+- Releases: write SHA256SUMS by absolute path, and fail if it isn't uploaded ([!30](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/30)) (@acalcutt)
 - **Releases now carry their SHA256SUMS**: v0.9.0 and v0.10.0 were published without it, so Admin → Updates couldn't
   update to them (it refuses a download it can't check). The release job now stops if the file is missing.
 - **Videos start at the beginning, except from Continue watching**: Play all, Shuffle, Next and picking a video from
