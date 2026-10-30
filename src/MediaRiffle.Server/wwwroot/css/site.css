@@ -346,3 +346,11 @@ body.theater .controls { font-size: clamp(14px, 0.9vw, 24px); }
 /* "Resume from 12:34?" over the top of the picture, for a few seconds */
 .resume-offer { position: absolute; left: 4vw; bottom: 14vh; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
   padding: 10px 14px; border-radius: var(--radius); background: rgba(0, 0, 0, .75); color: #fff; }
+
+/* Requests */
+.request-form { display: grid; gap: 10px; margin-bottom: 16px; }
+.request-form input[type=text] { flex: 1 1 14em; }
+.request-form input.year { width: 6em; }
+.request-form textarea { font: inherit; padding: .5em .7em; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
+table.requests tr.done strong { text-decoration: line-through; color: var(--muted); }
+table.requests .notes { white-space: pre-wrap; font-size: .9em; }

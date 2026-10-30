@@ -16,6 +16,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<PlaybackProgress> Progress => Set<PlaybackProgress>();
     public DbSet<UserTag> UserTags => Set<UserTag>();
     public DbSet<HiddenItem> Hidden => Set<HiddenItem>();
+    public DbSet<MediaRequest> Requests => Set<MediaRequest>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -69,6 +70,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         b.Entity<UserTag>().HasOne<Artist>().WithMany().HasForeignKey(t => t.ArtistId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<UserTag>().HasOne<Album>().WithMany().HasForeignKey(t => t.AlbumId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<UserTag>().HasOne<MediaFile>().WithMany().HasForeignKey(t => t.MediaFileId).OnDelete(DeleteBehavior.Cascade);
+
+        b.Entity<MediaRequest>().HasIndex(r => new { r.UserId, r.DoneUtc });
+        b.Entity<MediaRequest>().HasOne<AppUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
 
         // Hidden, likewise, goes with the user and with what was hidden
         b.Entity<HiddenItem>().HasIndex(x => new { x.UserId, x.ShowId });

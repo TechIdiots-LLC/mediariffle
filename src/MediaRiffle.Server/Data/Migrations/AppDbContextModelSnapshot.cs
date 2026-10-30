@@ -379,6 +379,45 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.ToTable("Libraries");
                 });
 
+            modelBuilder.Entity("MediaRiffle.Server.Data.MediaRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DoneUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Link")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Year")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "DoneUtc");
+
+                    b.ToTable("Requests");
+                });
+
             modelBuilder.Entity("MediaRiffle.Server.Data.Movie", b =>
                 {
                     b.Property<int>("Id")
@@ -767,6 +806,15 @@ namespace MediaRiffle.Server.Data.Migrations
                         .WithMany()
                         .HasForeignKey("ShowId")
                         .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("MediaRiffle.Server.Data.MediaRequest", b =>
+                {
+                    b.HasOne("MediaRiffle.Server.Data.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MediaRiffle.Server.Data.Movie", b =>

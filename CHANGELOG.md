@@ -3,6 +3,9 @@
 ## master
 ### ✨ Features and improvements
 - _...Add new stuff here..._
+- **Requests**: a Requests page (in the top bar) to ask for a movie, show or album: title, year, kind, and an optional
+  link and notes to help find or buy it. Everyone sees their own requests; an admin sees everyone's with a box to tick
+  off once it's in the library (done ones move to their own list), and can remove any.
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._
