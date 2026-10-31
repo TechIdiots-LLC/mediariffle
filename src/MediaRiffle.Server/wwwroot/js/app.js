@@ -283,6 +283,8 @@ async function profileView() {
       passwordSection(),
       h('h2', {}, 'Video quality'),
       qualitySection(account),
+      h('h2', {}, 'Subtitles'),
+      subtitleSection(account),
       h('h2', {}, 'Switch user PIN'),
       pinSection(account),
       h('h2', {}, 'Google'),
@@ -324,6 +326,23 @@ function qualitySection(account) {
       catch (e) { msg.textContent = e.message; }
     }), msg),
     note);
+}
+
+// Profile → Subtitles: the language to turn on by itself when a video has a track in it
+function subtitleSection(account) {
+  const msg = h('span', { class: 'error' });
+  return h('div', {},
+    h('label', { class: 'row' }, 'Turn on ', h('select', { onchange: async e => {
+      msg.textContent = '';
+      try {
+        const r = await api('/api/auth/subtitle-language', { method: 'PUT', body: { language: e.target.value } });
+        account.subtitleLanguage = r.subtitleLanguage;
+      } catch (err) { msg.textContent = err.message; }
+    } },
+      h('option', { value: '' }, 'no subtitles'),
+      (account.subtitleLanguages ?? []).map(l => h('option', { value: l.id, selected: account.subtitleLanguage === l.id }, l.label + ' subtitles'))), msg),
+    h('p', { class: 'muted' }, 'Used when a video has a subtitle track in that language (not a forced or commentary one). ' +
+      'Picture subtitles that would have to be burned into the video are left off. Choosing subtitles in the player overrides this for that video.'));
 }
 
 // A PIN others on a shared device must enter to switch into this account; setting or removing it wants the password

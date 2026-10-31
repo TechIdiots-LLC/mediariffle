@@ -184,6 +184,11 @@ export class Player {
     this.subSelect = h('select', { onchange: () => this.pickSubtitle(this.subSelect.value) },
       h('option', { value: '' }, 'Subtitles off'),
       details.subtitles.map(s => h('option', { value: s.id }, s.label + (s.text || s.pgs ? '' : ' (burned in)'))));
+    // Profile → Subtitles: the language the user wants on by themselves (the server found the track)
+    if (details.defaultSubtitle && details.subtitles.some(s => s.id === details.defaultSubtitle)) {
+      this.subtitle = details.defaultSubtitle;
+      this.subSelect.value = this.subtitle;
+    }
     this.autoOption = h('option', { value: 'auto' }, 'Auto');
     this.qualitySelect = h('select', { title: 'Quality', onchange: () => this.pickQuality(this.qualitySelect.value) },
       this.autoOption, this.qualities.map(q => h('option', { value: q.id }, q.label)));

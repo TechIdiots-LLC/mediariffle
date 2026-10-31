@@ -12,6 +12,9 @@
 - **Requests**: a Requests page (in the top bar) to ask for a movie, show or album: title, year, kind, and an optional
   link and notes to help find or buy it. Everyone sees their own requests; an admin sees everyone's with a box to tick
   off once it's in the library (done ones move to their own list), and can remove any.
+- **Subtitles on by themselves**: Profile → Subtitles picks a language (English, Spanish, …). A video with a text or
+  Blu-ray subtitle track in it starts with that one on (not a forced or commentary track, and never a picture track
+  that would have to be burned into the video). Choosing subtitles in the player overrides it for that video.
 
 ### 🐞 Bug fixes
 - Add a Requests page: ask for something, admins tick it off ([!32](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/32)) (@acalcutt)
