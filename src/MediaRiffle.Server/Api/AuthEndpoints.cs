@@ -17,6 +17,7 @@ public sealed record LoginRequest(string UserName, string Password, bool Remembe
 public sealed record SetupRequest(string UserName, string Password);
 public sealed record RegisterRequest(string Invite, string UserName, string Password);
 public sealed record PreferencesRequest(string? Quality);
+public sealed record SubtitlePreferenceRequest(string? Language);
 
 /// <summary>
 /// Accounts. There's no open sign-up: the first visit creates the admin account, and after that people join
@@ -115,6 +116,18 @@ public static class AuthEndpoints
             return Results.Ok(new { preferredQuality = q });
         }).RequireAuthorization();
 
+        // The language subtitles come on in by themselves, when a video has a track in it; empty for off
+        g.MapPut("/subtitle-language", async (SubtitlePreferenceRequest req, ClaimsPrincipal principal, UserManager<AppUser> users) =>
+        {
+            var user = await users.GetUserAsync(principal);
+            if (user is null) return Results.Unauthorized();
+            var language = Media.SubtitleLanguages.Normalize(req.Language);
+            if (!string.IsNullOrWhiteSpace(req.Language) && language is null) return Results.BadRequest(new { error = "Unknown language." });
+            user.SubtitleLanguage = language;
+            await users.UpdateAsync(user);
+            return Results.Ok(new { subtitleLanguage = language });
+        }).RequireAuthorization();
+
         g.MapGet("/account", async (ClaimsPrincipal principal, UserManager<AppUser> users) =>
         {
             var user = await users.GetUserAsync(principal);
@@ -124,6 +137,7 @@ public static class AuthEndpoints
             {
                 name = user.UserName, google = google?.ProviderDisplayName, pin = user.SwitchPinHash is not null,
                 avatar = Avatars.Of(user),
+                subtitleLanguage = user.SubtitleLanguage, subtitleLanguages = Media.SubtitleLanguages.All.Select(l => new { id = l.Id, label = l.Label }),
                 preferredQuality = user.PreferredQuality ?? "auto", maxQuality = user.MaxQuality, maxQualityLabel = Media.Quality.Level(user.MaxQuality)?.Label,
             });
         }).RequireAuthorization();
