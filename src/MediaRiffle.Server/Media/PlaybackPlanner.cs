@@ -131,6 +131,8 @@ public static class PlaybackPlanner
         var a = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
         bool transcode = plan.Mode == PlaybackMode.Transcode;
         a.AddRange(DeviceArguments(plan, o, transcode));
+        // Copied video from a file that has no timestamps of its own (H.264 in AVI) is given them, or ffmpeg stops at the first packet
+        if (!transcode) a.AddRange(["-fflags", "+genpts"]);
         // Copied video starts at the keyframe ffmpeg's seek lands on, before the time; -noaccurate_seek starts the
         // audio there too. Otherwise it's cut at the time itself, a second or more later, and in fMP4 that gap is
         // only an edit list, which browsers ignore: the sound plays that much early (see Ffmpeg.RemuxStartAsync)
