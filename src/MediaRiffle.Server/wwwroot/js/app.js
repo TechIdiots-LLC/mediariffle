@@ -699,19 +699,27 @@ async function libraryView(id) {
 // A category: every show, movie and artist in the libraries carrying this tag, to browse or play through
 async function tagView(tag) {
   const t = await api(`/api/tags/${encodeURIComponent(tag)}`);
-  const showGrid = h('div', { class: 'grid' }), movieGrid = h('div', { class: 'grid' }), artistGrid = h('div', { class: 'grid' });
+  const showGrid = h('div', { class: 'grid' }), movieGrid = h('div', { class: 'grid' }), artistGrid = h('div', { class: 'grid' }), albumGrid = h('div', { class: 'grid' });
   const draw = q => {
     const match = i => !q || (i.title ?? i.name).toLowerCase().includes(q);
     mount(showGrid, showTiles(t.shows.filter(match)));
     mount(movieGrid, movieTiles(t.movies.filter(match)));
     mount(artistGrid, artistTiles(t.artists.filter(match)));
+    mount(albumGrid, albumTiles(t.albums.filter(match), true));
   };
   draw('');
   mount(view,
-    h('div', { class: 'row' }, h('h1', {}, t.tag), playButtons({ tag: t.tag }, t.tag), filterBox(draw)),
+    h('div', { class: 'row' }, h('h1', {}, t.tag), playButtons({ tag: t.tag }, t.tag), filterBox(draw),
+      // The part an admin made from a list (the libraries' own tags are changed under Admin → Libraries)
+      state.user.isAdmin && t.fromLists ? h('button', { class: 'secondary', onclick: async () => {
+        if (!confirm(`Take what was added from lists out of the category "${t.tag}"? The lists themselves stay.`)) return;
+        try { await api(`/api/admin/categories/${encodeURIComponent(t.tag)}`, { method: 'DELETE' }); location.hash = '#/'; }
+        catch (e) { alert(e.message); }
+      } }, 'Remove list part') : null),
     t.shows.length ? [h('h2', {}, 'Shows'), showGrid] : null,
     t.movies.length ? [h('h2', {}, 'Movies'), movieGrid] : null,
-    t.artists.length ? [h('h2', {}, 'Music'), artistGrid] : null);
+    t.artists.length ? [h('h2', {}, 'Music'), artistGrid] : null,
+    t.albums.length ? [h('h2', {}, 'Albums'), albumGrid] : null);
 }
 
 // ── Music ────────────────────────────────────────────────────────────────────
@@ -839,6 +847,12 @@ async function listView(tag) {
         try { const r = await api(`/api/lists/${encodeURIComponent(t.tag)}`, { method: 'PUT', body: { name } }); location.replace(`#/list/${encodeURIComponent(r.tag)}`); }
         catch (e) { alert(e.message); }
       } }, 'Rename'),
+      // An admin's list can become a category everyone sees beside the libraries' own
+      state.user.isAdmin && !t.favorites && !empty ? h('button', { class: 'secondary', title: 'Show everyone this list as a category', onclick: async () => {
+        if (!confirm(`Make "${t.tag}" a category everyone can browse? It copies what is on the list now; your list stays yours.`)) return;
+        try { const r = await api(`/api/admin/lists/${encodeURIComponent(t.tag)}/category`, { method: 'POST' }); location.hash = `#/tag/${encodeURIComponent(r.tag)}`; }
+        catch (e) { alert(e.message); }
+      } }, 'Make category') : null,
       h('button', { class: 'secondary', onclick: async () => {
         if (!confirm(t.favorites ? 'Take everything out of Favorites?' : `Delete the list "${t.tag}"? What's on it stays in the library.`)) return;
         try { await api(`/api/lists/${encodeURIComponent(t.tag)}`, { method: 'DELETE' }); location.hash = '#/'; }

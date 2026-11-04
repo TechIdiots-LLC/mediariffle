@@ -193,7 +193,7 @@ public sealed class MediaFile
 /// a list of tracks is a playlist. Favorites is the list named <see cref="Favorites"/>. Goes with what it tags, and with
 /// the user.
 /// </summary>
-public sealed class UserTag
+public sealed class UserTag : ITagged
 {
     public const string Favorites = "Favorites";
     public const int MaxLength = 50;
@@ -263,4 +263,31 @@ public sealed class MediaRequest
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     /// <summary>When an admin ticked it off (it's in the library, or can't be had); null while it's wanted.</summary>
     public DateTime? DoneUtc { get; set; }
+}
+
+/// <summary>Something a list or category holds: exactly one of these ids is set.</summary>
+public interface ITagged
+{
+    int? ShowId { get; }
+    int? MovieId { get; }
+    int? ArtistId { get; }
+    int? AlbumId { get; }
+    int? MediaFileId { get; }
+}
+
+/// <summary>
+/// One entry of a category made from an admin's list (Make category on the list's page): everyone sees the category
+/// beside the libraries' tags, and it holds what the list held. Like <see cref="UserTag"/> but nobody's: it goes with
+/// what it tags, and is removed by an admin.
+/// </summary>
+public sealed class CategoryItem : ITagged
+{
+    public int Id { get; set; }
+    public string Tag { get; set; } = string.Empty;
+    public int? ShowId { get; set; }
+    public int? MovieId { get; set; }
+    public int? ArtistId { get; set; }
+    public int? AlbumId { get; set; }
+    public int? MediaFileId { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
