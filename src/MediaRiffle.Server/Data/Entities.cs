@@ -12,6 +12,8 @@ public sealed class AppUser : IdentityUser
     /// null for by the connection. See Media.Quality.Preferences.
     /// </summary>
     public string? PreferredQuality { get; set; }
+    /// <summary>The order of the home page's sections, hidden ones marked (see Media.HomeLayout); null for the default.</summary>
+    public string? HomeLayout { get; set; }
     /// <summary>
     /// The language to turn subtitles on in when a video starts and has a track in it (a SubtitleLanguages id: "en"), or
     /// null for off.

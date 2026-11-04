@@ -18,6 +18,7 @@ public sealed record SetupRequest(string UserName, string Password);
 public sealed record RegisterRequest(string Invite, string UserName, string Password);
 public sealed record PreferencesRequest(string? Quality);
 public sealed record SubtitlePreferenceRequest(string? Language);
+public sealed record HomeLayoutRequest(List<string>? Sections);
 
 /// <summary>
 /// Accounts. There's no open sign-up: the first visit creates the admin account, and after that people join
@@ -42,7 +43,7 @@ public static class AuthEndpoints
                 setupNeeded = !await users.Users.AnyAsync(),
                 google = options.Value.Google.Enabled,
                 user = me is not null
-                    ? new { name = me.UserName, isAdmin = user.IsInRole(Roles.Admin), avatar = Avatars.Of(me) }
+                    ? new { name = me.UserName, isAdmin = user.IsInRole(Roles.Admin), avatar = Avatars.Of(me), homeLayout = Media.HomeLayout.Of(me.HomeLayout) }
                     : null,
                 // Other accounts signed in on this device, for Switch user
                 deviceAccounts = DeviceAccounts.Read(ctx).Count,
@@ -114,6 +115,16 @@ public static class AuthEndpoints
             user.PreferredQuality = q == "auto" ? null : q;
             await users.UpdateAsync(user);
             return Results.Ok(new { preferredQuality = q });
+        }).RequireAuthorization();
+
+        // The home page's sections: their order, and which are hidden (a leading "-")
+        g.MapPut("/home-layout", async (HomeLayoutRequest req, ClaimsPrincipal principal, UserManager<AppUser> users) =>
+        {
+            var user = await users.GetUserAsync(principal);
+            if (user is null) return Results.Unauthorized();
+            user.HomeLayout = Media.HomeLayout.Normalize(req.Sections);
+            await users.UpdateAsync(user);
+            return Results.Ok(new { homeLayout = Media.HomeLayout.Of(user.HomeLayout) });
         }).RequireAuthorization();
 
         // The language subtitles come on in by themselves, when a video has a track in it; empty for off

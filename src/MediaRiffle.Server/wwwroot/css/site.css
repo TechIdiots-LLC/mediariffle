@@ -354,3 +354,13 @@ body.theater .controls { font-size: clamp(14px, 0.9vw, 24px); }
 .request-form textarea { font: inherit; padding: .5em .7em; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
 table.requests tr.done strong { text-decoration: line-through; color: var(--muted); }
 table.requests .notes { white-space: pre-wrap; font-size: .9em; }
+
+/* Home page: Customize */
+.home-bar { justify-content: flex-end; margin-bottom: 4px; }
+.home-bar .muted { margin-right: auto; }
+.home-section { border: 1px dashed var(--border); border-radius: var(--radius); padding: 4px 12px 12px; margin: 10px 0; }
+.home-section.off { opacity: .55; }
+.home-head { cursor: grab; }
+.home-head h2 { margin: .4em 0; }
+.home-head .grip { color: var(--muted); font-size: 1.3em; }
+.home-tools { margin-left: auto; display: flex; gap: 6px; align-items: center; }
