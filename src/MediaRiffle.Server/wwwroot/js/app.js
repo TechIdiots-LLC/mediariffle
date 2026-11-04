@@ -601,20 +601,25 @@ async function homeView() {
   const [libraries, recent, tags, lists, favorites] = await Promise.all([api('/api/libraries'), api('/api/continue'), api('/api/tags'),
     api('/api/lists'), api(`/api/lists/${FAVORITES}`)]);
   const myLists = lists.filter(l => !isFavorites(l.tag));
-  mount(view,
-    h('h2', {}, 'Libraries'),
-    libraries.length
+  const hasFavorites = favorites.shows.length || favorites.movies.length || favorites.artists.length || favorites.albums.length || favorites.tracks.length;
+  // Each section: its heading, and what's under it (null when there's nothing to show; Customize still lists it)
+  const sections = {
+    lists: { title: 'My lists', body: myLists.length ? h('div', { class: 'chips' }, myLists.map(l =>
+      h('a', { class: 'chip', href: `#/list/${encodeURIComponent(l.tag)}` }, l.tag, h('span', { class: 'muted' }, ` ${l.items}`)))) : null },
+    favorites: { title: '★ Favorites', body: hasFavorites ? h('div', { class: 'grid' }, showTiles(favorites.shows), movieTiles(favorites.movies),
+        artistTiles(favorites.artists), albumTiles(favorites.albums, true)) : null,
+      link: hasFavorites ? h('a', { href: `#/list/${FAVORITES}` },
+        favorites.tracks.length ? `${favorites.tracks.length} song${favorites.tracks.length === 1 ? '' : 's'}, play or shuffle →` : 'Play or shuffle →') : null },
+    categories: { title: 'Categories', body: tags.length ? h('div', { class: 'chips' }, tags.map(t =>
+      h('a', { class: 'chip', href: `#/tag/${encodeURIComponent(t.tag)}` }, t.tag, h('span', { class: 'muted' }, ` ${t.files}`)))) : null },
+    libraries: { title: 'Libraries', body: libraries.length
       ? h('div', { class: 'grid' }, libraries.map(l =>
           h('a', { class: 'tile card', href: `#/library/${l.id}` },
             h('div', { class: 'name' }, l.name), h('div', { class: 'sub' }, `${l.kind} · ${l.files} files`),
             l.tags.length ? h('div', { class: 'sub' }, l.tags.join(', ')) : null)))
-      : h('p', { class: 'muted' }, state.user.isAdmin ? 'No libraries yet: add them under Admin.' : 'No libraries yet.'),
-    tags.length ? [h('h2', {}, 'Categories'), h('div', { class: 'chips' }, tags.map(t =>
-      h('a', { class: 'chip', href: `#/tag/${encodeURIComponent(t.tag)}` }, t.tag, h('span', { class: 'muted' }, ` ${t.files}`))))] : null,
-    myLists.length ? [h('h2', {}, 'My lists'), h('div', { class: 'chips' }, myLists.map(l =>
-      h('a', { class: 'chip', href: `#/list/${encodeURIComponent(l.tag)}` }, l.tag, h('span', { class: 'muted' }, ` ${l.items}`))))] : null,
+      : h('p', { class: 'muted' }, state.user.isAdmin ? 'No libraries yet: add them under Admin.' : 'No libraries yet.') },
     // One row that scrolls sideways, most recent first (the server sends the last 20)
-    recent.length ? [h('h2', {}, 'Continue watching'), h('div', { class: 'strip' }, recent.map(r => {
+    continue: { title: 'Continue watching', body: recent.length ? h('div', { class: 'strip' }, recent.map(r => {
       // ×: off this list (not hidden: the place is kept, and watching it again brings it back)
       const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}`, onclick: () => { clearQueue(); sessionStorage.setItem(RESUME_KEY, String(r.file.id)); } },
         art(r.file.image, r.file.duration ? r.file.position / r.file.duration : 0),
@@ -626,12 +631,53 @@ async function homeView() {
         h('div', { class: 'name' }, r.show ?? r.file.title),
         h('div', { class: 'sub' }, r.show ? r.file.title : `${formatTime(r.file.position)} of ${formatTime(r.file.duration)}`));
       return tile;
-    }))] : null,
-    favorites.shows.length || favorites.movies.length || favorites.artists.length || favorites.albums.length || favorites.tracks.length
-      ? [h('div', { class: 'row' }, h('h2', {}, '★ Favorites'), h('a', { href: `#/list/${FAVORITES}` },
-            favorites.tracks.length ? `${favorites.tracks.length} song${favorites.tracks.length === 1 ? '' : 's'}, play or shuffle →` : 'Play or shuffle →')),
-         h('div', { class: 'grid' }, showTiles(favorites.shows), movieTiles(favorites.movies),
-           artistTiles(favorites.artists), albumTiles(favorites.albums, true))] : null);
+    })) : null },
+  };
+
+  // The user's own order, with "-" before a hidden section (kept on the account, so it follows them to other devices)
+  let layout = [...(state.user.homeLayout ?? Object.keys(sections))];
+  let editing = false, dragging = null;
+  const save = async () => {
+    try { state.user.homeLayout = (await api('/api/auth/home-layout', { method: 'PUT', body: { sections: layout } })).homeLayout; }
+    catch (e) { alert(e.message); }
+  };
+  const change = async next => { layout = next; draw(); await save(); };
+  const bare = entry => entry.replace(/^-/, '');
+  const move = (id, to) => {
+    const item = layout.find(x => bare(x) === id);
+    const rest = layout.filter(x => bare(x) !== id);
+    rest.splice(Math.max(0, Math.min(rest.length, to)), 0, item);
+    return rest;
+  };
+
+  const sectionView = entry => {
+    const hidden = entry.startsWith('-'), id = bare(entry), s = sections[id];
+    if (!s) return null;
+    if (!editing) return hidden || !s.body ? null : h('section', {}, h('div', { class: 'row' }, h('h2', {}, s.title), s.link), s.body);
+    const at = layout.indexOf(entry);
+    const head = h('div', { class: 'row home-head', draggable: 'true', title: 'Drag to move',
+      ondragstart: e => { dragging = id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', id); },
+      ondragend: () => { dragging = null; } },
+      h('span', { class: 'grip', 'aria-hidden': 'true' }, '⠿'),
+      h('h2', {}, s.title),
+      s.body ? null : h('span', { class: 'muted' }, 'nothing here yet'),
+      h('span', { class: 'home-tools' },
+        h('button', { class: 'secondary', title: 'Move up', 'aria-label': `Move ${s.title} up`, disabled: at === 0, onclick: () => change(move(id, at - 1)) }, '▲'),
+        h('button', { class: 'secondary', title: 'Move down', 'aria-label': `Move ${s.title} down`, disabled: at === layout.length - 1, onclick: () => change(move(id, at + 1)) }, '▼'),
+        h('label', { class: 'row' }, h('input', { type: 'checkbox', checked: !hidden,
+          onchange: e => change(layout.map(x => x === entry ? (e.target.checked ? id : '-' + id) : x)) }), 'Show')));
+    return h('section', { class: 'home-section' + (hidden ? ' off' : ''),
+      ondragover: e => { if (dragging && dragging !== id) e.preventDefault(); },
+      ondrop: e => { e.preventDefault(); if (dragging && dragging !== id) change(move(dragging, at)); } },
+      head, hidden ? null : s.body);
+  };
+
+  const draw = () => mount(view,
+    h('div', { class: 'row home-bar' },
+      editing ? h('span', { class: 'muted' }, 'Drag a heading (or use ▲ ▼) to reorder; untick Show to hide a section.') : null,
+      h('button', { class: 'secondary', onclick: () => { editing = !editing; draw(); } }, editing ? 'Done' : 'Customize')),
+    layout.map(sectionView));
+  draw();
 }
 
 async function libraryView(id) {
