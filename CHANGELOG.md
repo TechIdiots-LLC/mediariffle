@@ -5,9 +5,16 @@
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.12.0
+### ✨ Features and improvements
+
+### 🐞 Bug fixes
+- Give copied video timestamps so H.264 in AVI streams ([!35](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/35)) (@acalcutt)
+- Home and subtitles ([!34](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/34)) (@acalcutt)
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
-- _...Add new stuff here..._
 
 ## 0.11.0
 ### ✨ Features and improvements
