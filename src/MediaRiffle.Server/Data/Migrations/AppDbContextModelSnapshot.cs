@@ -85,6 +85,9 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("HomeLayout")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("INTEGER");
 
@@ -116,6 +119,9 @@ namespace MediaRiffle.Server.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("SecurityStamp")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SubtitleLanguage")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("SwitchPinHash")
@@ -160,6 +166,53 @@ namespace MediaRiffle.Server.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Artists");
+                });
+
+            modelBuilder.Entity("MediaRiffle.Server.Data.CategoryItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("AlbumId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ArtistId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("MediaFileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("MovieId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ShowId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AlbumId");
+
+                    b.HasIndex("ArtistId");
+
+                    b.HasIndex("MediaFileId");
+
+                    b.HasIndex("MovieId");
+
+                    b.HasIndex("ShowId");
+
+                    b.HasIndex("Tag");
+
+                    b.ToTable("CategoryItems");
                 });
 
             modelBuilder.Entity("MediaRiffle.Server.Data.HiddenItem", b =>
@@ -748,6 +801,34 @@ namespace MediaRiffle.Server.Data.Migrations
                         .HasForeignKey("LibraryId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("MediaRiffle.Server.Data.CategoryItem", b =>
+                {
+                    b.HasOne("MediaRiffle.Server.Data.Album", null)
+                        .WithMany()
+                        .HasForeignKey("AlbumId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MediaRiffle.Server.Data.Artist", null)
+                        .WithMany()
+                        .HasForeignKey("ArtistId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MediaRiffle.Server.Data.MediaFile", null)
+                        .WithMany()
+                        .HasForeignKey("MediaFileId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MediaRiffle.Server.Data.Movie", null)
+                        .WithMany()
+                        .HasForeignKey("MovieId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MediaRiffle.Server.Data.Show", null)
+                        .WithMany()
+                        .HasForeignKey("ShowId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("MediaRiffle.Server.Data.HiddenItem", b =>

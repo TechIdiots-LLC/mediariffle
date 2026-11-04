@@ -12,6 +12,15 @@
 - **Requests**: a Requests page (in the top bar) to ask for a movie, show or album: title, year, kind, and an optional
   link and notes to help find or buy it. Everyone sees their own requests; an admin sees everyone's with a box to tick
   off once it's in the library (done ones move to their own list), and can remove any.
+- **Make a list a category**: on one of your lists, an admin gets a Make category button. It copies the list into a
+  category everyone sees under Categories on the home page, next to the libraries' own tags (a category page can
+  play or shuffle it too). The admin's list stays theirs; making it again adds what was put on it since.
+- **Customize the home page**: a Customize button on the home page lets each person reorder its sections (drag a
+  heading, or use ▲ ▼ on a phone) and hide the ones they do not use. The order is kept on the account, so it
+  follows them to other devices. The default is now My lists, Favorites, Categories, Libraries, Continue watching.
+- **Subtitles on by themselves**: Profile → Subtitles picks a language (English, Spanish, …). A video with a text or
+  Blu-ray subtitle track in it starts with that one on (not a forced or commentary track, and never a picture track
+  that would have to be burned into the video). Choosing subtitles in the player overrides it for that video.
 
 ### 🐞 Bug fixes
 - Add a Requests page: ask for something, admins tick it off ([!32](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/32)) (@acalcutt)

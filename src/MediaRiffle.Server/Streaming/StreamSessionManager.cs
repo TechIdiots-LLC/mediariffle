@@ -226,8 +226,8 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
             {
                 // Nothing runs until the player asks for a segment (SegmentAsync)
                 System.IO.Directory.CreateDirectory(dir);
-                log.LogInformation("Session {Id}: adaptive {Levels} of file {File} ({Reason})", id,
-                    string.Join("/", plan.Levels!.Select(l => l.Label)), fileId, plan.Reason);
+                log.LogInformation("Session {Id}: adaptive {Levels} of file {File}, audio stream {Audio} ({Reason})", id,
+                    string.Join("/", plan.Levels!.Select(l => l.Label)), fileId, plan.Audio?.Index, plan.Reason);
             }
             else if (plan.Mode != PlaybackMode.Direct)
             {
@@ -247,7 +247,7 @@ public sealed class StreamSessionManager(IOptions<MediaRiffleOptions> options, F
                 p.BeginErrorReadLine();
                 p.StandardOutput.Close();
                 session.Process = p;
-                log.LogInformation("Session {Id}: {Mode} of file {File} from {Start:0}s ({Reason})", id, plan.Mode, fileId, startSeconds, plan.Reason);
+                log.LogInformation("Session {Id}: {Mode} of file {File} from {Start:0}s, audio stream {Audio} ({Reason})", id, plan.Mode, fileId, startSeconds, plan.Audio?.Index, plan.Reason);
             }
             _sessions[id] = session;
             return session;
