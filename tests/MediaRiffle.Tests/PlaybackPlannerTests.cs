@@ -84,6 +84,7 @@ public class PlaybackPlannerTests
         Assert.Equal("copy", args[args.IndexOf("-c:v") + 1]);
         Assert.Equal("copy", args[args.IndexOf("-c:a") + 1]);
         Assert.DoesNotContain("-ss", args);
+        Assert.True(args.IndexOf("+genpts") < args.IndexOf("-i"));   // before the input, where it applies
     }
 
     [Fact]

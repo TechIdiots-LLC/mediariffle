@@ -5,6 +5,8 @@
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - _...Add new stuff here..._
 
 ## 0.11.0
@@ -23,6 +25,8 @@
   that would have to be burned into the video). Choosing subtitles in the player overrides it for that video.
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - Add a Requests page: ask for something, admins tick it off ([!32](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/32)) (@acalcutt)
 - Videos start at the beginning, except from Continue watching ([!31](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/31)) (@acalcutt)
 - Releases: write SHA256SUMS by absolute path, and fail if it isn't uploaded ([!30](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/30)) (@acalcutt)
@@ -57,6 +61,8 @@
   stream is open.
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - Reliability ([!28](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/28)) (@acalcutt)
 
 ## 0.9.0
@@ -81,6 +87,8 @@
   stays on 1080p. 1440p is now 16 Mbit/s (was 14), so each level has more bits than the one below it.
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - Player fixes ([!26](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/26)) (@acalcutt)
 - **Clicking Next quickly no longer leaves an old video playing**: moving on while a video was still starting could
   leave its sound playing under the next one until the page was reloaded (the old player started its stream after
@@ -113,6 +121,8 @@
   Admin), matching shows, movies, music and files by what they are rather than by id. See docs/proxmox.md.
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - Carry user data ([!24](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/24)) (@acalcutt)
 - docs/proxmox.md: moving an install in, upgrading, HAProxy, as tippr's ([!23](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/23)) (@acalcutt)
 - **The end of a film is the end**: a stream that fails in the last 20 s (or last 1% of a long film), as a file's
@@ -158,6 +168,8 @@
   limited room goes to what's ahead.
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - Av sync ([!20](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/20)) (@acalcutt)
 - **The Cast button shows again**: Google's own button hid itself until Chrome had found a Chromecast. The player
   and the music bar now have a Cast button of their own, always there in Chrome and Edge (on HTTPS), which opens
@@ -177,6 +189,8 @@
   Profiles 7 and 8 still play as the HDR10 they carry. `Transcoding:UseLibplacebo` turns it off. See docs/configuration.md.
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - Dolby vision ([!18](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/18)) (@acalcutt)
 - **Auto quality settles down**: it kept switching levels on files the server converts at only a little faster than
   they play (4K HDR, often). Waiting for ffmpeg to make a segment no longer counts as a slow connection, Auto no longer
@@ -199,6 +213,8 @@
   it again puts it back.
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - Passwords ([!16](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/16)) (@acalcutt)
 - **Stopping at the credits counts as watched**: the last 8%, or the last 3 minutes of anything over 10 minutes (a
   long movie's credits ran past the old 7%), so those don't linger in Continue watching; ones saved before drop off too.
@@ -224,6 +240,8 @@
   to the page before, or home when MediaRiffle was opened straight onto this one.
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - Player: Hide outside full screen too; fits the screen from a phone to 4K ([!14](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/14)) (@acalcutt)
 - Player: full screen across videos, Hide, preferred quality; a Back button ([!13](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/13)) (@acalcutt)
 - Two-step: adding a method asks for one you already have ([!12](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/12)) (@acalcutt)
@@ -263,6 +281,8 @@
   `Transcoding:ToneMapHdr` turns it off. See docs/configuration.md.
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - 4K transcodes and HDR tone mapping ([!8](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/8)) (@acalcutt)
 - Switch user: accounts signed in on a device, with an optional PIN ([!7](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/7)) (@acalcutt)
 - Admin two-step verification (passkeys / authenticator app), and shows with several series ([!5](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/5)) (@acalcutt)
@@ -305,6 +325,8 @@
   lists everything you hid, to open or unhide in one place.
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - Music ([!3](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/3)) (@acalcutt)
 - Google auth ([!2](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/2)) (@acalcutt)
 
@@ -326,6 +348,8 @@
   changed by another admin. The change reaches the user's open sessions within a minute, without signing in again.
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - **A paused player keeps its stream**: it used to be stopped as idle after 90 seconds, so playing again failed. A
   stream that goes away anyway (e.g. the server restarted) is started again where it was.
 - **Cast** no longer throws an error when the browser says it can cast but Google's Cast framework didn't load.
@@ -334,6 +358,8 @@
 ### ✨ Features and improvements
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - **The Cast button** is the size of the other buttons and drawn in their colour, instead of a huge black icon that
   filled the space it was given.
 
@@ -351,6 +377,8 @@
 - **Player buttons** in the order play/pause, previous, next, back 10 s, forward 30 s, stop.
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 
 ## 0.2.0
 ### ✨ Features and improvements
@@ -367,6 +395,8 @@
   against the published SHA-256, installs it to C:\Tools\ffmpeg, points the settings at it and restarts the service.
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - **Full screen** takes the controls along and centres the video, letterboxed, both ways: the video used to sit at the
   top of the screen, so a TV that overscans cut off the top, and there were no controls.
 - **Pictures** are taken from a few minutes in, through ffmpeg's thumbnail filter, instead of an early frame that was
@@ -378,6 +408,8 @@
 ### ✨ Features and improvements
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
 - **The installed Windows service works over plain HTTP**: cookies were HTTPS-only outside development, so
   http://localhost:5080 couldn't start a session. They're now secure whenever the request is HTTPS, including behind a
   trusted proxy that says so.
@@ -403,3 +435,5 @@
   .tar.gz with install.sh for other distributions (x64, arm64).
 
 ### 🐞 Bug fixes
+- **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
+  never started. They get timestamps made first.
