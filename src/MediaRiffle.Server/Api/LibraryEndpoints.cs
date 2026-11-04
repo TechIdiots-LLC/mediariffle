@@ -35,18 +35,36 @@ public static class LibraryEndpoints
         g.MapGet("/tags", async (LibraryCatalog catalog, AppDbContext db) =>
         {
             var counts = await db.MediaFiles.GroupBy(f => f.LibraryId).Select(x => new { x.Key, n = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.n);
-            return catalog.Tags.Select(t => new { tag = t, files = catalog.WithTag(t).Sum(id => counts.GetValueOrDefault(id)) });
+            // The libraries' tags, and the categories an admin made from a list (what's on one that no tagged library holds is added)
+            var enabled = catalog.Enabled.Select(l => l.Id).ToHashSet();
+            var made = await db.CategoryItems.Select(c => c.Tag).Distinct().ToListAsync();
+            var result = new List<object>();
+            foreach (var name in catalog.Tags.Concat(made).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase))
+            {
+                var ids = catalog.WithTag(name);
+                var files = ids.Sum(id => counts.GetValueOrDefault(id));
+                files += await ListEndpoints.FilesIn(db, db.CategoryItems.Where(c => c.Tag == name),
+                    db.MediaFiles.Where(f => enabled.Contains(f.LibraryId) && !ids.Contains(f.LibraryId))).CountAsync();
+                if (ids.Count > 0 || files > 0) result.Add(new { tag = ids.Count > 0 ? catalog.Tags.First(t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase)) : name, files });
+            }
+            return result;
         });
 
         g.MapGet("/tags/{tag}", async (string tag, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
         {
             var ids = catalog.WithTag(tag);
-            if (ids.Count == 0) return Results.NotFound();
+            var made = db.CategoryItems.Where(c => c.Tag == tag);
+            var fromLists = await made.AnyAsync();
+            if (ids.Count == 0 && !fromLists) return Results.NotFound();
             var userId = users.GetUserId(me)!;
+            var enabled = catalog.Enabled.Select(l => l.Id).ToHashSet();
             return Results.Ok(new
             {
-                tag, shows = await ShowsIn(db, userId, ids), movies = await MoviesIn(db, userId, ids),
-                artists = await MusicEndpoints.ArtistTiles(db, userId, db.Artists.Where(a => ids.Contains(a.LibraryId))),
+                tag = await made.Select(c => c.Tag).FirstOrDefaultAsync() ?? tag, fromLists,
+                shows = await ShowTiles(db, userId, db.Shows.Where(s => ids.Contains(s.LibraryId) || (enabled.Contains(s.LibraryId) && made.Any(c => c.ShowId == s.Id)))),
+                movies = await MovieTiles(db, userId, db.Movies.Where(m => ids.Contains(m.LibraryId) || (enabled.Contains(m.LibraryId) && made.Any(c => c.MovieId == m.Id)))),
+                artists = await MusicEndpoints.ArtistTiles(db, userId, db.Artists.Where(a => ids.Contains(a.LibraryId) || (enabled.Contains(a.LibraryId) && made.Any(c => c.ArtistId == a.Id)))),
+                albums = await MusicEndpoints.AlbumTiles(db, userId, db.Albums.Where(a => enabled.Contains(a.LibraryId) && made.Any(c => c.AlbumId == a.Id))),
             });
         });
 
@@ -64,7 +82,13 @@ public static class LibraryEndpoints
             else if (album is { } alid) q = q.Where(f => f.AlbumId == alid);
             else if (artist is { } arid) q = q.Where(f => db.Albums.Any(a => a.Id == f.AlbumId && a.ArtistId == arid));
             else if (library is { } lid) q = q.Where(f => f.LibraryId == lid);
-            else if (!string.IsNullOrWhiteSpace(tag)) { var ids = catalog.WithTag(tag); q = q.Where(f => ids.Contains(f.LibraryId)); }
+            else if (!string.IsNullOrWhiteSpace(tag))
+            {
+                // The tagged libraries' files, and what a category made from a list holds
+                var ids = catalog.WithTag(tag);
+                var made = db.CategoryItems.Where(c => c.Tag == tag.Trim());
+                q = q.Where(f => ids.Contains(f.LibraryId)).Union(ListEndpoints.FilesIn(db, made, q));
+            }
             else if (!string.IsNullOrWhiteSpace(list))
             {
                 var name = list.Trim();

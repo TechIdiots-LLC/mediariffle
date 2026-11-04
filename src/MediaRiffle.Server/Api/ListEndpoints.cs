@@ -181,7 +181,7 @@ public static class ListEndpoints
     /// <summary>
     /// The files a list holds: its shows' episodes, its movies, its artists' and albums' tracks, and its single tracks.
     /// </summary>
-    public static IQueryable<MediaFile> FilesIn(AppDbContext db, IQueryable<UserTag> list, IQueryable<MediaFile> files) =>
+    public static IQueryable<MediaFile> FilesIn<T>(AppDbContext db, IQueryable<T> list, IQueryable<MediaFile> files) where T : class, ITagged =>
         files.Where(f => list.Any(t =>
             (t.ShowId != null && t.ShowId == f.ShowId) || (t.MovieId != null && t.MovieId == f.MovieId) ||
             (t.AlbumId != null && t.AlbumId == f.AlbumId) || (t.MediaFileId != null && t.MediaFileId == f.Id) ||

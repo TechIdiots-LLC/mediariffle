@@ -17,6 +17,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<UserTag> UserTags => Set<UserTag>();
     public DbSet<HiddenItem> Hidden => Set<HiddenItem>();
     public DbSet<MediaRequest> Requests => Set<MediaRequest>();
+    public DbSet<CategoryItem> CategoryItems => Set<CategoryItem>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -70,6 +71,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         b.Entity<UserTag>().HasOne<Artist>().WithMany().HasForeignKey(t => t.ArtistId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<UserTag>().HasOne<Album>().WithMany().HasForeignKey(t => t.AlbumId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<UserTag>().HasOne<MediaFile>().WithMany().HasForeignKey(t => t.MediaFileId).OnDelete(DeleteBehavior.Cascade);
+
+        // Categories made from lists: by name, and gone with what they tag
+        b.Entity<CategoryItem>().Property(c => c.Tag).HasMaxLength(UserTag.MaxLength).UseCollation("NOCASE");
+        b.Entity<CategoryItem>().HasIndex(c => c.Tag);
+        b.Entity<CategoryItem>().HasOne<Show>().WithMany().HasForeignKey(c => c.ShowId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<CategoryItem>().HasOne<Movie>().WithMany().HasForeignKey(c => c.MovieId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<CategoryItem>().HasOne<Artist>().WithMany().HasForeignKey(c => c.ArtistId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<CategoryItem>().HasOne<Album>().WithMany().HasForeignKey(c => c.AlbumId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<CategoryItem>().HasOne<MediaFile>().WithMany().HasForeignKey(c => c.MediaFileId).OnDelete(DeleteBehavior.Cascade);
 
         b.Entity<MediaRequest>().HasIndex(r => new { r.UserId, r.DoneUtc });
         b.Entity<MediaRequest>().HasOne<AppUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
