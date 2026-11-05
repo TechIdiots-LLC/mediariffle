@@ -77,6 +77,8 @@ builder.Services.Configure<DataProtectionTokenProviderOptions>(o => o.TokenLifes
 
 var authentication = builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme);
 authentication.AddIdentityCookies();
+// Linked devices (a TV or console app) send a token instead of the cookie; see DeviceTokens
+authentication.AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, DeviceTokenHandler>(DeviceTokens.Scheme, null);
 // Google only signs in accounts that linked it under Account; it never creates one (people join with invites)
 if (options.Google.Enabled)
     authentication.AddGoogle(o =>
@@ -106,6 +108,8 @@ builder.Services.ConfigureApplicationCookie(o =>
     o.Events.OnRedirectToAccessDenied = c => { c.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
     // Every sign-in keeps this device's list of accounts (Switch user) up to date, stamp included
     o.Events.OnSigningIn = DeviceAccounts.OnSigningIn;
+    // A request with a linked device's token is signed in by the token alone, never by a cookie it also carries
+    o.ForwardDefaultSelector = DeviceTokens.SelectScheme;
 });
 // A sign-in cookie carries the user's roles; it's checked against the database (and its roles refreshed, or the user
 // signed out if removed) every minute instead of every 30, so making someone an admin or a viewer takes effect quickly
@@ -137,6 +141,10 @@ builder.Services.AddRateLimiter(o =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy("play", c => RateLimitPartition.GetFixedWindowLimiter(
         c.User.Identity?.Name ?? c.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
+    // A device waiting for its code to be entered asks every 5 seconds
+    o.AddPolicy("devices", c => RateLimitPartition.GetFixedWindowLimiter(
+        c.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
 });
 
@@ -172,6 +180,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<UpdateService>());
 builder.Services.AddHostedService<Watchdog>();
 builder.Services.AddSingleton<LibraryCatalog>();
 builder.Services.AddSingleton<LibraryFiles>();
+builder.Services.AddSingleton(_ => new DevicePairings(TimeProvider.System));
 
 var app = builder.Build();
 
@@ -204,6 +213,7 @@ app.UseStaticFiles();
 app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
+app.UseDeviceGate();
 app.UseAuthorization();
 app.UseApiAntiforgery();
 
@@ -224,6 +234,7 @@ app.MapMusicCastEndpoints();
 app.MapExternalPlayerEndpoints();
 app.MapPlaybackEndpoints();
 app.MapStreamEndpoints();
+app.MapDeviceEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();

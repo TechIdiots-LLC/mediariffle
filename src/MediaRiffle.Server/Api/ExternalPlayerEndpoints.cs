@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using MediaRiffle.Server.Data;
 using MediaRiffle.Server.Library;
+using MediaRiffle.Server.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -52,7 +53,7 @@ public static class ExternalPlayerEndpoints
             var file = await db.MediaFiles.FirstOrDefaultAsync(f => f.Id == fileId);
             if (file is null || files.FullPath(file) is not { } path || !File.Exists(path)) return Results.NotFound();
             return Results.File(path, PlaybackEndpoints.ContentType(path), enableRangeProcessing: true);
-        }).RequireCors("stream");
+        }).RequireCors("stream").AllowDevices();
     }
 
     private static ITimeLimitedDataProtector Protector(IDataProtectionProvider protection) =>

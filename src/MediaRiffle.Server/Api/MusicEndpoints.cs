@@ -3,6 +3,7 @@ using MediaRiffle.Server.Data;
 using MediaRiffle.Server.Library;
 using MediaRiffle.Server.Media;
 using MediaRiffle.Server.Options;
+using MediaRiffle.Server.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,7 +14,8 @@ public static class MusicEndpoints
 {
     public static void MapMusicEndpoints(this WebApplication app)
     {
-        var g = app.MapGroup("/api").RequireAuthorization();
+        // Linked devices (DeviceTokens) too
+        var g = app.MapGroup("/api").RequireAuthorization().AllowDevices();
 
         g.MapGet("/libraries/{id:int}/artists", async (int id, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
             catalog.Get(id) is not { Enabled: true, Kind: LibraryKind.Music } ? Results.NotFound()

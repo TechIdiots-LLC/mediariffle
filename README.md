@@ -27,6 +27,7 @@ ffserver was removed from FFmpeg in 2018 and the player used Flash.
 - Pictures: `poster.jpg`/`folder.jpg` beside the media when present, otherwise a frame from the video
 - Continue watching, next episode
 - Chromecast (Default Media Receiver)
+- TV and console apps sign in with a code (Profile → Linked devices); see [docs/devices.md](docs/devices.md)
 - Accounts by invitation only; admins and viewers
 
 ## Security

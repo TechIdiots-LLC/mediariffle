@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using MediaRiffle.Server.Data;
 using MediaRiffle.Server.Library;
 using MediaRiffle.Server.Media;
+using MediaRiffle.Server.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -59,7 +60,7 @@ public static class MusicCastEndpoints
             }).ToList();
         }).RequireAuthorization();
 
-        var g = app.MapGroup("/stream/music/{token}").RequireCors("stream");
+        var g = app.MapGroup("/stream/music/{token}").RequireCors("stream").AllowDevices();
 
         g.MapGet("/audio", async (string token, IDataProtectionProvider protection, UserManager<AppUser> users, AppDbContext db,
             LibraryFiles files, AudioService audio, CancellationToken ct) =>

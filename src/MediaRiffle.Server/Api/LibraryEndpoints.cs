@@ -3,6 +3,7 @@ using MediaRiffle.Server.Data;
 using MediaRiffle.Server.Library;
 using MediaRiffle.Server.Media;
 using MediaRiffle.Server.Options;
+using MediaRiffle.Server.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -14,7 +15,8 @@ public static class LibraryEndpoints
 {
     public static void MapLibraryEndpoints(this WebApplication app)
     {
-        var g = app.MapGroup("/api").RequireAuthorization();
+        // Linked devices (a TV or console app, signed in with its token: DeviceTokens) browse too
+        var g = app.MapGroup("/api").RequireAuthorization().AllowDevices();
 
         g.MapGet("/libraries", async (LibraryCatalog catalog, AppDbContext db) =>
         {

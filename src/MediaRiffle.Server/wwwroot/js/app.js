@@ -69,6 +69,7 @@ const routes = [
   [/^#\/requests$/, () => requestsView(view, { isAdmin: state.user.isAdmin })],
   [/^#\/admin$/, adminView],
   [/^#\/profile$/, profileView],
+  [/^#\/link$/, linkView],
   [/^#?\/?$/, homeView],
 ];
 
@@ -271,6 +272,7 @@ async function profileView() {
     h('p', { class: 'muted' }, 'Link your Google account to sign in with it instead of your password.'),
     h('a', { class: 'google-btn', href: '/api/auth/google/link' }, 'Link Google account')];
   const hidden = h('div');
+  const devices = h('div');
   // Two-step verification: for admins (Admin asks for it); viewers have nothing it guards
   const mfa = state.user.isAdmin ? h('div') : null;
   mount(view,
@@ -287,13 +289,85 @@ async function profileView() {
       subtitleSection(account),
       h('h2', {}, 'Switch user PIN'),
       pinSection(account),
+      h('h2', {}, 'Linked devices'),
+      devices,
       h('h2', {}, 'Google'),
       message,
       google,
       h('h2', {}, 'Hidden'),
       hidden));
   if (mfa) mfaSettings(mfa);
+  devicesSection(devices);
   hiddenSection(hidden);
+}
+
+// Profile → Linked devices: TV and console apps signed in to this account with a code, to unlink
+async function devicesSection(box) {
+  let list;
+  try { list = await api('/api/devices'); }
+  catch (e) { mount(box, errorBox(e)); return; }
+  mount(box,
+    h('p', { class: 'muted' }, 'TV and console apps signed in to your account with a code. They browse and play, but can\'t ' +
+      'change your account or open Admin. Changing your password unlinks them all.'),
+    list.length
+      ? h('table', {},
+          h('tr', {}, h('th', {}, 'Device'), h('th', {}, 'Linked'), h('th', {}, 'Last used'), h('th', {})),
+          list.map(d => h('tr', {},
+            h('td', {}, d.name, d.lastAddress ? h('span', { class: 'muted' }, ` · ${d.lastAddress}`) : null),
+            h('td', { class: 'muted' }, new Date(d.createdUtc).toLocaleDateString()),
+            h('td', { class: 'muted' }, new Date(d.lastUsedUtc).toLocaleString()),
+            h('td', {}, h('button', { class: 'secondary', onclick: async () => {
+              if (!confirm(`Unlink ${d.name}? It will need a new code to sign in again.`)) return;
+              try { await api(`/api/devices/${d.id}`, { method: 'DELETE' }); devicesSection(box); }
+              catch (e) { alert(e.message); }
+            } }, 'Unlink')))))
+      : h('p', {}, 'None.'),
+    h('p', {}, h('a', { href: '#/link' }, 'Link a device')));
+}
+
+// ── Link a device ────────────────────────────────────────────────────────────
+
+/**
+ * A TV or console app shows a code and this page's short address (/link): the user types the code, sees which device
+ * it is and from where, and links it to their account. The device then signs itself in.
+ */
+function linkView() {
+  const card = h('div', { class: 'form card' });
+  const ask = () => {
+    const code = h('input', { autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', maxlength: 12, size: 12,
+      placeholder: 'BCDF-2345', required: true, class: 'link-code' });
+    const msg = h('p', { class: 'error' });
+    mount(card, h('form', { onsubmit: async e => {
+        e.preventDefault();
+        msg.textContent = '';
+        try { confirmLink(await api(`/api/devices/code/${encodeURIComponent(code.value.trim())}`)); }
+        catch (err) { msg.textContent = err.message; }
+      } },
+      h('p', { class: 'muted' }, 'Enter the code your TV or console app shows to sign it in to your account.'),
+      h('label', {}, 'Code', code),
+      h('button', { type: 'submit' }, 'Next'),
+      msg));
+    code.focus();
+  };
+  const confirmLink = device => {
+    const msg = h('p', { class: 'error' });
+    mount(card,
+      h('p', {}, 'Link ', h('strong', {}, device.name), device.address ? h('span', { class: 'muted' }, ` (${device.address})`) : null,
+        ' to ', h('strong', {}, state.user.name), '? It will browse and play what you can, but can\'t change your account or open Admin.'),
+      h('div', { class: 'row' },
+        h('button', { onclick: async () => {
+          msg.textContent = '';
+          try {
+            await api('/api/devices/link', { method: 'POST', body: { code: device.code } });
+            mount(card, h('p', { class: 'ok' }, `${device.name} is linked and signs in by itself in a few seconds.`),
+              h('p', {}, h('a', { href: '#/profile' }, 'Your linked devices')));
+          } catch (err) { msg.textContent = err.message; }
+        } }, 'Link'),
+        h('button', { class: 'secondary', onclick: ask }, 'Not this one')),
+      msg);
+  };
+  mount(view, h('h1', {}, 'Link a device'), card);
+  ask();
 }
 
 // How Auto picks a video's quality: by the connection, best first, or below a ceiling to save data
