@@ -2,15 +2,20 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.13.0
+### ✨ Features and improvements
 - **Linked devices**: a TV or console app can sign in with a code, as TV apps do. It shows a code, you enter it at
   `/link` (or Profile → Linked devices → Link a device), and it gets its own sign-in. A linked device can browse and
   play as you, but can't open Admin or change the account; Profile lists them to unlink, and a new password unlinks them
   all. Apps send the token as `Authorization: Bearer`, over HTTPS or on the local network; see
   [docs/devices.md](docs/devices.md).
-- _...Add new stuff here..._
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
 
 ## 0.12.0
 ### ✨ Features and improvements
