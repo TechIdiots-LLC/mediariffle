@@ -299,6 +299,44 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.ToTable("Invites");
                 });
 
+            modelBuilder.Entity("MediaRiffle.Server.Data.LinkedDevice", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastAddress")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastUsedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("LinkedDevices");
+                });
+
             modelBuilder.Entity("MediaRiffle.Server.Data.MediaFile", b =>
                 {
                     b.Property<int>("Id")
@@ -858,6 +896,15 @@ namespace MediaRiffle.Server.Data.Migrations
                         .HasForeignKey("ShowId")
                         .OnDelete(DeleteBehavior.Cascade);
 
+                    b.HasOne("MediaRiffle.Server.Data.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MediaRiffle.Server.Data.LinkedDevice", b =>
+                {
                     b.HasOne("MediaRiffle.Server.Data.AppUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")

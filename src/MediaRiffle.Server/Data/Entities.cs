@@ -48,6 +48,24 @@ public sealed class Invite
 }
 
 /// <summary>
+/// A TV, console or other app signed in to an account with a code (Profile → Linked devices) instead of a browser
+/// cookie. It sends its token as <c>Authorization: Bearer …</c>; only the token's SHA-256 is stored, as with invites.
+/// See Security.DeviceTokens.
+/// </summary>
+public sealed class LinkedDevice
+{
+    public const int MaxName = 40;
+    public int Id { get; set; }
+    public string UserId { get; set; } = string.Empty;
+    /// <summary>What the device calls itself ("Xbox 360"), shown when linking it and under Linked devices.</summary>
+    public string Name { get; set; } = string.Empty;
+    public string TokenHash { get; set; } = string.Empty;
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime LastUsedUtc { get; set; } = DateTime.UtcNow;
+    public string? LastAddress { get; set; }
+}
+
+/// <summary>
 /// A folder of media, added and changed by admins (Admin → Libraries). Like MediaLibraryManager's monitored folders:
 /// a comma-separated list of tags applies to everything in it, and the tags are the categories viewers browse and
 /// shuffle by.

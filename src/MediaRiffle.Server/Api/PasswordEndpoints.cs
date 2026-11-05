@@ -24,7 +24,7 @@ public static class PasswordEndpoints
     public static void MapPasswordEndpoints(this WebApplication app)
     {
         // The user's own: the current password first (a wrong one counts toward the lockout, as at sign-in)
-        app.MapPost("/api/auth/password", async (ChangePasswordRequest req, HttpContext ctx, ClaimsPrincipal me, UserManager<AppUser> users, SignInManager<AppUser> signIn) =>
+        app.MapPost("/api/auth/password", async (ChangePasswordRequest req, HttpContext ctx, ClaimsPrincipal me, UserManager<AppUser> users, SignInManager<AppUser> signIn, AppDbContext db) =>
         {
             var user = await users.GetUserAsync(me);
             if (user is null) return Results.Unauthorized();
@@ -42,13 +42,15 @@ public static class PasswordEndpoints
             await users.ResetAccessFailedCountAsync(user);
             var changed = await users.ChangePasswordAsync(user, req.Current!, req.New ?? "");
             if (!changed.Succeeded) return AuthEndpoints.Errors(changed);
-            // The stamp changed, which signs out every session: this one stays (keeping its two-step check)
+            // The stamp changed, which signs out every session: this one stays (keeping its two-step check). Linked
+            // devices go too.
+            await DeviceEndpoints.UnlinkAllAsync(db, user.Id);
             await Mfa.SignInAgainAsync(ctx, signIn, user);
             return Results.Ok();
         }).RequireAuthorization().RequireRateLimiting("auth");
 
         // The person with an admin's reset link: a new password, then signed in with it
-        app.MapPost("/api/auth/reset-password", async (ResetPasswordRequest req, UserManager<AppUser> users, SignInManager<AppUser> signIn) =>
+        app.MapPost("/api/auth/reset-password", async (ResetPasswordRequest req, UserManager<AppUser> users, SignInManager<AppUser> signIn, AppDbContext db) =>
         {
             var user = await users.FindByIdAsync(req.UserId ?? "");
             string token;
@@ -58,9 +60,10 @@ public static class PasswordEndpoints
             var reset = await users.ResetPasswordAsync(user, token, req.Password ?? "");
             if (!reset.Succeeded)
                 return reset.Errors.Any(e => e.Code == "InvalidToken") ? Expired() : AuthEndpoints.Errors(reset);
-            // Someone locked out by wrong guesses gets back in with the new password
+            // Someone locked out by wrong guesses gets back in with the new password; devices linked before don't
             await users.SetLockoutEndDateAsync(user, null);
             await users.ResetAccessFailedCountAsync(user);
+            await DeviceEndpoints.UnlinkAllAsync(db, user.Id);
             await signIn.SignInAsync(user, isPersistent: req.Remember);
             return Results.Ok(new { name = user.UserName });
         }).RequireRateLimiting("auth");

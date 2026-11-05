@@ -18,12 +18,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<HiddenItem> Hidden => Set<HiddenItem>();
     public DbSet<MediaRequest> Requests => Set<MediaRequest>();
     public DbSet<CategoryItem> CategoryItems => Set<CategoryItem>();
+    public DbSet<LinkedDevice> LinkedDevices => Set<LinkedDevice>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
         base.OnModelCreating(b);
 
         b.Entity<Invite>().HasIndex(i => i.TokenHash).IsUnique();
+
+        // A user's linked devices go with the user
+        b.Entity<LinkedDevice>().Property(d => d.Name).HasMaxLength(LinkedDevice.MaxName);
+        b.Entity<LinkedDevice>().HasIndex(d => d.TokenHash).IsUnique();
+        b.Entity<LinkedDevice>().HasIndex(d => d.UserId);
+        b.Entity<LinkedDevice>().HasOne<AppUser>().WithMany().HasForeignKey(d => d.UserId).OnDelete(DeleteBehavior.Cascade);
 
         b.Entity<MediaLibrary>().HasIndex(l => l.Name).IsUnique();
         // Removing a library removes everything scanned from it

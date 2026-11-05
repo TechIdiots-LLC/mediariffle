@@ -37,11 +37,15 @@ public static class SecurityMiddleware
     /// <summary>
     /// Every request that changes something under /api must carry the antiforgery token (X-CSRF-TOKEN), on top
     /// of the SameSite=Strict cookies, so another site can't act as a signed-in user. /stream is read-only.
+    /// Not a linked device's: its token is sent by its app, never by a browser by itself, and signs it in without the
+    /// cookie (DeviceTokens); nor endpoints marked DisableAntiforgery (a device asking for its code).
     /// </summary>
     public static IApplicationBuilder UseApiAntiforgery(this IApplicationBuilder app) => app.Use(async (ctx, next) =>
     {
         if (ctx.Request.Path.StartsWithSegments("/api") &&
-            !HttpMethods.IsGet(ctx.Request.Method) && !HttpMethods.IsHead(ctx.Request.Method) && !HttpMethods.IsOptions(ctx.Request.Method))
+            !HttpMethods.IsGet(ctx.Request.Method) && !HttpMethods.IsHead(ctx.Request.Method) && !HttpMethods.IsOptions(ctx.Request.Method) &&
+            DeviceTokens.BearerToken(ctx.Request) is null &&
+            ctx.GetEndpoint()?.Metadata.GetMetadata<IAntiforgeryMetadata>()?.RequiresValidation != false)
         {
             var antiforgery = ctx.RequestServices.GetRequiredService<IAntiforgery>();
             try

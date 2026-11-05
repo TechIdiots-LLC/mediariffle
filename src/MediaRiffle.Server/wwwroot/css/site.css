@@ -364,3 +364,6 @@ table.requests .notes { white-space: pre-wrap; font-size: .9em; }
 .home-head h2 { margin: .4em 0; }
 .home-head .grip { color: var(--muted); font-size: 1.3em; }
 .home-tools { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
+/* Link a device: the code a TV shows, easy to compare letter by letter */
+.link-code { font-size: 20px; letter-spacing: 3px; text-transform: uppercase; font-family: ui-monospace, Consolas, monospace; }

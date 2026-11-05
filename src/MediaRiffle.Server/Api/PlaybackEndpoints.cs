@@ -6,6 +6,7 @@ using MediaRiffle.Server.Data;
 using MediaRiffle.Server.Library;
 using MediaRiffle.Server.Media;
 using MediaRiffle.Server.Options;
+using MediaRiffle.Server.Security;
 using MediaRiffle.Server.Streaming;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Identity;
@@ -54,7 +55,8 @@ public static partial class PlaybackEndpoints
 
     public static void MapPlaybackEndpoints(this WebApplication app)
     {
-        var g = app.MapGroup("/api").RequireAuthorization();
+        // Linked devices play too
+        var g = app.MapGroup("/api").RequireAuthorization().AllowDevices();
 
         g.MapPost("/play", async (PlayRequest req, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db,
                                    LibraryFiles files, StreamSessionManager sessions, Ffmpeg ffmpeg,
@@ -242,7 +244,8 @@ public static partial class PlaybackEndpoints
     /// </summary>
     public static void MapStreamEndpoints(this WebApplication app)
     {
-        var g = app.MapGroup("/stream/{sessionId}").RequireCors("stream");
+        // A linked device's player may send its token along with these; that's fine
+        var g = app.MapGroup("/stream/{sessionId}").RequireCors("stream").AllowDevices();
 
         // Adaptive streams: the master playlist, each level's full playlist, and segments made when asked for
         g.MapGet("/master.m3u8", (string sessionId, StreamSessionManager sessions, HttpContext ctx) =>
