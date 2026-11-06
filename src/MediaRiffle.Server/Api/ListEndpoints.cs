@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using MediaRiffle.Server.Data;
 using MediaRiffle.Server.Library;
+using MediaRiffle.Server.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -30,7 +31,7 @@ public static class ListEndpoints
             var rows = await Visible(db, catalog, db.UserTags.Where(t => t.UserId == userId))
                 .GroupBy(t => t.Tag).Select(x => new { tag = x.Key, items = x.Count() }).ToListAsync();
             return rows.OrderBy(r => !IsFavorites(r.tag)).ThenBy(r => r.tag, StringComparer.OrdinalIgnoreCase);
-        });
+        }).AllowDevices();
 
         // A whole list gone: everything taken off it (nothing leaves the library), including what's in a library that's
         // switched off, which its page can't show
@@ -84,7 +85,7 @@ public static class ListEndpoints
             // The name as the user wrote it (the lookup ignores case)
             var stored = await mine.Select(t => t.Tag).FirstOrDefaultAsync() ?? name;
             return Results.Ok(new { tag = stored, favorites = IsFavorites(stored), shows, movies, artists, albums, tracks });
-        });
+        }).AllowDevices();
 
         // One show's or movie's place in the user's lists, and setting it (the whole set at once)
         g.MapGet("/items/{kind}/{id:int}/lists", async (string kind, int id, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>

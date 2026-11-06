@@ -2,6 +2,8 @@
 
 ## master
 ### ✨ Features and improvements
+- **Linked devices** can read your lists (`GET /api/lists`, `/api/lists/{tag}`), so a TV or console app can browse
+  and shuffle them. Changing a list still needs a browser.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
