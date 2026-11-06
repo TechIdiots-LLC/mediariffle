@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using MediaRiffle.Server.Data;
+using MediaRiffle.Server.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -26,7 +27,7 @@ public static class HiddenEndpoints
 
         // Everything this user hid, newest first, for Profile → Hidden
         g.MapGet("/hidden", async (ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
-            await ListAsync(db, users.GetUserId(me)!));
+            await ListAsync(db, users.GetUserId(me)!)).AllowDevices();
 
         g.MapPut("/items/{kind}/{id:int}/hidden", async (string kind, int id, HiddenRequest req, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
         {
@@ -48,7 +49,7 @@ public static class HiddenEndpoints
             else if (current.Count == 0) db.Hidden.Add(it.New);
             await db.SaveChangesAsync();
             return Results.Ok(new { hidden = req.Hidden });
-        });
+        }).AllowDevices();
     }
 
     /// <summary>Everything this user hid, newest first, for Profile → Hidden.</summary>

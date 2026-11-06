@@ -4,6 +4,8 @@
 ### ✨ Features and improvements
 - **Linked devices** can read your lists (`GET /api/lists`, `/api/lists/{tag}`), so a TV or console app can browse
   and shuffle them. Changing a list still needs a browser.
+- **Linked devices** can hide and unhide things (`PUT /api/items/{kind}/{id}/hidden`) and see what's hidden
+  (`GET /api/hidden`), so what you hide from the TV or console stays out of Play all and Shuffle everywhere.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

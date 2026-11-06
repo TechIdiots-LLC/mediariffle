@@ -69,6 +69,7 @@ No cookie and no antiforgery token are needed (or used: a request with a token i
 | `GET /api/libraries`, `/api/libraries/{id}/shows`, `/movies`, `/artists` | Browsing |
 | `GET /api/shows/{id}`, `/api/movies/{id}`, `/api/files/{id}`, `/api/tags`, `/api/tags/{tag}`, `/api/queue` | Details, categories |
 | `GET /api/lists`, `/api/lists/{tag}` | The user's lists (changing them needs a browser) |
+| `GET /api/hidden`, `PUT /api/items/{kind}/{id}/hidden` | What the user hid; hiding or unhiding a show, movie, artist, album, episode (`file`) or track |
 | `GET /api/continue`, `DELETE /api/continue/{fileId}` | Continue watching |
 | `GET /api/images/show/{id}`, `/movie/{id}`, `/file/{id}`, `/album/{id}`, `/artist/{id}` | Pictures |
 | `GET /api/artists/{id}`, `/api/albums/{id}`, `/api/tracks/{id}`, `/api/tracks/{id}/audio` | Music |
