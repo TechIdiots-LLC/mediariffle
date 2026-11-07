@@ -601,6 +601,11 @@ export class Player {
       if (this.playingSince && performance.now() - this.playingSince > 4000 && !video.seeking) this.stalls.push(performance.now());
     });
     on('playing', () => { this.status.textContent = ''; this.playingSince ??= performance.now(); this.recovering = false; });
+    // Loading… is also over once there is enough to play, whether or not a new 'playing' comes (a stall that ends paused, a seek)
+    const doneLoading = () => { if (this.status.textContent === 'Loading…' && video.readyState >= 3) this.status.textContent = ''; };
+    on('canplay', doneLoading);
+    on('seeked', doneLoading);
+    on('timeupdate', doneLoading);
     on('ended', () => this.onEnded());
     on('error', () => {
       if (!this.session) return;
