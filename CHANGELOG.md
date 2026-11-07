@@ -17,8 +17,6 @@
   (`GET /api/hidden`), so what you hide from the TV or console stays out of Play all and Shuffle everywhere.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 
 ## 0.13.0
 ### ✨ Features and improvements
@@ -29,15 +27,11 @@
   [docs/devices.md](docs/devices.md).
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 
 ## 0.12.0
 ### ✨ Features and improvements
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - Give copied video timestamps so H.264 in AVI streams ([!35](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/35)) (@acalcutt)
 - Home and subtitles ([!34](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/34)) (@acalcutt)
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
@@ -59,8 +53,6 @@
   that would have to be burned into the video). Choosing subtitles in the player overrides it for that video.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - Add a Requests page: ask for something, admins tick it off ([!32](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/32)) (@acalcutt)
@@ -97,8 +89,6 @@
   stream is open.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - Reliability ([!28](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/28)) (@acalcutt)
@@ -125,8 +115,6 @@
   stays on 1080p. 1440p is now 16 Mbit/s (was 14), so each level has more bits than the one below it.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - Player fixes ([!26](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/26)) (@acalcutt)
@@ -161,8 +149,6 @@
   Admin), matching shows, movies, music and files by what they are rather than by id. See docs/proxmox.md.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - Carry user data ([!24](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/24)) (@acalcutt)
@@ -210,8 +196,6 @@
   limited room goes to what's ahead.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - Av sync ([!20](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/20)) (@acalcutt)
@@ -233,8 +217,6 @@
   Profiles 7 and 8 still play as the HDR10 they carry. `Transcoding:UseLibplacebo` turns it off. See docs/configuration.md.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - Dolby vision ([!18](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/18)) (@acalcutt)
@@ -259,8 +241,6 @@
   it again puts it back.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - Passwords ([!16](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/16)) (@acalcutt)
@@ -288,8 +268,6 @@
   to the page before, or home when MediaRiffle was opened straight onto this one.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - Player: Hide outside full screen too; fits the screen from a phone to 4K ([!14](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/14)) (@acalcutt)
@@ -331,8 +309,6 @@
   `Transcoding:ToneMapHdr` turns it off. See docs/configuration.md.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - 4K transcodes and HDR tone mapping ([!8](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/8)) (@acalcutt)
@@ -377,8 +353,6 @@
   lists everything you hid, to open or unhide in one place.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - Music ([!3](https://gitlab.techidiots.net/techidiots-llc/mediariffle/-/merge_requests/3)) (@acalcutt)
@@ -402,8 +376,6 @@
   changed by another admin. The change reaches the user's open sessions within a minute, without signing in again.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - **A paused player keeps its stream**: it used to be stopped as idle after 90 seconds, so playing again failed. A
@@ -414,8 +386,6 @@
 ### ✨ Features and improvements
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - **The Cast button** is the size of the other buttons and drawn in their colour, instead of a huge black icon that
@@ -435,8 +405,6 @@
 - **Player buttons** in the order play/pause, previous, next, back 10 s, forward 30 s, stop.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 
@@ -455,8 +423,6 @@
   against the published SHA-256, installs it to C:\Tools\ffmpeg, points the settings at it and restarts the service.
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - **Full screen** takes the controls along and centres the video, letterboxed, both ways: the video used to sit at the
@@ -470,8 +436,6 @@
 ### ✨ Features and improvements
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
 - **The installed Windows service works over plain HTTP**: cookies were HTTPS-only outside development, so
@@ -499,7 +463,5 @@
   .tar.gz with install.sh for other distributions (x64, arm64).
 
 ### 🐞 Bug fixes
-- **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
-  or reloaded. It goes away as soon as there is enough to play.
 - **H.264 in AVI no longer sits on Loading**: ffmpeg could not copy the video of such files (no timestamps) and the stream
   never started. They get timestamps made first.
