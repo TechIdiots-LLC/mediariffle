@@ -5,9 +5,14 @@
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.14.1
+### ✨ Features and improvements
+
+### 🐞 Bug fixes
 - **"Loading…" no longer sticks**: after a stall or a seek the text could stay over a playing video until you changed video
   or reloaded. It goes away as soon as there is enough to play.
-- _...Add new stuff here..._
 
 ## 0.14.0
 ### ✨ Features and improvements
