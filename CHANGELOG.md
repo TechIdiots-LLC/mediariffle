@@ -5,6 +5,8 @@
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
+- **Upgrades reach the browser**: the site's pages and scripts are checked for a newer version on each load. A browser
+  could keep using its old scripts after an upgrade (after 0.17.0, the Shows and Movies tabs said "Page not found").
 - _...Add new stuff here..._
 
 ## 0.17.0

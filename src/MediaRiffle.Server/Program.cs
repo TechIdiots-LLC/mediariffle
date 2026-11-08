@@ -215,7 +215,10 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseSecurityHeaders();
 app.UseDefaultFiles();
-app.UseStaticFiles();
+// The site's pages and scripts have no version in their names, so the browser is told to check each time (a quick "not
+// changed" reply when it hasn't). Without this it may keep using scripts from before an upgrade, against the new server.
+var siteFiles = new StaticFileOptions { OnPrepareResponse = c => c.Context.Response.Headers.CacheControl = "no-cache" };
+app.UseStaticFiles(siteFiles);
 // The browser emulator an admin added under Admin → Games: EmulatorJS's data folder, at /emulator/ (nothing private:
 // BIOS files are sent by /api/games/bios to signed-in users only). Checked again on each use, so a new version applies.
 var emulatorTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
@@ -256,7 +259,7 @@ app.MapExternalPlayerEndpoints();
 app.MapPlaybackEndpoints();
 app.MapStreamEndpoints();
 app.MapDeviceEndpoints();
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", siteFiles);
 
 app.Run();
 return 0;
