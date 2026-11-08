@@ -2,12 +2,17 @@
 
 ## master
 ### ✨ Features and improvements
-- **A game's versions** (regions, revisions, bad dumps, hacks, translations) show as one tile, named without the tags
-  and opening the best of them; its page has a Version list, each one's tags in words.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._
+
+## 0.16.0
+### ✨ Features and improvements
+- **A game's versions** (regions, revisions, bad dumps, hacks, translations) show as one tile, named without the tags
+  and opening the best of them; its page has a Version list, each one's tags in words.
+
+### 🐞 Bug fixes
 
 ## 0.15.0
 ### ✨ Features and improvements
