@@ -270,6 +270,29 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.ToTable("Games");
                 });
 
+            modelBuilder.Entity("MediaRiffle.Server.Data.GameControls", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("System")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Layout")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Mapping")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("UserId", "System");
+
+                    b.ToTable("GameControls");
+                });
+
             modelBuilder.Entity("MediaRiffle.Server.Data.HiddenItem", b =>
                 {
                     b.Property<int>("Id")
@@ -939,6 +962,15 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.HasOne("MediaRiffle.Server.Data.MediaLibrary", null)
                         .WithMany()
                         .HasForeignKey("LibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MediaRiffle.Server.Data.GameControls", b =>
+                {
+                    b.HasOne("MediaRiffle.Server.Data.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

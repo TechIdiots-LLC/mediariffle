@@ -41,7 +41,8 @@ public static class GameEndpoints
 
         // With what the play page needs: the emulator core, the file's address, the BIOS, and whether it can start
         // (the emulator and core in place under Admin → Games, and a BIOS the system can't do without)
-        g.MapGet("/games/{id:int}", async (int id, LibraryCatalog catalog, AppDbContext db, LibraryFiles files, Games.EmulatorFiles emulator) =>
+        g.MapGet("/games/{id:int}", async (int id, LibraryCatalog catalog, AppDbContext db, LibraryFiles files, Games.EmulatorFiles emulator,
+            System.Security.Claims.ClaimsPrincipal me, Microsoft.AspNetCore.Identity.UserManager<AppUser> users) =>
         {
             var game = await db.Games.FirstOrDefaultAsync(x => x.Id == id);
             if (game is null || catalog.Get(game.LibraryId) is not { Enabled: true } lib) return Results.NotFound();
@@ -80,6 +81,8 @@ public static class GameEndpoints
                 image = ImageUrl(game),
                 fileUrl = $"/api/games/{game.Id}/file/{Uri.EscapeDataString(sent)}",
                 biosUrl = system is null ? null : EmulatorEndpoints.BiosUrl(emulator, system.Id),
+                // The user's controller mapping for the system, null for EmulatorJS's own
+                controls = await GamePlayEndpoints.ControlsFor(db, users.GetUserId(me)!, game.System),
                 // Why it can't start here, if it can't
                 notReady = system?.Core is null ? $"No emulator for the {system?.Name ?? game.System} runs in a browser."
                     : !installed ? "The emulator isn't set up yet: an admin adds it under Admin → Games."

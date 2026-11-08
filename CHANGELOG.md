@@ -2,6 +2,9 @@
 
 ## master
 ### ✨ Features and improvements
+- **Controller buttons per system**: the game page's Buttons choice maps your controller by letter (Xbox A presses A)
+  or by place (the bottom button presses the console's bottom one) for all of a system's games, and a remap made in
+  the emulator's Controls menu can be kept for them all. Kept per user on the server, so it follows you to every device.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

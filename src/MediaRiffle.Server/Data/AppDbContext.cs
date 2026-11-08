@@ -20,6 +20,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<CategoryItem> CategoryItems => Set<CategoryItem>();
     public DbSet<LinkedDevice> LinkedDevices => Set<LinkedDevice>();
     public DbSet<Game> Games => Set<Game>();
+    public DbSet<GameControls> GameControls => Set<GameControls>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -67,6 +68,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         b.Entity<Game>().HasIndex(g => new { g.LibraryId, g.RelativePath }).IsUnique();
         b.Entity<Game>().HasIndex(g => new { g.System, g.Title });
         b.Entity<Game>().Property(g => g.Title).UseCollation("NOCASE");
+        b.Entity<GameControls>().HasKey(c => new { c.UserId, c.System });
+        b.Entity<GameControls>().HasOne<AppUser>().WithMany().HasForeignKey(c => c.UserId).OnDelete(DeleteBehavior.Cascade);
 
         b.Entity<PlaybackProgress>().HasKey(p => new { p.UserId, p.MediaFileId });
         b.Entity<PlaybackProgress>().HasIndex(p => new { p.UserId, p.UpdatedUtc });

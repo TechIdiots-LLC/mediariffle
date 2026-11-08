@@ -249,6 +249,7 @@ app.MapCategoryEndpoints();
 app.MapMusicEndpoints();
 app.MapGameEndpoints();
 app.MapEmulatorEndpoints();
+app.MapGamePlayEndpoints();
 app.MapMusicCastEndpoints();
 app.MapExternalPlayerEndpoints();
 app.MapPlaybackEndpoints();

@@ -99,6 +99,11 @@ quicker. Press **Start** (browsers want a tap or click before games may make sou
 - **Controllers**: Xbox, PlayStation and most others, by USB or Bluetooth, in Chrome, Edge, Firefox and Safari
   (Windows, Android, iPhone and iPad). Press a button once on the game page so the browser shows it to the game. The
   emulator's menu (bottom bar) has the controls to remap, save states, full screen and the core's settings.
+- **Buttons**, at the top of the game page, chooses how your controller's face buttons meet the console's, for all of
+  that system's games: **by letter** (an Xbox A presses A, as EmulatorJS does by itself; on a Nintendo pad A is the
+  right button, so the places differ) or **by place** (the bottom button presses the console's bottom one: B on
+  Nintendo pads, Cross on a PlayStation). Remap in the emulator's Controls menu and the page offers to use that for
+  all the system's games too. It's kept on the server, per user, so it follows you to every device.
 - **Touch**: on a phone without a controller, buttons are drawn over the game.
 - **iPhone**: Safari can't make the game fill the screen; Share → Add to Home Screen opens MediaRiffle without
   Safari's bars. Large disc games (PlayStation, PSP) can be more than Safari lets one page hold.

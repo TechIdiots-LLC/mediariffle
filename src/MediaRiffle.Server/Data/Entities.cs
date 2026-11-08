@@ -233,6 +233,24 @@ public sealed class Game
 }
 
 /// <summary>
+/// How a user's controller is mapped to one system's buttons in the emulator: the same letters as the console's
+/// (EmulatorJS's own mapping: an Xbox A presses A), the same places (the bottom button presses the console's bottom
+/// one), or their own mapping from the emulator's Controls menu. Kept here, so it follows them to every game of the
+/// system and every device.
+/// </summary>
+public sealed class GameControls
+{
+    public string UserId { get; set; } = string.Empty;
+    /// <summary>Library.GameSystems' id.</summary>
+    public string System { get; set; } = string.Empty;
+    /// <summary>"letter", "position" or "custom".</summary>
+    public string Layout { get; set; } = "letter";
+    /// <summary>For "custom": EmulatorJS's controls (players 0-3, its button numbers), as JSON.</summary>
+    public string? Mapping { get; set; }
+    public DateTime UpdatedUtc { get; set; }
+}
+
+/// <summary>
 /// A user's own tag on a show, a movie, an artist, an album, a single track or a game (exactly one of the ids):
 /// everything a user tagged the same way is one of their lists, as the admins' library tags are everyone's categories;
 /// a list of tracks is a playlist. Favorites is the list named <see cref="Favorites"/>. Goes with what it tags, and with

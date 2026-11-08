@@ -3,6 +3,7 @@
 // that the rest of the site doesn't have. Controllers work through the browser's Gamepad API: press a button once.
 
 import { api } from './api.js';
+import { setUpControls } from './game-controls.js';
 
 const id = Number(location.hash.slice(1));
 const back = document.getElementById('back');
@@ -57,6 +58,7 @@ async function start() {
         if (!emulator.allSettings) return;
         changed(option, value);
       };
+      setUpControls(emulator, game);
     },
   });
   if (game.biosUrl) window.EJS_biosUrl = game.biosUrl;

@@ -235,7 +235,13 @@ button.chip-x:hover { color: var(--danger); }
 /* The game page (game.html): the emulator fills the screen under a slim bar */
 body.game-body { background: #000; }
 .game-top { padding: 6px 12px; }
-.game-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.game-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.game-layout { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.9em; white-space: nowrap; }
+.game-layout[hidden], .game-note[hidden] { display: none; }
+.game-layout select { max-width: 16em; }
+.game-note { display: flex; align-items: center; gap: 8px; font-size: 0.9em; white-space: nowrap; }
+.game-note button { padding: 4px 10px; }
+@media (max-width: 640px) { .game-layout { font-size: 0.8em; } .game-layout select { max-width: 9em; } .game-note { white-space: normal; } }
 .game-main { padding: 0; max-width: none; }
 #game { width: 100%; height: calc(100vh - 50px); height: calc(100dvh - 50px); }
 .game-message { color: #ddd; padding: 24px 16px; max-width: 640px; margin: 0 auto; }
