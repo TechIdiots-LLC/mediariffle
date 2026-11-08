@@ -57,7 +57,8 @@ Put your settings in file 2. A complete example:
 | `TrustedProxies` | IP addresses of the reverse proxies in front (HAProxy, Apache, nginx). Only these may set `X-Forwarded-For`/`-Proto`. |
 | `ForwardLimit` | How many proxies are in the chain: 1 for HAProxy alone, 2 for HAProxy → Apache. |
 | `Libraries` | Only used on the **first start**, to add the first libraries. After that they're managed under **Admin → Libraries** (see below), and this setting is ignored. |
-| `Libraries[].Kind` | `Shows` (`Show/Season 01/Show - S01E01 - Title.mkv`), `Movies` (`Movie (1999).mkv`, `Movie/cd1.avi`) or `Music` (`Artist/Album/01 - Title.mp3`, or by tags; see below). |
+| `Libraries[].Kind` | `Shows` (`Show/Season 01/Show - S01E01 - Title.mkv`), `Movies` (`Movie (1999).mkv`, `Movie/cd1.avi`), `Music` (`Artist/Album/01 - Title.mp3`, or by tags; see below) or `Games` (ROMs and disc images, see [games](games.md)). |
+| `Games.BoxArt` | Box art for games without a picture beside them, from thumbnails.libretro.com, fetched once and kept in `gameart` under `DataDirectory` ([games](games.md)). `true` by default; `false` for a server that shouldn't reach it. |
 | `Libraries[].Path` | The folder: a local path, a mount point (`/mnt/media/Shows`), or on Windows a UNC path (`\\files.example.lan\Media\Shows`). Only files under it are read. |
 | `Google.ClientId`, `Google.ClientSecret` | Turn on **Sign in with Google** (see below). Empty: off. |
 | `AdminMfa.Required` | Admin asks for two-step verification (a passkey or an authenticator code), see below. Set `false` only to get back in when the only admin has lost every way to verify. |

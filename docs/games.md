@@ -21,8 +21,20 @@ How a file's system is found (the same rules as 360 Riffle, so one games folder 
 - A zip next to the same game unpacked (`Game.zip` and `Game.nds`) is listed once.
 - A `.cue` takes its tracks along, an `.m3u` its discs: they're played as one game, sent to the browser zipped.
 
-Box art: a picture named like the game beside it, or in a `boxart`, `covers`, `images`, `Named_Boxarts` (libretro
-thumbnails) or `media/images` folder there (`.png`, `.jpg`, `.webp`).
+### Box art
+
+A picture named like the game beside it wins: in its folder, or in a `boxart`, `covers`, `images`, `Named_Boxarts`
+(libretro thumbnails) or `media/images` folder there (`.png`, `.jpg`, `.webp`).
+
+For the rest, the server looks the game up in the [libretro-thumbnails](https://github.com/libretro-thumbnails)
+project (thumbnails.libretro.com). Names are compared on their letters and digits, with tags in brackets, DS sets'
+numbers and "The" left aside, so GoodTools names (`7th Saga, The (U) [!].smc`) find No-Intro ones (`7th Saga, The
+(USA)`); the game's own region is preferred, then USA, World, Europe, Japan. A picture is fetched once, made a JPEG of
+at most 512 pixels (about 65 KB) and kept in `gameart` under the data folder for good, so the art of the games you
+have stays if the service ever goes. A background pass works through new games after each scan (a few a second);
+tiles shown before their turn are looked up right away. Each system's list of names is read again after 30 days, and
+the games that had no match then get another look. Admin → Games shows how many were found. Arcade games aren't
+looked up (their files are named by romset, the art by title). `Games.BoxArt: false` turns this off.
 
 ## 2. Add the emulator
 

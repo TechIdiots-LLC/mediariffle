@@ -229,6 +229,12 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.Property<DateTime>("AddedUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("ArtCheckedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ArtName")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ImagePath")
                         .HasColumnType("TEXT");
 

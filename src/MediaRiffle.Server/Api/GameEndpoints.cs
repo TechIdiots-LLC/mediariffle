@@ -79,11 +79,27 @@ public static class GameEndpoints
             SendGame(id, db, files, ctx));
         g.MapMethods("/games/{id:int}/file", getOrHead, (int id, AppDbContext db, LibraryFiles files, HttpContext ctx) => SendGame(id, db, files, ctx));
 
-        g.MapGet("/images/game/{id:int}", async (int id, AppDbContext db, LibraryFiles files, HttpContext ctx) =>
+        // A picture beside the game first, then its box art kept from libretro-thumbnails, looked up now when the
+        // background pass hasn't got to it yet (so tiles fill in as they're shown)
+        g.MapGet("/images/game/{id:int}", async (int id, AppDbContext db, LibraryFiles files, Games.GameArt art, HttpContext ctx) =>
         {
             var game = await db.Games.FirstOrDefaultAsync(x => x.Id == id);
-            var path = game?.ImagePath is null ? null : files.Resolve(game.LibraryId, game.ImagePath);
-            if (path is null || !File.Exists(path)) return Results.NotFound();
+            if (game is null) return Results.NotFound();
+            var path = game.ImagePath is null ? null : files.Resolve(game.LibraryId, game.ImagePath);
+            if (path is null || !File.Exists(path))
+            {
+                path = game.ArtName is null ? null : art.CachedFile(game.System, game.ArtName);
+                if (path is null && (game.ArtName is not null || Games.GameArt.MayHaveArt(game.System, game.ArtCheckedUtc)))
+                {
+                    try { path = await art.LookUpAsync(id, ctx.RequestAborted).WaitAsync(TimeSpan.FromSeconds(20), ctx.RequestAborted); }
+                    catch (TimeoutException) { }
+                }
+            }
+            if (path is null)
+            {
+                ctx.Response.Headers.CacheControl = "no-store";
+                return Results.NotFound();
+            }
             ctx.Response.Headers.CacheControl = "private, max-age=86400";
             var type = Path.GetExtension(path).ToLowerInvariant() switch { ".png" => "image/png", ".webp" => "image/webp", _ => "image/jpeg" };
             return Results.File(path, type);
@@ -127,7 +143,7 @@ public static class GameEndpoints
     /// <summary>Games as tiles, by system (in the table's order) and then name.</summary>
     public static async Task<List<object>> Tiles(IQueryable<Game> games)
     {
-        var rows = await games.Select(x => new { x.Id, x.Title, x.System, x.ImagePath }).ToListAsync();
+        var rows = await games.Select(x => new { x.Id, x.Title, x.System, x.ImagePath, x.ArtName, x.ArtCheckedUtc }).ToListAsync();
         var order = GameSystems.All.Select((s, i) => (s.Id, i)).ToDictionary(x => x.Id, x => x.i);
         return rows.OrderBy(x => order.GetValueOrDefault(x.System, int.MaxValue)).ThenBy(x => x.Title, StringComparer.OrdinalIgnoreCase)
             .Select(x => (object)new
@@ -135,11 +151,17 @@ public static class GameEndpoints
                 x.Id, x.Title, system = x.System,
                 systemName = GameSystems.Get(x.System)?.Name ?? x.System,
                 playable = GameSystems.Get(x.System)?.Core is not null,
-                image = x.ImagePath is null ? null : $"/api/images/game/{x.Id}",
+                image = HasPicture(x.ImagePath, x.ArtName, x.System, x.ArtCheckedUtc) ? $"/api/images/game/{x.Id}" : null,
             }).ToList();
     }
 
-    private static string? ImageUrl(Game game) => game.ImagePath is null ? null : $"/api/images/game/{game.Id}";
+    private static string? ImageUrl(Game game) =>
+        HasPicture(game.ImagePath, game.ArtName, game.System, game.ArtCheckedUtc) ? $"/api/images/game/{game.Id}" : null;
+
+    // One beside it, box art kept, or box art not looked for yet (a game known to have none gets no address, so its
+    // tile asks for nothing)
+    private static bool HasPicture(string? imagePath, string? artName, string system, DateTime? artChecked) =>
+        imagePath is not null || artName is not null || Games.GameArt.MayHaveArt(system, artChecked);
 
     /// <summary>The files a disc game's .cue or .m3u names (an .m3u's discs with their own tracks), in its folder.</summary>
     private static List<string> GameParts(string listPath, int depth = 0)

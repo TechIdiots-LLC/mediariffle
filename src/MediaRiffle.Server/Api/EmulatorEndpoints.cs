@@ -21,14 +21,17 @@ public static class EmulatorEndpoints
         var admin = app.MapGroup("/api/admin/emulator").RequireAuthorization("Admin").AddEndpointFilter(Mfa.RequireForAdmin);
 
         // Each core with the systems it plays and how many games there are for them, and each system's BIOS files
-        admin.MapGet("", async (EmulatorFiles emulator, LibraryCatalog catalog, AppDbContext db) =>
+        admin.MapGet("", async (EmulatorFiles emulator, GameArt art, LibraryCatalog catalog, AppDbContext db) =>
         {
             var enabled = catalog.Enabled.Select(l => l.Id).ToHashSet();
             var counts = await db.Games.Where(x => enabled.Contains(x.LibraryId)).GroupBy(x => x.System)
                 .Select(x => new { x.Key, n = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.n);
             var have = emulator.Cores();
+            var (found, notFound, waiting) = await art.CountsAsync(db);
             return new
             {
+                // Box art from libretro-thumbnails (games with a picture beside them aren't counted)
+                art = new { enabled = GameArt.Enabled, found, notFound, waiting, art.Progress, art.LastResult },
                 version = EmulatorFiles.Version,
                 installed = emulator.Installed,
                 progress = emulator.Progress,

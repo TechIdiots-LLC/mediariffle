@@ -15,6 +15,10 @@
   Bluetooth, on Windows, Android and iOS) or touch. MediaRiffle doesn't include the emulator: Admin → Games downloads
   EmulatorJS 4.2.3 and the cores for your systems from npm (checked against the registry's hashes), or takes npm's
   .tgz files as uploads, and keeps the BIOS files some systems need. See [docs/games.md](docs/games.md).
+- **Box art for games** without a picture beside them, from thumbnails.libretro.com: matched by name (GoodTools names
+  find No-Intro ones, the game's region preferred), fetched once and kept on the server, so the art of your games stays
+  if the service goes. Tiles fill in as they're shown, and the rest in the background after each scan.
+  `Games.BoxArt: false` turns it off.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

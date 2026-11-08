@@ -46,6 +46,7 @@ Directory.CreateDirectory(options.ResolvedDataDirectory);
 Directory.CreateDirectory(options.ImageDirectory);
 Directory.CreateDirectory(options.KeysDirectory);
 Directory.CreateDirectory(Path.Combine(options.EmulatorDirectory, "data"));
+MediaRiffle.Server.Games.GameArt.Enabled = options.Games.BoxArt;
 
 builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlite($"Data Source={options.DatabasePath}"));
 
@@ -182,6 +183,8 @@ builder.Services.AddHostedService<Watchdog>();
 builder.Services.AddSingleton<LibraryCatalog>();
 builder.Services.AddSingleton<LibraryFiles>();
 builder.Services.AddSingleton<MediaRiffle.Server.Games.EmulatorFiles>();
+builder.Services.AddSingleton<MediaRiffle.Server.Games.GameArt>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MediaRiffle.Server.Games.GameArt>());
 builder.Services.AddSingleton(_ => new DevicePairings(TimeProvider.System));
 
 var app = builder.Build();

@@ -97,6 +97,12 @@ export function adminGamesSection() {
         h('summary', {}, 'No internet on this server? Upload the packages instead'),
         h('p', { class: 'muted' }, `On another computer, download @emulatorjs/emulatorjs@${s.version} and the @emulatorjs/core-… packages you need (npm pack, or from npmjs.com), then add the .tgz files here.`),
         h('div', { class: 'row' }, tgz, note)),
+      h('h3', {}, 'Box art'),
+      h('p', { class: s.art.enabled ? '' : 'muted' }, s.art.enabled
+        ? [`From thumbnails.libretro.com, kept on this server: ${s.art.found} found, ${s.art.notFound} with none to be found`,
+           s.art.waiting ? `, ${s.art.waiting} still to look up` : '', '. ',
+           h('span', { class: 'muted' }, s.art.progress ?? s.art.lastResult ?? '')]
+        : 'Off (MediaRiffle:Games:BoxArt). Pictures beside the games are still shown.'),
       h('h3', {}, 'BIOS files'),
       h('p', { class: 'muted' }, 'Some systems need the console\'s own BIOS, which only you can provide. They\'re sent only to signed-in users, to play.'),
       h('table', {},

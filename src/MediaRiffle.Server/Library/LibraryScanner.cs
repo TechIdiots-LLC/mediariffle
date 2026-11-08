@@ -46,6 +46,9 @@ public sealed partial class LibraryScanner : BackgroundService
     /// <summary>Asks for a scan as soon as the current one (if any) is done.</summary>
     public void RequestScan() => _requests.Writer.TryWrite(true);
 
+    /// <summary>Raised after each scan (Games.GameArt looks for the new games' box art).</summary>
+    public event EventHandler? Scanned;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!await ffmpeg.CheckAsync())
@@ -73,6 +76,7 @@ public sealed partial class LibraryScanner : BackgroundService
                 IsScanning = false;
                 Progress = null;
                 LastScanUtc = DateTime.UtcNow;
+                Scanned?.Invoke(this, EventArgs.Empty);
             }
         }
     }

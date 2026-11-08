@@ -217,6 +217,9 @@ button.chip-x:hover { color: var(--danger); }
 .art.game img { position: relative; z-index: 1; width: 100%; height: 100%; object-fit: contain; display: block; }
 .art.game .system { position: absolute; inset: 0; display: grid; place-items: center; padding: 8px; text-align: center;
   font-weight: 600; font-size: 18px; color: var(--muted); }
+/* With box art, no grey square around it (boxes are wide, tall or square by system) */
+.art.game:has(img) { background: transparent; }
+.art.game:has(img) .system { display: none; }
 /* A system no browser emulator plays: listed, dimmed */
 .chip.off { opacity: .6; }
 .game-page { display: grid; grid-template-columns: minmax(160px, 280px) 1fr; gap: 24px; align-items: start; }

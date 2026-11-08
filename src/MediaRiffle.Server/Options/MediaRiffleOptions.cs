@@ -99,11 +99,22 @@ public sealed class UpdatesOptions
     public int CheckHours { get; set; } = 12;
 }
 
+public sealed class GamesOptions
+{
+    /// <summary>
+    /// Box art for games without a picture beside them, from the libretro-thumbnails project
+    /// (thumbnails.libretro.com), matched by name and kept in the data folder (gameart/) once fetched.
+    /// </summary>
+    public bool BoxArt { get; set; } = true;
+}
+
 public sealed class MediaRiffleOptions
 {
     public const string Section = "MediaRiffle";
 
     public UpdatesOptions Updates { get; set; } = new();
+
+    public GamesOptions Games { get; set; } = new();
 
     public AdminMfaOptions AdminMfa { get; set; } = new();
 
@@ -155,6 +166,8 @@ public sealed class MediaRiffleOptions
     /// <summary>Music converted for browsers that can't play the file itself (kept, oldest dropped past a size).</summary>
     public string AudioDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "audio");
     public string KeysDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "keys");
+    /// <summary>Box art fetched for games (libretro-thumbnails), kept for good: by system, then the name it was found under.</summary>
+    public string GameArtDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "gameart");
     /// <summary>The browser emulator (EmulatorJS and its cores) and the BIOS files an admin added: never shipped with MediaRiffle.</summary>
     public string EmulatorDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "emulatorjs");
     public string DatabasePath => System.IO.Path.Combine(ResolvedDataDirectory, "mediariffle.db");

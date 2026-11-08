@@ -220,6 +220,12 @@ public sealed class Game
     public string Title { get; set; } = string.Empty;
     /// <summary>A picture found beside it (box art), relative to the library; null when there's none.</summary>
     public string? ImagePath { get; set; }
+    /// <summary>
+    /// The libretro-thumbnails name its box art was found under (kept in the data folder's gameart/, see
+    /// Games.GameArt); null when none was found, or it hasn't been looked for (<see cref="ArtCheckedUtc"/> null).
+    /// </summary>
+    public string? ArtName { get; set; }
+    public DateTime? ArtCheckedUtc { get; set; }
     /// <summary>With a disc game's tracks or discs.</summary>
     public long Size { get; set; }
     public DateTime ModifiedUtc { get; set; }
