@@ -27,19 +27,20 @@ async function loadState() {
 }
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
-// The media is split into top tabs (those the server has libraries for), each with its own lists, favorites,
-// categories and libraries. "#/" opens the one last used on this device.
+// The media is split into top tabs, each with its own lists, favorites, categories and libraries. A tab shows only
+// while an enabled library of its kind is there. "#/" opens the one last used on this device.
 
 const TAB_NAMES = { videos: 'Videos', music: 'Music', games: 'Games' };
 const LIBRARY_TAB = { Shows: 'videos', Movies: 'videos', Music: 'music', Games: 'games' };
 const TAB_KEY = 'mediariffle.tab';
 let currentTab = null;   // the tab marked in the top bar
 
+// The tab to open, or null when there are no libraries yet
 function startTab() {
-  const tabs = state.tabs ?? ['videos'];
+  const tabs = state.tabs ?? [];
   let saved = null;
   try { saved = localStorage.getItem(TAB_KEY); } catch { }
-  return tabs.includes(saved) ? saved : tabs[0];
+  return tabs.includes(saved) ? saved : tabs[0] ?? null;
 }
 
 // The tab a page belongs to: '' for one outside them all (Admin, Profile), null for one that could be either (a
@@ -65,7 +66,7 @@ const inTab = (what, tab) => tab ? { ...what, tab } : what;
 function renderNav() {
   if (!state.user) { mount(nav); return; }
   mount(nav,
-    (state.tabs ?? ['videos']).map(t => h('a', { class: 'tab', href: `#/${t}`, 'data-tab': t }, TAB_NAMES[t] ?? t)),
+    (state.tabs ?? []).map(t => h('a', { class: 'tab', href: `#/${t}`, 'data-tab': t }, TAB_NAMES[t] ?? t)),
     h('a', { class: 'tab', href: '#/requests', 'data-tab': 'requests' }, 'Requests'),
     h('span', { class: 'spacer' }),
     state.user.isAdmin ? h('a', { href: '#/admin' }, 'Admin') : null,
@@ -715,11 +716,22 @@ function filterBox(onChange) {
 }
 
 // "#/" (the name in the top bar, the home-screen app's start): the tab last used here
-function homeView() { forward(`#/${startTab()}`); }
+// With no libraries yet there's no tab: a word on where they come from instead
+function homeView() {
+  const tab = startTab();
+  if (tab) { forward(`#/${tab}`); return; }
+  mount(view, h('div', { class: 'card empty-home' },
+    h('h1', {}, 'Nothing here yet'),
+    state.user.isAdmin
+      ? h('p', {}, 'Add a library of shows, movies, music or games under ', h('a', { href: '#/admin' }, 'Admin'), ' to fill MediaRiffle.')
+      : h('p', { class: 'muted' }, 'There are no libraries yet. When an admin adds some, they show here.')));
+}
 
 // A top tab: the user's lists, favorites and the categories with something of this tab's in them, its libraries,
 // (Videos) Continue watching and (Games) the systems, each in the order the user set for this tab
 async function tabView(tab) {
+  // A tab whose libraries are gone or switched off (an old link, a bookmark): the start page instead
+  if (!(state.tabs ?? []).includes(tab)) { forward('#/'); return; }
   try { localStorage.setItem(TAB_KEY, tab); } catch { }
   const music = tab === 'music', games = tab === 'games';
   const [allLibraries, recent, tags, lists, favorites, systems] = await Promise.all([api('/api/libraries'),

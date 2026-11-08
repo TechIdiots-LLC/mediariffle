@@ -29,11 +29,10 @@ public static class Tabs
         _ => null,
     };
 
-    /// <summary>The tabs with a library behind them, in order; Videos alone when there are no libraries yet.</summary>
+    /// <summary>The tabs with an enabled library behind them, in order (none while there are no libraries).</summary>
     public static IReadOnlyList<string> For(IEnumerable<LibraryInfo> libraries)
     {
-        var have = libraries.Select(l => Of(l.Kind)).ToHashSet();
-        var tabs = new[] { Videos, Music, Games }.Where(have.Contains).ToList();
-        return tabs.Count > 0 ? tabs : [Videos];
+        var have = libraries.Where(l => l.Enabled).Select(l => Of(l.Kind)).ToHashSet();
+        return new[] { Videos, Music, Games }.Where(have.Contains).ToList();
     }
 }
