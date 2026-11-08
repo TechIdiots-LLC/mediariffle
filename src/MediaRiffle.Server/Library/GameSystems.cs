@@ -17,7 +17,9 @@ public sealed record GameSystem(
     string[] Folders,
     string? Core,
     // A BIOS file the core can't do without (null: none, or it has its own)
-    string? Bios = null);
+    string? Bios = null,
+    // One it does better with but can do without (its own stand-in), named as the core looks for it
+    string? OptionalBios = null);
 
 /// <summary>
 /// Which system a file in a Games library is for, from its extension and the folders it's in: the same rules as 360
@@ -36,11 +38,11 @@ public static partial class GameSystems
         new("sega32x", "32X", [".32x"], [".zip", ".7z"], ["32x", "sega32x"], "picodrive"),
         new("gb", "Game Boy", [".gb"], [".zip", ".7z", ".dmg"], ["gb", "gameboy"], "gambatte"),
         new("gbc", "Game Boy Color", [".gbc"], [".zip", ".7z"], ["gbc", "gameboycolor"], "gambatte"),
-        new("gba", "Game Boy Advance", [".gba"], [".zip", ".7z"], ["gba", "gameboyadvance"], "mgba"),
+        new("gba", "Game Boy Advance", [".gba"], [".zip", ".7z"], ["gba", "gameboyadvance"], "mgba", OptionalBios: "gba_bios.bin"),
         new("n64", "Nintendo 64", [".z64", ".n64", ".v64"], [".zip", ".7z"], ["n64", "nintendo64"], "mupen64plus_next"),
-        new("nds", "Nintendo DS", [".nds"], [".zip", ".7z"], ["ds", "nds", "nintendods"], "melonds"),
+        new("nds", "Nintendo DS", [".nds"], [".zip", ".7z"], ["ds", "nds", "nintendods"], "melonds", OptionalBios: "bios7.bin, bios9.bin, firmware.bin"),
         // .pbp is a PS1 game converted for the PSP, or a PSP program's EBOOT: its folder says which
-        new("psx", "PlayStation", [".cbn"], [".cue", ".bin", ".img", ".iso", ".chd", ".m3u", ".mdf", ".pbp", ".zip", ".7z"], ["psx", "ps1", "psone", "playstation", "playstation1", "sonyplaystation"], "pcsx_rearmed"),
+        new("psx", "PlayStation", [".cbn"], [".cue", ".bin", ".img", ".iso", ".chd", ".m3u", ".mdf", ".pbp", ".zip", ".7z"], ["psx", "ps1", "psone", "playstation", "playstation1", "sonyplaystation"], "pcsx_rearmed", OptionalBios: "scph5501.bin"),
         new("psp", "PSP", [".cso"], [".iso", ".pbp", ".zip", ".7z"], ["psp", "playstationportable"], "ppsspp"),
         new("pce", "PC Engine", [".pce"], [".zip", ".7z"], ["pce", "pcengine", "turbografx", "turbografx16", "tg16"], "mednafen_pce"),
         new("pcecd", "PC Engine CD", [], [".cue", ".chd", ".m3u"], ["pcecd", "pcenginecd", "turbografxcd", "tgcd"], "mednafen_pce", "syscard3.pce"),
@@ -54,7 +56,7 @@ public static partial class GameSystems
         new("jaguar", "Atari Jaguar", [".j64", ".jag"], [".zip", ".7z"], ["jaguar", "atarijaguar"], "virtualjaguar"),
         // .col is also other programs' data (GTA's collision files), so only in a ColecoVision folder
         new("coleco", "ColecoVision", [], [".col", ".zip", ".7z"], ["coleco", "colecovision"], "gearcoleco", "colecovision.rom"),
-        new("segaSaturn", "Saturn", [], [".cue", ".chd", ".iso", ".m3u"], ["saturn", "segasaturn"], "yabause"),
+        new("segaSaturn", "Saturn", [], [".cue", ".chd", ".iso", ".m3u"], ["saturn", "segasaturn"], "yabause", OptionalBios: "saturn_bios.bin"),
         new("arcade", "Arcade", [], [".zip", ".7z"], ["arcade", "fbneo", "finalburnneo", "mame", "neogeo", "cps1", "cps2"], "fbneo"),
 
         // No browser emulator for these: listed, but not playable here

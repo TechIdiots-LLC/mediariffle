@@ -27,6 +27,8 @@ ffserver was removed from FFmpeg in 2018 and the player used Flash.
 - Pictures: `poster.jpg`/`folder.jpg` beside the media when present, otherwise a frame from the video
 - Continue watching, next episode
 - Chromecast (Default Media Receiver)
+- Games: ROM folders listed by system and played in the browser with a controller or touch, by EmulatorJS, which an
+  admin adds (it isn't shipped); see [docs/games.md](docs/games.md)
 - TV and console apps sign in with a code (Profile → Linked devices); see [docs/devices.md](docs/devices.md)
 - Accounts by invitation only; admins and viewers
 
@@ -35,7 +37,8 @@ ffserver was removed from FFmpeg in 2018 and the player used Flash.
 - No open sign-up: the first visit creates the admin, everyone else joins through a one-time invite link
 - Passwords hashed by ASP.NET Core Identity; account lockout after 5 failures; sign-in rate limited per address
 - Cookies `HttpOnly`, `Secure`, `SameSite=Strict`, plus an antiforgery token on every change
-- Strict Content Security Policy, no inline script; nothing is ever built from HTML strings
+- Strict Content Security Policy, no inline script; nothing is ever built from HTML strings. The game page alone also
+  lets the emulator run WebAssembly and evaluate code, still only from this site ([docs/games.md](docs/games.md))
 - ffmpeg is started with an argument list, never a shell, so a file name can't be read as a command
 - Files are only read from inside the configured library folders
 - Streams are reached through an unguessable, short-lived session URL (that's what lets a Chromecast play them)

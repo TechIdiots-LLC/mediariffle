@@ -6,7 +6,7 @@ import { music, nowPlayingView, trackRows } from './music.js';
 import { avatarEl, BUILT_IN, photoToJpeg } from './avatar.js';
 import { adminGate, mfaSettings, askCheck } from './mfa.js';
 import { requestsView } from './requests.js';
-import { gameTiles, gameView, systemView } from './games.js';
+import { gameTiles, gameView, systemView, adminGamesSection } from './games.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
@@ -1357,7 +1357,7 @@ async function adminView() {
     h('h2', {}, 'Updates'),
     updatesSection(sessions.length),
     h('h2', {}, 'Libraries'),
-    h('p', { class: 'muted' }, 'Folders of shows or movies, on this server or a file share. Tags (comma-separated, as in Media Library Manager) are the categories everyone can browse and shuffle.'),
+    h('p', { class: 'muted' }, 'Folders of shows, movies, music or games, on this server or a file share. Tags (comma-separated, as in Media Library Manager) are the categories everyone can browse and shuffle.'),
     libraries.length ? h('table', {},
       h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Kind'), h('th', {}, 'Folder'), h('th', {}, 'Tags'), h('th', {}, 'Files'), h('th', {}, 'Status'), h('th', {})),
       libraries.map(l => {
@@ -1377,6 +1377,7 @@ async function adminView() {
       : h('p', {}, 'No libraries yet.'),
     h('div', { class: 'row' }, h('button', { class: 'secondary', onclick: async () => { await api('/api/admin/scan', { method: 'POST' }); scanMsg.textContent = 'Scan requested…'; } }, 'Scan now'), scanMsg),
     h('div', { id: 'library-form' }, h('button', { onclick: () => libraryForm(null) }, 'Add a library')),
+    libraries.some(l => l.kind === 'Games') ? [h('h2', {}, 'Games'), adminGamesSection()] : null,
     h('h2', {}, 'Invite someone'),
     h('div', { class: 'card' },
       h('div', { class: 'row' }, h('label', { class: 'row' }, asAdmin, 'Admin'), h('label', { class: 'row' }, 'Valid for', days, 'days'),

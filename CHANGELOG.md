@@ -10,6 +10,10 @@
   categories like everything else. The system comes from the extension, or from a folder named for it (the same rules
   as 360 Riffle). BIOS, emulator and program folders are skipped, a zip beside the same game unpacked is listed once,
   and a disc game's .cue or .m3u brings its tracks and discs with it.
+- **Play games in the browser**: a game's page has Play, which runs it with EmulatorJS, with a controller (USB or
+  Bluetooth, on Windows, Android and iOS) or touch. MediaRiffle doesn't include the emulator: Admin → Games downloads
+  EmulatorJS 4.2.3 and the cores for your systems from npm (checked against the registry's hashes), or takes npm's
+  .tgz files as uploads, and keeps the BIOS files some systems need. See [docs/games.md](docs/games.md).
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

@@ -45,6 +45,7 @@ var options = builder.Configuration.GetSection(MediaRiffleOptions.Section).Get<M
 Directory.CreateDirectory(options.ResolvedDataDirectory);
 Directory.CreateDirectory(options.ImageDirectory);
 Directory.CreateDirectory(options.KeysDirectory);
+Directory.CreateDirectory(Path.Combine(options.EmulatorDirectory, "data"));
 
 builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlite($"Data Source={options.DatabasePath}"));
 
@@ -180,6 +181,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<UpdateService>());
 builder.Services.AddHostedService<Watchdog>();
 builder.Services.AddSingleton<LibraryCatalog>();
 builder.Services.AddSingleton<LibraryFiles>();
+builder.Services.AddSingleton<MediaRiffle.Server.Games.EmulatorFiles>();
 builder.Services.AddSingleton(_ => new DevicePairings(TimeProvider.System));
 
 var app = builder.Build();
@@ -210,6 +212,18 @@ if (!app.Environment.IsDevelopment())
 app.UseSecurityHeaders();
 app.UseDefaultFiles();
 app.UseStaticFiles();
+// The browser emulator an admin added under Admin → Games: EmulatorJS's data folder, at /emulator/ (nothing private:
+// BIOS files are sent by /api/games/bios to signed-in users only). Checked again on each use, so a new version applies.
+var emulatorTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+emulatorTypes.Mappings[".data"] = "application/octet-stream";
+emulatorTypes.Mappings[".wasm"] = "application/wasm";
+app.UseStaticFiles(new StaticFileOptions
+{
+    RequestPath = "/emulator",
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(Path.Combine(options.EmulatorDirectory, "data")),
+    ContentTypeProvider = emulatorTypes,
+    OnPrepareResponse = c => c.Context.Response.Headers.CacheControl = "no-cache",
+});
 app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
@@ -231,6 +245,7 @@ app.MapRequestEndpoints();
 app.MapCategoryEndpoints();
 app.MapMusicEndpoints();
 app.MapGameEndpoints();
+app.MapEmulatorEndpoints();
 app.MapMusicCastEndpoints();
 app.MapExternalPlayerEndpoints();
 app.MapPlaybackEndpoints();

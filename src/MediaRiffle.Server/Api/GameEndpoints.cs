@@ -37,51 +37,47 @@ public static class GameEndpoints
             catalog.Get(id) is not { Enabled: true, Kind: Options.LibraryKind.Games } ? Results.NotFound()
                 : Results.Ok(await Tiles(db.Games.Where(x => x.LibraryId == id))));
 
-        g.MapGet("/games/{id:int}", async (int id, LibraryCatalog catalog, AppDbContext db) =>
+        // With what the play page needs: the emulator core, the file's address, the BIOS, and whether it can start
+        // (the emulator and core in place under Admin → Games, and a BIOS the system can't do without)
+        g.MapGet("/games/{id:int}", async (int id, LibraryCatalog catalog, AppDbContext db, LibraryFiles files, Games.EmulatorFiles emulator) =>
         {
             var game = await db.Games.FirstOrDefaultAsync(x => x.Id == id);
             if (game is null || catalog.Get(game.LibraryId) is not { Enabled: true } lib) return Results.NotFound();
             var system = GameSystems.Get(game.System);
+            var file = game.RelativePath[(game.RelativePath.LastIndexOf('/') + 1)..];
+            var path = files.Resolve(game.LibraryId, game.RelativePath);
+            // The emulator names the game after the end of its address, and some cores go by the extension
+            // A disc game's zip is made as it goes out, so it has no size beforehand, which is what the emulator's cache
+            // in the browser goes by: its name carries when the game last changed instead
+            var sent = path is not null && GameParts(path).Count > 0
+                ? $"{Path.GetFileNameWithoutExtension(file)}-{game.ModifiedUtc.Ticks:x}.zip" : file;
+            var installed = emulator.Installed is not null;
+            var coreReady = system?.Core is { } core && installed && emulator.Cores().Contains(core);
             return Results.Ok(new
             {
-                game.Id, game.Title, game.Size,
-                file = game.RelativePath[(game.RelativePath.LastIndexOf('/') + 1)..],
+                game.Id, game.Title, game.Size, file,
                 library = new { lib.Id, lib.Name },
                 system = new { id = game.System, name = system?.Name ?? game.System, core = system?.Core, bios = system?.Bios },
                 image = ImageUrl(game),
+                fileUrl = $"/api/games/{game.Id}/file/{Uri.EscapeDataString(sent)}",
+                biosUrl = system is null ? null : EmulatorEndpoints.BiosUrl(emulator, system.Id),
+                // Why it can't start here, if it can't
+                notReady = system?.Core is null ? $"No emulator for the {system?.Name ?? game.System} runs in a browser."
+                    : !installed ? "The emulator isn't set up yet: an admin adds it under Admin → Games."
+                    : !coreReady ? $"The {system.Name} emulator ({system.Core}) isn't added yet: an admin adds it under Admin → Games."
+                    : system.Bios is not null && EmulatorEndpoints.BiosUrl(emulator, system.Id) is null
+                        ? $"The {system.Name} needs its BIOS ({system.Bios}): an admin adds it under Admin → Games."
+                    : null,
             });
         });
 
         // The game, for the emulator. A disc game's .cue or .m3u goes out as a zip with the tracks and discs it names,
-        // since the emulator takes one file
-        g.MapGet("/games/{id:int}/file", async (int id, AppDbContext db, LibraryFiles files, HttpContext ctx) =>
-        {
-            var game = await db.Games.FirstOrDefaultAsync(x => x.Id == id);
-            var path = game is null ? null : files.Resolve(game.LibraryId, game.RelativePath);
-            if (path is null || !File.Exists(path)) return Results.NotFound();
-            ctx.Response.Headers.CacheControl = "private, max-age=3600";
-            var parts = GameParts(path);
-            if (parts.Count == 0)
-                return Results.File(path, "application/octet-stream", Path.GetFileName(path), enableRangeProcessing: true);
-
-            // Stored rather than compressed: disc images hardly shrink, and the emulator unpacks it sooner
-            return Results.Stream(async body =>
-            {
-                var output = new HoldSyncWrites(body);
-                await using (var zip = await ZipArchive.CreateAsync(output, ZipArchiveMode.Create, leaveOpen: true, entryNameEncoding: null, ctx.RequestAborted))
-                {
-                    var dir = Path.GetDirectoryName(path)!;
-                    foreach (var file in parts.Prepend(path))
-                    {
-                        var entry = zip.CreateEntry(Path.GetRelativePath(dir, file).Replace('\\', '/'), CompressionLevel.NoCompression);
-                        await using var to = await entry.OpenAsync(ctx.RequestAborted);
-                        await using var from = File.OpenRead(file);
-                        await from.CopyToAsync(to, ctx.RequestAborted);
-                    }
-                }
-                await output.FlushAsync(ctx.RequestAborted);
-            }, "application/zip", Path.GetFileNameWithoutExtension(path) + ".zip");
-        });
+        // since the emulator takes one file. The name after /file/ is only for the emulator (see above). HEAD too: the
+        // emulator asks for the size first, to see whether the copy it keeps in the browser is the same.
+        string[] getOrHead = [HttpMethods.Get, HttpMethods.Head];
+        g.MapMethods("/games/{id:int}/file/{name}", getOrHead, (int id, string name, AppDbContext db, LibraryFiles files, HttpContext ctx) =>
+            SendGame(id, db, files, ctx));
+        g.MapMethods("/games/{id:int}/file", getOrHead, (int id, AppDbContext db, LibraryFiles files, HttpContext ctx) => SendGame(id, db, files, ctx));
 
         g.MapGet("/images/game/{id:int}", async (int id, AppDbContext db, LibraryFiles files, HttpContext ctx) =>
         {
@@ -92,6 +88,40 @@ public static class GameEndpoints
             var type = Path.GetExtension(path).ToLowerInvariant() switch { ".png" => "image/png", ".webp" => "image/webp", _ => "image/jpeg" };
             return Results.File(path, type);
         });
+    }
+
+    private static async Task<IResult> SendGame(int id, AppDbContext db, LibraryFiles files, HttpContext ctx)
+    {
+        var game = await db.Games.FirstOrDefaultAsync(x => x.Id == id);
+        var path = game is null ? null : files.Resolve(game.LibraryId, game.RelativePath);
+        if (path is null || !File.Exists(path)) return Results.NotFound();
+        ctx.Response.Headers.CacheControl = "private, max-age=3600";
+        var parts = GameParts(path);
+        if (parts.Count == 0)
+            return Results.File(path, "application/octet-stream", Path.GetFileName(path), enableRangeProcessing: true);
+        if (HttpMethods.IsHead(ctx.Request.Method))
+        {
+            ctx.Response.ContentType = "application/zip";
+            return Results.Empty;
+        }
+
+        // Stored rather than compressed: disc images hardly shrink, and the emulator unpacks it sooner
+        return Results.Stream(async body =>
+        {
+            var output = new HoldSyncWrites(body);
+            await using (var zip = await ZipArchive.CreateAsync(output, ZipArchiveMode.Create, leaveOpen: true, entryNameEncoding: null, ctx.RequestAborted))
+            {
+                var dir = Path.GetDirectoryName(path)!;
+                foreach (var file in parts.Prepend(path))
+                {
+                    var entry = zip.CreateEntry(Path.GetRelativePath(dir, file).Replace('\\', '/'), CompressionLevel.NoCompression);
+                    await using var to = await entry.OpenAsync(ctx.RequestAborted);
+                    await using var from = File.OpenRead(file);
+                    await from.CopyToAsync(to, ctx.RequestAborted);
+                }
+            }
+            await output.FlushAsync(ctx.RequestAborted);
+        }, "application/zip", Path.GetFileNameWithoutExtension(path) + ".zip");
     }
 
     /// <summary>Games as tiles, by system (in the table's order) and then name.</summary>

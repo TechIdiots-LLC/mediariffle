@@ -155,5 +155,7 @@ public sealed class MediaRiffleOptions
     /// <summary>Music converted for browsers that can't play the file itself (kept, oldest dropped past a size).</summary>
     public string AudioDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "audio");
     public string KeysDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "keys");
+    /// <summary>The browser emulator (EmulatorJS and its cores) and the BIOS files an admin added: never shipped with MediaRiffle.</summary>
+    public string EmulatorDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "emulatorjs");
     public string DatabasePath => System.IO.Path.Combine(ResolvedDataDirectory, "mediariffle.db");
 }

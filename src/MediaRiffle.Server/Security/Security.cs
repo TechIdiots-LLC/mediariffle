@@ -19,8 +19,31 @@ public static class SecurityMiddleware
         h["X-Content-Type-Options"] = "nosniff";
         h["Referrer-Policy"] = "same-origin";
         h["X-Frame-Options"] = "DENY";
-        h["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups";
         h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()";
+        if (ctx.Request.Path.Equals("/game.html", StringComparison.OrdinalIgnoreCase))
+        {
+            // The game page runs the emulator: WebAssembly, the core's script handed over as a blob (Emscripten's
+            // code, which evaluates strings: 'unsafe-eval'), workers, and the style attributes EmulatorJS sets on its
+            // controls; still only this site's files (a core missing here isn't fetched from EmulatorJS's CDN), and
+            // nothing on the page comes from the library but the game's name, set as text. Cross-origin isolated, for
+            // the cores that need threads (SharedArrayBuffer), which the Cast button's Google script would break, so
+            // it has none.
+            h["Cross-Origin-Opener-Policy"] = "same-origin";
+            h["Cross-Origin-Embedder-Policy"] = "require-corp";
+            h["Content-Security-Policy"] =
+                "default-src 'self'; " +
+                "script-src 'self' blob: 'unsafe-eval' 'wasm-unsafe-eval'; " +
+                "style-src 'self' 'unsafe-inline'; " +
+                "img-src 'self' data: blob:; " +
+                "media-src 'self' blob:; " +
+                "connect-src 'self' blob: data:; " +
+                "worker-src 'self' blob:; " +
+                "font-src 'self' data:; " +
+                "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+            await next();
+            return;
+        }
+        h["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups";
         h["Content-Security-Policy"] =
             "default-src 'self'; " +
             "script-src 'self' https://www.gstatic.com; " +
