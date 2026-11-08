@@ -7,6 +7,8 @@
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
+- **Games with several discs start**: a multi-disc PlayStation .pbp or .m3u failed to start in EmulatorJS 4.2.3 (its
+  disc menu was made before its settings), and then stayed black. Discs are still changed from the emulator's menu.
 - _...Add new stuff here..._
 
 ## 0.15.0

@@ -45,6 +45,19 @@ async function start() {
     EJS_backgroundColor: '#000000',
     // Threads (PSP, DOS) only where the page is cross-origin isolated, which game.html is
     EJS_threads: typeof SharedArrayBuffer === 'function' && window.crossOriginIsolated === true,
+    // EmulatorJS 4.2.3 makes the disc menu of a game with several discs (a multi-disc .pbp or .m3u) before its
+    // settings, and marking the first disc as chosen there fails (no settings yet), so the game doesn't start. That
+    // first call is let go: the first disc is in already, and swapping discs as the console boots leaves it black.
+    // Discs picked from the menu later go through as before.
+    EJS_ready: () => {
+      const emulator = window.EJS_emulator;
+      if (!emulator) return;
+      const changed = emulator.menuOptionChanged.bind(emulator);
+      emulator.menuOptionChanged = (option, value) => {
+        if (!emulator.allSettings) return;
+        changed(option, value);
+      };
+    },
   });
   if (game.biosUrl) window.EJS_biosUrl = game.biosUrl;
   if (game.image) window.EJS_backgroundImage = game.image;
