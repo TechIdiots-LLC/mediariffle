@@ -2,14 +2,19 @@
 
 ## master
 ### ✨ Features and improvements
-- **A game's versions** (regions, revisions, bad dumps, hacks, translations) show as one tile, named without the tags
-  and opening the best of them; its page has a Version list, each one's tags in words.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
 - **Games with several discs start**: a multi-disc PlayStation .pbp or .m3u failed to start in EmulatorJS 4.2.3 (its
   disc menu was made before its settings), and then stayed black. Discs are still changed from the emulator's menu.
 - _...Add new stuff here..._
+
+## 0.16.0
+### ✨ Features and improvements
+- **A game's versions** (regions, revisions, bad dumps, hacks, translations) show as one tile, named without the tags
+  and opening the best of them; its page has a Version list, each one's tags in words.
+
+### 🐞 Bug fixes
 
 ## 0.15.0
 ### ✨ Features and improvements
