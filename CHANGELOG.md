@@ -7,6 +7,9 @@
 ### 🐞 Bug fixes
 - **Upgrades reach the browser**: the site's pages and scripts are checked for a newer version on each load. A browser
   could keep using its old scripts after an upgrade (after 0.17.0, the Shows and Movies tabs said "Page not found").
+- **Movies filed as shows** in a library holding both: a movie's folder named with a bare number ("300", "007"), ending
+  in s and a digit ("Cars2"), or its "Extras" counted as a season. Only a folder that says so does now ("Season 1",
+  "S02", "Specials"); the next scan files them again as movies, keeping everyone's place.
 - _...Add new stuff here..._
 
 ## 0.17.0

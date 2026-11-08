@@ -105,7 +105,9 @@ public static partial class MediaNameParser
     /// </summary>
     /// <summary>
     /// Whether a video is an episode rather than a movie, in a library that has both: named as one ("S01E02", "1x02"),
-    /// or in a season's folder ("Season 1", "Specials", "UK - Season 01").
+    /// or in a folder that says it's a season's ("Season 1", "UK - Season 01", "S02", "Specials"). Stricter about folders
+    /// than a Shows library is: a movie's folder can be a bare number ("300", "007"), end in s and a digit ("Cars2"), or
+    /// be its "Extras".
     /// </summary>
     public static bool LooksLikeEpisode(string relativePath)
     {
@@ -113,8 +115,11 @@ public static partial class MediaNameParser
         if (parts.Length == 0) return false;
         var fileName = Path.GetFileNameWithoutExtension(parts[^1]);
         if (SxxEyy().IsMatch(fileName) || NxNN().IsMatch(fileName)) return true;
-        return parts[..^1].Any(f => SeasonFolder().IsMatch(f) || SpecialsFolder().IsMatch(f) || SeriesSeasonFolder().IsMatch(f));
+        return parts[..^1].Any(f => NamedSeasonFolder().IsMatch(f));
     }
+
+    [GeneratedRegex(@"(?:^|[ ._-])(?:season|series|staffel|saison|temporada)[ ._-]*\d{1,3}$|(?:^|[ ._-])s\d{1,3}$|^specials?$", RegexOptions.IgnoreCase)]
+    private static partial Regex NamedSeasonFolder();
 
     public static EpisodeInfo? ParseEpisode(string relativePath)
     {

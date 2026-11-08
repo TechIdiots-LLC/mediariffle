@@ -15,6 +15,15 @@ public class LibraryKindsTests
     [InlineData("Show/Specials/Christmas.mkv", MediaKind.Episode)]
     [InlineData("Movie (1998)/Movie (1998).mkv", MediaKind.Movie)]
     [InlineData("Movie (1998).mkv", MediaKind.Movie)]
+    [InlineData("Show/UK - Season 01/Pilot.mkv", MediaKind.Episode)]
+    [InlineData("Show/S02/Pilot.mkv", MediaKind.Episode)]
+    // Movies whose folders only look like a season's
+    [InlineData("300/300.mkv", MediaKind.Movie)]
+    [InlineData("James Bond/007/Skyfall.mkv", MediaKind.Movie)]
+    [InlineData("Cars2/Cars2.mkv", MediaKind.Movie)]
+    [InlineData("Plain Movie (2001)/Extras/Making Of.mkv", MediaKind.Movie)]
+    [InlineData("Season of the Witch (2011)/Season of the Witch (2011).mkv", MediaKind.Movie)]
+    [InlineData("Loose Movie 1920x1080.mkv", MediaKind.Movie)]
     [InlineData("Artist/Album/01 - Song.flac", MediaKind.Track)]
     public void FilesEachUnderWhatItIs(string path, MediaKind kind) =>
         Assert.Equal(kind, LibraryScanner.KindOf(Lib(LibraryKind.Shows, LibraryKind.Movies, LibraryKind.Music), path));
