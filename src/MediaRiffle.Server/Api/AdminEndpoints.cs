@@ -105,7 +105,8 @@ public static class AdminEndpoints
 
         g.MapGet("/qualities", () => Quality.Ladder.Select(l => new { l.Id, l.Label }));
 
-        g.MapDelete("/users/{id}", async (string id, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db, Microsoft.Extensions.Options.IOptions<Options.MediaRiffleOptions> options) =>
+        g.MapDelete("/users/{id}", async (string id, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db, Microsoft.Extensions.Options.IOptions<Options.MediaRiffleOptions> options,
+            Games.GameSaves gameSaves) =>
         {
             if (users.GetUserId(me) == id) return Results.BadRequest(new { error = "You can't remove your own account." });
             var user = await users.FindByIdAsync(id);
@@ -113,6 +114,7 @@ public static class AdminEndpoints
             await db.Progress.Where(p => p.UserId == id).ExecuteDeleteAsync();
             await users.DeleteAsync(user);
             AvatarEndpoints.DeletePhoto(options.Value, id);
+            gameSaves.DeleteUser(id);
             return Results.Ok();
         });
 

@@ -55,6 +55,7 @@ public static class GameEndpoints
             var sent = path is not null && GameParts(path).Count > 0
                 ? $"{Path.GetFileNameWithoutExtension(file)}-{game.ModifiedUtc.Ticks:x}.zip" : file;
             var installed = emulator.Installed is not null;
+            var saved = await GamePlayEndpoints.SaveFor(db, users.GetUserId(me)!, game);
             var coreReady = system?.Core is { } core && installed && emulator.Cores().Contains(core);
 
             // Its versions in the enabled libraries, best first, each told apart in words
@@ -83,6 +84,9 @@ public static class GameEndpoints
                 biosUrl = system is null ? null : EmulatorEndpoints.BiosUrl(emulator, system.Id),
                 // The user's controller mapping for the system, null for EmulatorJS's own
                 controls = await GamePlayEndpoints.ControlsFor(db, users.GetUserId(me)!, game.System),
+                // The user's in-game save, which the play page loads, and the key it keeps its note of it under
+                save = saved.Save,
+                saveKey = saved.Key,
                 // Why it can't start here, if it can't
                 notReady = system?.Core is null ? $"No emulator for the {system?.Name ?? game.System} runs in a browser."
                     : !installed ? "The emulator isn't set up yet: an admin adds it under Admin → Games."

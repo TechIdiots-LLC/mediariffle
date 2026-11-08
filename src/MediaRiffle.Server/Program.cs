@@ -184,6 +184,7 @@ builder.Services.AddSingleton<LibraryCatalog>();
 builder.Services.AddSingleton<LibraryFiles>();
 builder.Services.AddSingleton<MediaRiffle.Server.Games.EmulatorFiles>();
 builder.Services.AddSingleton<MediaRiffle.Server.Games.GameArt>();
+builder.Services.AddSingleton<MediaRiffle.Server.Games.GameSaves>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MediaRiffle.Server.Games.GameArt>());
 builder.Services.AddSingleton(_ => new DevicePairings(TimeProvider.System));
 

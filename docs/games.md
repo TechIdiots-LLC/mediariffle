@@ -107,7 +107,13 @@ quicker. Press **Start** (browsers want a tap or click before games may make sou
 - **Touch**: on a phone without a controller, buttons are drawn over the game.
 - **iPhone**: Safari can't make the game fill the screen; Share → Add to Home Screen opens MediaRiffle without
   Safari's bars. Large disc games (PlayStation, PSP) can be more than Safari lets one page hold.
-- **Saves** (the game's own and save states) are kept in that browser, per game.
+- **Saves**: the game's own save (a cartridge's battery save, a memory card) is kept on the server, per user, as
+  well as in the browser, so you carry on from any device. The emulator writes it every 30 seconds and when you
+  leave (Back waits for it); the time it was last kept shows at the top. When a game starts, the newer one is used:
+  the server's if it was saved on another device, this browser's if you played here since. A save from before
+  MediaRiffle kept them is taken up the first time. Saves go by the game's system and file name, so they stay when a
+  game is moved or its library scanned again. `Games.SpacePerUserMB` can limit the space each user's saves take.
+- **Save states** are kept in that browser.
 
 The game page has its own security settings, looser than the rest of the site's because the emulator needs them:
 WebAssembly and `'unsafe-eval'` (the cores evaluate code), still only this site's own scripts, and cross-origin

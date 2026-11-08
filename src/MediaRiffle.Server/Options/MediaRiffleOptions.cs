@@ -106,6 +106,12 @@ public sealed class GamesOptions
     /// (thumbnails.libretro.com), matched by name and kept in the data folder (gameart/) once fetched.
     /// </summary>
     public bool BoxArt { get; set; } = true;
+
+    /// <summary>
+    /// How much space each user's game saves and save states may take, in MB (the data folder's gamesaves/); 0 for no
+    /// limit. A save or state that would go over it is refused, with how much is used.
+    /// </summary>
+    public int SpacePerUserMB { get; set; }
 }
 
 public sealed class MediaRiffleOptions
@@ -170,5 +176,7 @@ public sealed class MediaRiffleOptions
     public string GameArtDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "gameart");
     /// <summary>The browser emulator (EmulatorJS and its cores) and the BIOS files an admin added: never shipped with MediaRiffle.</summary>
     public string EmulatorDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "emulatorjs");
+    /// <summary>Users' game saves and save states, a folder each.</summary>
+    public string GameSaveDirectory => System.IO.Path.Combine(ResolvedDataDirectory, "gamesaves");
     public string DatabasePath => System.IO.Path.Combine(ResolvedDataDirectory, "mediariffle.db");
 }

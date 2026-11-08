@@ -293,6 +293,47 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.ToTable("GameControls");
                 });
 
+            modelBuilder.Entity("MediaRiffle.Server.Data.GamePlay", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.Property<DateTime>("LastPlayedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SaveHash")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SaveSize")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("SaveUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("System")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "LastPlayedUtc");
+
+                    b.HasIndex("UserId", "System", "FileName")
+                        .IsUnique();
+
+                    b.ToTable("GamePlays");
+                });
+
             modelBuilder.Entity("MediaRiffle.Server.Data.HiddenItem", b =>
                 {
                     b.Property<int>("Id")
@@ -967,6 +1008,15 @@ namespace MediaRiffle.Server.Data.Migrations
                 });
 
             modelBuilder.Entity("MediaRiffle.Server.Data.GameControls", b =>
+                {
+                    b.HasOne("MediaRiffle.Server.Data.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MediaRiffle.Server.Data.GamePlay", b =>
                 {
                     b.HasOne("MediaRiffle.Server.Data.AppUser", null)
                         .WithMany()

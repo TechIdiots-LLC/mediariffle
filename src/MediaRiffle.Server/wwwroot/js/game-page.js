@@ -4,15 +4,23 @@
 
 import { api } from './api.js';
 import { setUpControls } from './game-controls.js';
+import { setUpSaves } from './game-saves.js';
 
 const id = Number(location.hash.slice(1));
 const back = document.getElementById('back');
 const message = document.getElementById('message');
 
+// What's to be done before leaving (the save to the server), for at most a few seconds
+const leaving = [];
+
 // Back to the game's page: the way we came when that was this site, else straight there
 back.href = `/#/game/${id}`;
-back.addEventListener('click', e => {
-  if (document.referrer.startsWith(location.origin) && history.length > 1) { e.preventDefault(); history.back(); }
+back.addEventListener('click', async e => {
+  e.preventDefault();
+  back.textContent = '‹ Saving…';
+  await Promise.race([Promise.allSettled(leaving.map(fn => fn())), new Promise(r => setTimeout(r, 5000))]);
+  if (document.referrer.startsWith(location.origin) && history.length > 1) history.back();
+  else location.href = back.href;
 });
 
 function show(text) {
@@ -59,6 +67,7 @@ async function start() {
         changed(option, value);
       };
       setUpControls(emulator, game);
+      setUpSaves(emulator, game, leaving);
     },
   });
   if (game.biosUrl) window.EJS_biosUrl = game.biosUrl;

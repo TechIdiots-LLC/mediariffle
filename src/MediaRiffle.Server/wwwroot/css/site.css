@@ -237,7 +237,9 @@ body.game-body { background: #000; }
 .game-top { padding: 6px 12px; }
 .game-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .game-layout { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.9em; white-space: nowrap; }
-.game-layout[hidden], .game-note[hidden] { display: none; }
+.game-layout[hidden], .game-note[hidden], .game-status[hidden] { display: none; }
+.game-status { color: var(--muted); font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.game-status.error { color: var(--danger); white-space: normal; }
 .game-layout select { max-width: 16em; }
 .game-note { display: flex; align-items: center; gap: 8px; font-size: 0.9em; white-space: nowrap; }
 .game-note button { padding: 4px 10px; }

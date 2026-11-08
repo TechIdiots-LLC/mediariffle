@@ -6,6 +6,9 @@
   or by place (the bottom button presses the console's bottom one) for all of a system's games, and a remap made in
   the emulator's Controls menu can be kept for them all. Kept per user on the server, so it follows you to every device.
 - **Customize** is in the top bar, beside Admin, rather than on a row of its own above a tab's sections.
+- **Game saves on the server**: a game's own save (battery save, memory card) is kept per user on the server as well as
+  in the browser, so you carry on from any device; written every 30 seconds and when you leave the game.
+  `Games.SpacePerUserMB` can limit the space each user's saves take.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

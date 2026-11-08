@@ -233,6 +233,25 @@ public sealed class Game
 }
 
 /// <summary>
+/// A user's playing of one game: its in-game save (the cartridge's battery save, the memory card: a file under the data
+/// folder's gamesaves/), kept on the server so it follows them from device to device. Goes by the game's system and
+/// file name rather than its library entry, so it stays when the game is moved or its library scanned again.
+/// </summary>
+public sealed class GamePlay
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } = string.Empty;
+    public string System { get; set; } = string.Empty;
+    /// <summary>The game's file name (without its folders).</summary>
+    public string FileName { get; set; } = string.Empty;
+    public DateTime LastPlayedUtc { get; set; }
+    public long SaveSize { get; set; }
+    public DateTime? SaveUtc { get; set; }
+    /// <summary>FNV-1a of the save, which the game page compares with the one in its browser; null when there's none.</summary>
+    public string? SaveHash { get; set; }
+}
+
+/// <summary>
 /// How a user's controller is mapped to one system's buttons in the emulator: the same letters as the console's
 /// (EmulatorJS's own mapping: an Xbox A presses A), the same places (the bottom button presses the console's bottom
 /// one), or their own mapping from the emulator's Controls menu. Kept here, so it follows them to every game of the

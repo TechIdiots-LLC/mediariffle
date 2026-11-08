@@ -21,6 +21,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<LinkedDevice> LinkedDevices => Set<LinkedDevice>();
     public DbSet<Game> Games => Set<Game>();
     public DbSet<GameControls> GameControls => Set<GameControls>();
+    public DbSet<GamePlay> GamePlays => Set<GamePlay>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -68,6 +69,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         b.Entity<Game>().HasIndex(g => new { g.LibraryId, g.RelativePath }).IsUnique();
         b.Entity<Game>().HasIndex(g => new { g.System, g.Title });
         b.Entity<Game>().Property(g => g.Title).UseCollation("NOCASE");
+        b.Entity<GamePlay>().HasIndex(p => new { p.UserId, p.System, p.FileName }).IsUnique();
+        b.Entity<GamePlay>().HasIndex(p => new { p.UserId, p.LastPlayedUtc });
+        b.Entity<GamePlay>().Property(p => p.FileName).UseCollation("NOCASE");
+        b.Entity<GamePlay>().HasOne<AppUser>().WithMany().HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<GameControls>().HasKey(c => new { c.UserId, c.System });
         b.Entity<GameControls>().HasOne<AppUser>().WithMany().HasForeignKey(c => c.UserId).OnDelete(DeleteBehavior.Cascade);
 
