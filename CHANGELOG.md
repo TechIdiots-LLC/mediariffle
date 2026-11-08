@@ -2,6 +2,9 @@
 
 ## master
 ### ✨ Features and improvements
+- **Videos and Music tabs** take the place of Home: each has its own lists, favorites, categories and libraries, and
+  its own Customize order. A list or category holding both shows only the tab's part, and Play all, Shuffle and Clear
+  act on that part alone. The name in the top bar opens the tab you used last; on a phone the tabs get their own row.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

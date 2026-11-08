@@ -18,7 +18,7 @@ public sealed record SetupRequest(string UserName, string Password);
 public sealed record RegisterRequest(string Invite, string UserName, string Password);
 public sealed record PreferencesRequest(string? Quality);
 public sealed record SubtitlePreferenceRequest(string? Language);
-public sealed record HomeLayoutRequest(List<string>? Sections);
+public sealed record HomeLayoutRequest(string? Tab, List<string>? Sections);
 
 /// <summary>
 /// Accounts. There's no open sign-up: the first visit creates the admin account, and after that people join
@@ -30,7 +30,7 @@ public static class AuthEndpoints
     {
         var g = app.MapGroup("/api/auth");
 
-        g.MapGet("/state", async (HttpContext ctx, ClaimsPrincipal user, UserManager<AppUser> users, IOptions<MediaRiffleOptions> options) =>
+        g.MapGet("/state", async (HttpContext ctx, ClaimsPrincipal user, UserManager<AppUser> users, IOptions<MediaRiffleOptions> options, Library.LibraryCatalog catalog) =>
         {
             // The account in use stays at the top of this device's list, with its stamp as it is now (it changes with
             // e.g. setting up two-step verification, which would otherwise make switching back ask for the password)
@@ -45,6 +45,8 @@ public static class AuthEndpoints
                 user = me is not null
                     ? new { name = me.UserName, isAdmin = user.IsInRole(Roles.Admin), avatar = Avatars.Of(me), homeLayout = Media.HomeLayout.Of(me.HomeLayout) }
                     : null,
+                // The top tabs there is something for (Videos, Music)
+                tabs = me is not null ? Library.Tabs.For(catalog.Enabled) : null,
                 // Other accounts signed in on this device, for Switch user
                 deviceAccounts = DeviceAccounts.Read(ctx).Count,
             };
@@ -117,12 +119,14 @@ public static class AuthEndpoints
             return Results.Ok(new { preferredQuality = q });
         }).RequireAuthorization();
 
-        // The home page's sections: their order, and which are hidden (a leading "-")
+        // A top tab's sections: their order, and which are hidden (a leading "-")
         g.MapPut("/home-layout", async (HomeLayoutRequest req, ClaimsPrincipal principal, UserManager<AppUser> users) =>
         {
+            var tab = (req.Tab ?? Library.Tabs.Videos).Trim().ToLowerInvariant();
+            if (!Media.HomeLayout.Tabs.ContainsKey(tab)) return Results.BadRequest(new { error = "No such tab." });
             var user = await users.GetUserAsync(principal);
             if (user is null) return Results.Unauthorized();
-            user.HomeLayout = Media.HomeLayout.Normalize(req.Sections);
+            user.HomeLayout = Media.HomeLayout.With(user.HomeLayout, tab, req.Sections);
             await users.UpdateAsync(user);
             return Results.Ok(new { homeLayout = Media.HomeLayout.Of(user.HomeLayout) });
         }).RequireAuthorization();

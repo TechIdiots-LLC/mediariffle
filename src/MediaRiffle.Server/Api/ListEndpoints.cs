@@ -24,22 +24,33 @@ public static class ListEndpoints
     {
         var g = app.MapGroup("/api").RequireAuthorization();
 
-        // The user's lists with how many things each has, Favorites first, then by name
+        // The user's lists with how many things each has (in all, and of each tab's: shows and movies, music), Favorites
+        // first, then by name
         g.MapGet("/lists", async (ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
         {
             var userId = users.GetUserId(me);
             var rows = await Visible(db, catalog, db.UserTags.Where(t => t.UserId == userId))
-                .GroupBy(t => t.Tag).Select(x => new { tag = x.Key, items = x.Count() }).ToListAsync();
-            return rows.OrderBy(r => !IsFavorites(r.tag)).ThenBy(r => r.tag, StringComparer.OrdinalIgnoreCase);
+                .Select(t => new { t.Tag, music = t.ArtistId != null || t.AlbumId != null || t.MediaFileId != null }).ToListAsync();
+            return rows.GroupBy(r => r.Tag)
+                .Select(x => new { tag = x.Key, items = x.Count(), videos = x.Count(r => !r.music), music = x.Count(r => r.music) })
+                .OrderBy(r => !IsFavorites(r.tag)).ThenBy(r => r.tag, StringComparer.OrdinalIgnoreCase);
         }).AllowDevices();
 
         // A whole list gone: everything taken off it (nothing leaves the library), including what's in a library that's
-        // switched off, which its page can't show
-        g.MapDelete("/lists/{tag}", async (string tag, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
+        // switched off, which its page can't show. With `tab` (videos, music), only that tab's part of it.
+        g.MapDelete("/lists/{tag}", async (string tag, string? tab, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
         {
             var userId = users.GetUserId(me);
             var name = tag.Trim();
-            var removed = await db.UserTags.Where(t => t.UserId == userId && t.Tag == name).ExecuteDeleteAsync();
+            var entries = db.UserTags.Where(t => t.UserId == userId && t.Tag == name);
+            entries = tab?.Trim().ToLowerInvariant() switch
+            {
+                Tabs.Music => entries.Where(t => t.ArtistId != null || t.AlbumId != null || t.MediaFileId != null),
+                Tabs.Videos => entries.Where(t => t.ShowId != null || t.MovieId != null),
+                null or "" => entries,
+                _ => entries.Where(_ => false),
+            };
+            var removed = await entries.ExecuteDeleteAsync();
             return removed == 0 ? Results.NotFound() : Results.Ok(new { removed });
         });
 

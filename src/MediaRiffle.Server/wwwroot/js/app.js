@@ -25,11 +25,46 @@ async function loadState() {
   document.getElementById('foot').textContent = `MediaRiffle ${state.version ?? ''}`;
 }
 
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+// The media is split into top tabs (those the server has libraries for), each with its own lists, favorites,
+// categories and libraries. "#/" opens the one last used on this device.
+
+const TAB_NAMES = { videos: 'Videos', music: 'Music' };
+const LIBRARY_TAB = { Shows: 'videos', Movies: 'videos', Music: 'music' };
+const TAB_KEY = 'mediariffle.tab';
+let currentTab = null;   // the tab marked in the top bar
+
+function startTab() {
+  const tabs = state.tabs ?? ['videos'];
+  let saved = null;
+  try { saved = localStorage.getItem(TAB_KEY); } catch { }
+  return tabs.includes(saved) ? saved : tabs[0];
+}
+
+// The tab a page belongs to: '' for one outside them all (Admin, Profile), null for one that could be either (a
+// library, a category opened without a tab), which keeps the tab it was opened from
+function tabOf(hash) {
+  const m = hash.match(/^#\/(videos|music|requests)$/) ?? hash.match(/^#\/(?:tag|list)\/[^/]+\/(videos|music)$/);
+  if (m) return m[1];
+  if (/^#\/(show|movie|play)\//.test(hash)) return 'videos';
+  if (/^#\/(artist|album|listen)\/|^#\/now$/.test(hash)) return 'music';
+  if (/^#\/(admin|profile|link)$/.test(hash)) return '';
+  return null;
+}
+
+function markTab(tab) {
+  if (tab !== null && tab !== undefined) currentTab = tab || null;
+  for (const a of nav.querySelectorAll('[data-tab]')) a.classList.toggle('active', a.dataset.tab === currentTab);
+}
+
+// What a Play all or Shuffle plays, kept to the tab's part of a category or list when it was opened from a tab
+const inTab = (what, tab) => tab ? { ...what, tab } : what;
+
 function renderNav() {
   if (!state.user) { mount(nav); return; }
   mount(nav,
-    h('a', { href: '#/' }, 'Home'),
-    h('a', { href: '#/requests' }, 'Requests'),
+    (state.tabs ?? ['videos']).map(t => h('a', { class: 'tab', href: `#/${t}`, 'data-tab': t }, TAB_NAMES[t] ?? t)),
+    h('a', { class: 'tab', href: '#/requests', 'data-tab': 'requests' }, 'Requests'),
     h('span', { class: 'spacer' }),
     state.user.isAdmin ? h('a', { href: '#/admin' }, 'Admin') : null,
     h('details', { class: 'usermenu' },
@@ -38,6 +73,7 @@ function renderNav() {
         h('a', { href: '#/profile' }, 'Profile'),
         h('a', { href: '#/switch' }, 'Switch user'),
         h('a', { href: '#/logout' }, 'Sign out'))));
+  markTab();
 }
 
 function closeUserMenu() { nav.querySelector('.usermenu')?.removeAttribute('open'); }
@@ -56,9 +92,11 @@ const routes = [
   [/^#\/logout$/, logout],
   [/^#\/switch$/, switchView],
   [/^#\/add-account(?:\/(.+))?$/, m => signInForm(m[1] ? decodeURIComponent(m[1]) : '')],
+  [/^#\/(videos|music)$/, m => tabView(m[1])],
   [/^#\/library\/(\d+)$/, m => libraryView(+m[1])],
-  [/^#\/tag\/(.+)$/, m => tagView(decodeURIComponent(m[1]))],
-  [/^#\/list\/(.+)$/, m => listView(decodeURIComponent(m[1]))],
+  // A category or list opened from a tab ends in it ("…/music"): only that tab's part of it is shown and played
+  [/^#\/tag\/([^/]+)(?:\/(videos|music))?$/, m => tagView(decodeURIComponent(m[1]), m[2])],
+  [/^#\/list\/([^/]+)(?:\/(videos|music))?$/, m => listView(decodeURIComponent(m[1]), m[2])],
   [/^#\/show\/(\d+)$/, m => showView(+m[1])],
   [/^#\/movie\/(\d+)$/, m => movieView(+m[1])],
   [/^#\/artist\/(\d+)$/, m => artistView(+m[1])],
@@ -98,7 +136,8 @@ function numberPage(hash) {
   }
   // The player's page uses the screen's width (a large or 4K screen gets a large picture); the others keep theirs
   document.body.classList.toggle('play-page', /^#\/play\//.test(hash));
-  backButton.hidden = /^#?\/?$/.test(hash) || /^#\/(login|setup|join\/|reset\/)/.test(hash);
+  backButton.hidden = /^#?\/?$/.test(hash) || /^#\/(videos|music)$/.test(hash) || /^#\/(login|setup|join\/|reset\/)/.test(hash);
+  markTab(tabOf(hash));
 }
 
 async function route() {
@@ -671,21 +710,32 @@ function filterBox(onChange) {
   return h('input', { type: 'search', placeholder: 'Filter…', oninput: e => onChange(e.target.value.trim().toLowerCase()) });
 }
 
-async function homeView() {
-  const [libraries, recent, tags, lists, favorites] = await Promise.all([api('/api/libraries'), api('/api/continue'), api('/api/tags'),
-    api('/api/lists'), api(`/api/lists/${FAVORITES}`)]);
-  const myLists = lists.filter(l => !isFavorites(l.tag));
-  const hasFavorites = favorites.shows.length || favorites.movies.length || favorites.artists.length || favorites.albums.length || favorites.tracks.length;
+// "#/" (the name in the top bar, the home-screen app's start): the tab last used here
+function homeView() { forward(`#/${startTab()}`); }
+
+// A top tab: the user's lists, favorites and the categories with something of this tab's in them, its libraries, and
+// (Videos) Continue watching, each in the order the user set for this tab
+async function tabView(tab) {
+  try { localStorage.setItem(TAB_KEY, tab); } catch { }
+  const music = tab === 'music';
+  const [allLibraries, recent, tags, lists, favorites] = await Promise.all([api('/api/libraries'), music ? [] : api('/api/continue'),
+    api('/api/tags'), api('/api/lists'), api(`/api/lists/${FAVORITES}`)]);
+  const libraries = allLibraries.filter(l => LIBRARY_TAB[l.kind] === tab);
+  const myLists = lists.filter(l => !isFavorites(l.tag) && l[tab] > 0);
+  const myTags = tags.filter(t => t[tab] > 0 || t.libraryTabs?.includes(tab));
+  const hasFavorites = music ? favorites.artists.length || favorites.albums.length || favorites.tracks.length
+    : favorites.shows.length || favorites.movies.length;
   // Each section: its heading, and what's under it (null when there's nothing to show; Customize still lists it)
   const sections = {
     lists: { title: 'My lists', body: myLists.length ? h('div', { class: 'chips' }, myLists.map(l =>
-      h('a', { class: 'chip', href: `#/list/${encodeURIComponent(l.tag)}` }, l.tag, h('span', { class: 'muted' }, ` ${l.items}`)))) : null },
-    favorites: { title: '★ Favorites', body: hasFavorites ? h('div', { class: 'grid' }, showTiles(favorites.shows), movieTiles(favorites.movies),
-        artistTiles(favorites.artists), albumTiles(favorites.albums, true)) : null,
-      link: hasFavorites ? h('a', { href: `#/list/${FAVORITES}` },
-        favorites.tracks.length ? `${favorites.tracks.length} song${favorites.tracks.length === 1 ? '' : 's'}, play or shuffle →` : 'Play or shuffle →') : null },
-    categories: { title: 'Categories', body: tags.length ? h('div', { class: 'chips' }, tags.map(t =>
-      h('a', { class: 'chip', href: `#/tag/${encodeURIComponent(t.tag)}` }, t.tag, h('span', { class: 'muted' }, ` ${t.files}`)))) : null },
+      h('a', { class: 'chip', href: `#/list/${encodeURIComponent(l.tag)}/${tab}` }, l.tag, h('span', { class: 'muted' }, ` ${l[tab]}`)))) : null },
+    favorites: { title: '★ Favorites', body: hasFavorites ? h('div', { class: 'grid' }, music
+        ? [artistTiles(favorites.artists), albumTiles(favorites.albums, true)]
+        : [showTiles(favorites.shows), movieTiles(favorites.movies)]) : null,
+      link: hasFavorites ? h('a', { href: `#/list/${FAVORITES}/${tab}` }, music && favorites.tracks.length
+        ? `${favorites.tracks.length} song${favorites.tracks.length === 1 ? '' : 's'}, play or shuffle →` : 'Play or shuffle →') : null },
+    categories: { title: 'Categories', body: myTags.length ? h('div', { class: 'chips' }, myTags.map(t =>
+      h('a', { class: 'chip', href: `#/tag/${encodeURIComponent(t.tag)}/${tab}` }, t.tag, h('span', { class: 'muted' }, ` ${t[tab]}`)))) : null },
     libraries: { title: 'Libraries', body: libraries.length
       ? h('div', { class: 'grid' }, libraries.map(l =>
           h('a', { class: 'tile card', href: `#/library/${l.id}` },
@@ -693,7 +743,7 @@ async function homeView() {
             l.tags.length ? h('div', { class: 'sub' }, l.tags.join(', ')) : null)))
       : h('p', { class: 'muted' }, state.user.isAdmin ? 'No libraries yet: add them under Admin.' : 'No libraries yet.') },
     // One row that scrolls sideways, most recent first (the server sends the last 20)
-    continue: { title: 'Continue watching', body: recent.length ? h('div', { class: 'strip' }, recent.map(r => {
+    continue: music ? undefined : { title: 'Continue watching', body: recent.length ? h('div', { class: 'strip' }, recent.map(r => {
       // ×: off this list (not hidden: the place is kept, and watching it again brings it back)
       const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}`, onclick: () => { clearQueue(); sessionStorage.setItem(RESUME_KEY, String(r.file.id)); } },
         art(r.file.image, r.file.duration ? r.file.position / r.file.duration : 0),
@@ -708,11 +758,14 @@ async function homeView() {
     })) : null },
   };
 
-  // The user's own order, with "-" before a hidden section (kept on the account, so it follows them to other devices)
-  let layout = [...(state.user.homeLayout ?? Object.keys(sections))];
+  if (!sections.continue) delete sections.continue;
+
+  // The user's own order for this tab, with "-" before a hidden section (kept on the account, so it follows them to
+  // other devices)
+  let layout = [...(state.user.homeLayout?.[tab] ?? Object.keys(sections))];
   let editing = false, dragging = null;
   const save = async () => {
-    try { state.user.homeLayout = (await api('/api/auth/home-layout', { method: 'PUT', body: { sections: layout } })).homeLayout; }
+    try { state.user.homeLayout = (await api('/api/auth/home-layout', { method: 'PUT', body: { tab, sections: layout } })).homeLayout; }
     catch (e) { alert(e.message); }
   };
   const change = async next => { layout = next; draw(); await save(); };
@@ -756,6 +809,7 @@ async function homeView() {
 
 async function libraryView(id) {
   const lib = await api(`/api/libraries/${id}`);
+  markTab(LIBRARY_TAB[lib.kind]);
   const kind = { Shows: 'shows', Movies: 'movies', Music: 'artists' }[lib.kind];
   const tiles = { Shows: showTiles, Movies: movieTiles, Music: artistTiles }[lib.kind];
   const items = await api(`/api/libraries/${id}/${kind}`);
@@ -770,9 +824,12 @@ async function libraryView(id) {
     items.length ? null : h('p', { class: 'muted' }, 'Nothing here yet. An admin can rescan under Admin.'));
 }
 
-// A category: every show, movie and artist in the libraries carrying this tag, to browse or play through
-async function tagView(tag) {
+// A category: every show, movie and artist in the libraries carrying this tag, to browse or play through. Opened from
+// a tab, only that tab's part of it.
+async function tagView(tag, tab) {
   const t = await api(`/api/tags/${encodeURIComponent(tag)}`);
+  if (tab === 'music') t.shows = t.movies = [];
+  if (tab === 'videos') t.artists = t.albums = [];
   const showGrid = h('div', { class: 'grid' }), movieGrid = h('div', { class: 'grid' }), artistGrid = h('div', { class: 'grid' }), albumGrid = h('div', { class: 'grid' });
   const draw = q => {
     const match = i => !q || (i.title ?? i.name).toLowerCase().includes(q);
@@ -783,7 +840,7 @@ async function tagView(tag) {
   };
   draw('');
   mount(view,
-    h('div', { class: 'row' }, h('h1', {}, t.tag), playButtons({ tag: t.tag }, t.tag), filterBox(draw),
+    h('div', { class: 'row' }, h('h1', {}, t.tag), playButtons(inTab({ tag: t.tag }, tab), t.tag), filterBox(draw),
       // The part an admin made from a list (the libraries' own tags are changed under Admin → Libraries)
       state.user.isAdmin && t.fromLists ? h('button', { class: 'secondary', onclick: async () => {
         if (!confirm(`Take what was added from lists out of the category "${t.tag}"? The lists themselves stay.`)) return;
@@ -886,9 +943,16 @@ async function listenView(fileId) {
 function nowView() { onLeave(nowPlayingView(view, t => listsControl('track', t.id, 'This track:'))); }
 
 // One of the user's own lists (Favorites among them): the shows, movies, artists and albums they tagged with it, and
-// its tracks, in the order they were added (a playlist)
-async function listView(tag) {
+// its tracks, in the order they were added (a playlist). Opened from a tab, only that tab's part of it: the rest stays
+// on the list, and Delete (Clear) takes off only this part.
+async function listView(tag, tab) {
   const t = await api(`/api/lists/${encodeURIComponent(tag)}`);
+  const videoCount = t.shows.length + t.movies.length, musicCount = t.artists.length + t.albums.length + t.tracks.length;
+  const otherPart = tab === 'music' ? videoCount : tab === 'videos' ? musicCount : 0;
+  if (tab === 'music') t.shows = t.movies = [];
+  if (tab === 'videos') t.artists = t.albums = t.tracks = [];
+  const part = tab === 'music' ? 'the music' : 'the shows and movies';
+  const suffix = tab ? `/${tab}` : '';
   const showGrid = h('div', { class: 'grid' }), movieGrid = h('div', { class: 'grid' });
   const artistGrid = h('div', { class: 'grid' }), albumGrid = h('div', { class: 'grid' });
   const draw = q => {
@@ -904,34 +968,41 @@ async function listView(tag) {
     try {
       const tags = await api(`/api/items/track/${track.id}/lists`);
       await api(`/api/items/track/${track.id}/lists`, { method: 'PUT', body: { tags: tags.filter(x => x.toLowerCase() !== t.tag.toLowerCase()) } });
-      listView(tag);
+      listView(tag, tab);
     } catch (e) { alert(e.message); }
   };
   const tracks = trackRows({ tracks: t.tracks.map((x, i) => ({ ...x, track: i + 1, artist: [x.artist, x.album].filter(Boolean).join(' · ') })) },
-    x => startQueue({ list: t.tag }, false, t.tag, x.id).catch(e => alert(e.message)),
+    x => startQueue(inTab({ list: t.tag }, tab), false, t.tag, x.id).catch(e => alert(e.message)),
     x => h('button', { class: 'chip-x', title: `Take out of ${t.tag}`, onclick: () => remove(x) }, '×'));
   onLeave(tracks.cleanup);
   const empty = !t.shows.length && !t.movies.length && !t.artists.length && !t.albums.length && !t.tracks.length;
   mount(view,
-    h('div', { class: 'row' }, h('h1', {}, t.favorites ? '★ Favorites' : t.tag), empty ? null : playButtons({ list: t.tag }, t.tag), empty ? null : filterBox(draw),
-      // Rename (two lists by one name become one) or delete the whole list; Favorites can be cleared, not renamed
+    h('div', { class: 'row' }, h('h1', {}, t.favorites ? '★ Favorites' : t.tag), empty ? null : playButtons(inTab({ list: t.tag }, tab), t.tag), empty ? null : filterBox(draw),
+      // Rename (two lists by one name become one: the whole list, every tab's part) or delete the list; Favorites can
+      // be cleared, not renamed
       t.favorites ? null : h('button', { class: 'secondary', onclick: async () => {
         const name = prompt('A new name for this list (an existing list\'s name puts the two together):', t.tag)?.trim();
         if (!name || name === t.tag) return;
-        try { const r = await api(`/api/lists/${encodeURIComponent(t.tag)}`, { method: 'PUT', body: { name } }); location.replace(`#/list/${encodeURIComponent(r.tag)}`); }
+        try { const r = await api(`/api/lists/${encodeURIComponent(t.tag)}`, { method: 'PUT', body: { name } }); location.replace(`#/list/${encodeURIComponent(r.tag)}${suffix}`); }
         catch (e) { alert(e.message); }
       } }, 'Rename'),
       // An admin's list can become a category everyone sees beside the libraries' own
       state.user.isAdmin && !t.favorites && !empty ? h('button', { class: 'secondary', title: 'Show everyone this list as a category', onclick: async () => {
         if (!confirm(`Make "${t.tag}" a category everyone can browse? It copies what is on the list now; your list stays yours.`)) return;
-        try { const r = await api(`/api/admin/lists/${encodeURIComponent(t.tag)}/category`, { method: 'POST' }); location.hash = `#/tag/${encodeURIComponent(r.tag)}`; }
+        try { const r = await api(`/api/admin/lists/${encodeURIComponent(t.tag)}/category`, { method: 'POST' }); location.hash = `#/tag/${encodeURIComponent(r.tag)}${suffix}`; }
         catch (e) { alert(e.message); }
       } }, 'Make category') : null,
-      h('button', { class: 'secondary', onclick: async () => {
-        if (!confirm(t.favorites ? 'Take everything out of Favorites?' : `Delete the list "${t.tag}"? What's on it stays in the library.`)) return;
-        try { await api(`/api/lists/${encodeURIComponent(t.tag)}`, { method: 'DELETE' }); location.hash = '#/'; }
-        catch (e) { alert(e.message); }
-      } }, t.favorites ? 'Clear favorites' : 'Delete list')),
+      empty && otherPart ? null : h('button', { class: 'secondary', onclick: async () => {
+        const question = t.favorites
+          ? (otherPart ? `Take ${part} out of Favorites? The rest stays in them.` : 'Take everything out of Favorites?')
+          : otherPart ? `Take ${part} off the list "${t.tag}"? The rest stays on it, and nothing leaves the library.`
+          : `Delete the list "${t.tag}"? What's on it stays in the library.`;
+        if (!confirm(question)) return;
+        try {
+          await api(`/api/lists/${encodeURIComponent(t.tag)}${tab ? `?tab=${tab}` : ''}`, { method: 'DELETE' });
+          location.hash = tab ? `#/${tab}` : '#/';
+        } catch (e) { alert(e.message); }
+      } }, t.favorites ? 'Clear favorites' : otherPart ? 'Clear this part' : 'Delete list')),
     h('p', { class: 'muted' }, 'Only you see your lists. Add a show, movie, artist or album to one from its page, and a song from Now playing.'),
     t.shows.length ? [h('h2', {}, 'Shows'), showGrid] : null,
     t.movies.length ? [h('h2', {}, 'Movies'), movieGrid] : null,
@@ -1104,6 +1175,7 @@ function libraryForm(lib) {
       const body = { name: name.value, kind: kind.value, path: path.value, tags: tags.value, enabled: enabled.checked };
       if (lib) await api(`/api/admin/libraries/${lib.id}`, { method: 'PUT', body });
       else await api('/api/admin/libraries', { method: 'POST', body });
+      await loadState();   // a library of a new kind brings its tab, the last of a kind takes it away
       adminView();
     } catch (err) { msg.className = 'error'; msg.textContent = err.message; }
   };
@@ -1277,7 +1349,7 @@ async function adminView() {
           h('button', { class: 'secondary', onclick: () => libraryForm(l) }, 'Edit'),
           h('button', { class: 'danger', onclick: async () => {
             if (!confirm(`Remove ${l.name}? Its files stay where they are; only MediaRiffle's list of them (and everyone's place in them) goes.`)) return;
-            await api(`/api/admin/libraries/${l.id}`, { method: 'DELETE' }); adminView();
+            await api(`/api/admin/libraries/${l.id}`, { method: 'DELETE' }); await loadState(); adminView();
           } }, 'Remove')))))
       : h('p', {}, 'No libraries yet.'),
     h('div', { class: 'row' }, h('button', { class: 'secondary', onclick: async () => { await api('/api/admin/scan', { method: 'POST' }); scanMsg.textContent = 'Scan requested…'; } }, 'Scan now'), scanMsg),

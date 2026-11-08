@@ -47,6 +47,16 @@ input[type=range] { padding: 0; border: 0; background: transparent; }
 .back-btn[hidden] { display: none; }
 #nav { display: flex; gap: 14px; flex-wrap: wrap; flex: 1; }
 #nav .spacer { flex: 1; }
+/* The top tabs (Videos, Music, Requests): the one in use underlined */
+#nav a.tab { color: var(--muted); padding-bottom: 2px; border-bottom: 2px solid transparent; }
+#nav a.tab:hover { color: var(--text); text-decoration: none; }
+#nav a.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+/* On a phone the tabs get their own row under the name, rather than wrapping beside it */
+@media (max-width: 640px) {
+  .top { flex-wrap: wrap; row-gap: 8px; }
+  #nav { flex-basis: 100%; gap: 12px; }
+  #nav:empty { display: none; }
+}
 /* The user name opens a small menu: Profile, Sign out */
 .usermenu { position: relative; }
 .usermenu > summary { cursor: pointer; color: var(--muted); list-style: none; }

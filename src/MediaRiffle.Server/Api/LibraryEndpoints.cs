@@ -34,9 +34,11 @@ public static class LibraryEndpoints
             catalog.Get(id) is not { Enabled: true } ? Results.NotFound() : Results.Ok(await MoviesIn(db, users.GetUserId(me)!, [id])));
 
         // Categories: the tags on the libraries (as in MediaLibraryManager), each with what's in it
+        // Each with how many files it has, in all and per tab (videos, music), so a tab lists only the categories with
+        // something of its own in them
         g.MapGet("/tags", async (LibraryCatalog catalog, AppDbContext db) =>
         {
-            var counts = await db.MediaFiles.GroupBy(f => f.LibraryId).Select(x => new { x.Key, n = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.n);
+            var counts = await db.MediaFiles.GroupBy(f => new { f.LibraryId, f.Kind }).Select(x => new { x.Key.LibraryId, x.Key.Kind, n = x.Count() }).ToListAsync();
             // The libraries' tags, and the categories an admin made from a list (what's on one that no tagged library holds is added)
             var enabled = catalog.Enabled.Select(l => l.Id).ToHashSet();
             var made = await db.CategoryItems.Select(c => c.Tag).Distinct().ToListAsync();
@@ -44,10 +46,20 @@ public static class LibraryEndpoints
             foreach (var name in catalog.Tags.Concat(made).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase))
             {
                 var ids = catalog.WithTag(name);
-                var files = ids.Sum(id => counts.GetValueOrDefault(id));
-                files += await ListEndpoints.FilesIn(db, db.CategoryItems.Where(c => c.Tag == name),
-                    db.MediaFiles.Where(f => enabled.Contains(f.LibraryId) && !ids.Contains(f.LibraryId))).CountAsync();
-                if (ids.Count > 0 || files > 0) result.Add(new { tag = ids.Count > 0 ? catalog.Tags.First(t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase)) : name, files });
+                var byKind = counts.Where(c => ids.Contains(c.LibraryId)).Select(c => (c.Kind, c.n)).ToList();
+                byKind.AddRange((await ListEndpoints.FilesIn(db, db.CategoryItems.Where(c => c.Tag == name),
+                        db.MediaFiles.Where(f => enabled.Contains(f.LibraryId) && !ids.Contains(f.LibraryId)))
+                    .GroupBy(f => f.Kind).Select(x => new { x.Key, n = x.Count() }).ToListAsync()).Select(x => (x.Key, x.n)));
+                var files = byKind.Sum(x => x.n);
+                if (ids.Count > 0 || files > 0) result.Add(new
+                {
+                    tag = ids.Count > 0 ? catalog.Tags.First(t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase)) : name,
+                    files,
+                    videos = byKind.Where(x => Tabs.Of(x.Kind) == Tabs.Videos).Sum(x => x.n),
+                    music = byKind.Where(x => Tabs.Of(x.Kind) == Tabs.Music).Sum(x => x.n),
+                    // The kinds of library carrying it, so a tab can list a category whose libraries are still empty
+                    libraryTabs = catalog.Enabled.Where(l => ids.Contains(l.Id)).Select(l => Tabs.Of(l.Kind)).Distinct(),
+                });
             }
             return result;
         });
@@ -73,12 +85,14 @@ public static class LibraryEndpoints
         // What to play in a row: a category, one of the user's lists, a library, a show, an album or an artist, in order or shuffled.
         // Episodes in season order, movies part by part; shuffled, every episode and movie part is mixed together.
         // What the user hid (a show, a movie or an episode) is left out.
-        g.MapGet("/queue", async (string? tag, string? list, int? library, int? show, int? album, int? artist, bool? shuffle,
+        // `tab` (videos, music) plays only that tab's part of a category or list.
+        g.MapGet("/queue", async (string? tag, string? list, int? library, int? show, int? album, int? artist, bool? shuffle, string? tab,
             ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
         {
             var enabled = catalog.Enabled.Select(l => l.Id).ToHashSet();
             var userId = users.GetUserId(me)!;
             var q = HiddenEndpoints.NotHidden(db, userId, db.MediaFiles.Where(f => f.ProbeError == null && f.ProbeJson != ""));
+            if (Tabs.Kinds(tab) is { } kinds) q = q.Where(f => kinds.Contains(f.Kind));
             Dictionary<int, DateTime>? playlist = null;
             if (show is { } sid) q = q.Where(f => f.ShowId == sid);
             else if (album is { } alid) q = q.Where(f => f.AlbumId == alid);
