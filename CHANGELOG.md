@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.17.0
+### ✨ Features and improvements
 - **Controller buttons per system**: the game page's Buttons choice maps your controller by letter (Xbox A presses A)
   or by place (the bottom button presses the console's bottom one) for all of a system's games, and a remap made in
   the emulator's Controls menu can be kept for them all. Kept per user on the server, so it follows you to every device.
@@ -21,12 +28,10 @@
   its page has a section per kind. Changing what a library holds files it again, keeping everyone's place.
 - **Shows and Movies tabs** in place of Videos: each with its own lists, favorites, categories, libraries and
   Continue watching. A Customize order set for Videos carries over to both; old links to Videos open Shows.
-- _...Add new stuff here..._
 
 ### 🐞 Bug fixes
 - **Games with several discs start**: a multi-disc PlayStation .pbp or .m3u failed to start in EmulatorJS 4.2.3 (its
   disc menu was made before its settings), and then stayed black. Discs are still changed from the emulator's menu.
-- _...Add new stuff here..._
 
 ## 0.16.0
 ### ✨ Features and improvements
