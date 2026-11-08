@@ -11,9 +11,11 @@ export function gameArt(g) {
     g.image ? h('img', { src: g.image, alt: '', loading: 'lazy', onerror: e => { e.target.remove(); } }) : null);
 }
 
+// A game's versions (regions, revisions, hacks…) are one tile, opening the best of them
 export function gameTiles(games) {
   return games.map(g => h('a', { class: 'tile', href: `#/game/${g.id}` },
-    gameArt(g), h('div', { class: 'name', title: g.title }, g.title), h('div', { class: 'sub' }, g.systemName)));
+    gameArt(g), h('div', { class: 'name', title: g.title }, g.title),
+    h('div', { class: 'sub' }, g.versions > 1 ? `${g.systemName} · ${g.versions} versions` : g.systemName)));
 }
 
 function filterBox(onChange) {
@@ -34,14 +36,22 @@ export async function systemView(view, id) {
     games.length ? null : h('p', { class: 'muted' }, 'No games for this system.'));
 }
 
-// One game: its picture, system and file, the user's lists for it, and Play
+// One game: its picture, system and file, which of its versions, the user's lists for it, and Play
 export async function gameView(view, id, { listsControl }) {
   const g = await api(`/api/games/${id}`);
+  // Another version is that version's page, in place of this one (Back still goes to where the game was opened)
+  const versions = g.versions.length > 1
+    ? h('label', { class: 'game-version' }, 'Version ',
+        h('select', { onchange: e => location.replace(`#/game/${e.target.value}`) },
+          g.versions.map(v => h('option', { value: v.id, selected: v.id === g.id }, v.label))),
+        h('span', { class: 'muted' }, ` ${g.versions.length} versions, best first`))
+    : null;
   mount(view,
     h('div', { class: 'game-page' },
       h('div', { class: 'game-cover' }, gameArt(g)),
       h('div', { class: 'game-info' },
-        h('h1', {}, g.title),
+        h('h1', {}, g.name),
+        versions,
         h('p', { class: 'muted' },
           h('a', { href: `#/system/${encodeURIComponent(g.system.id)}` }, g.system.name), ' · ',
           h('a', { href: `#/library/${g.library.id}` }, g.library.name), ' · ', g.file, ' · ', size(g.size)),

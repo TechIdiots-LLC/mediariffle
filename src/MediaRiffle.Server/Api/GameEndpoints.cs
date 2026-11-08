@@ -15,12 +15,14 @@ public static class GameEndpoints
     {
         var g = app.MapGroup("/api").RequireAuthorization();
 
-        // The systems there are games for, in the table's order, with how many each and whether a browser can play them
+        // The systems there are games for, in the table's order, with how many each (a game's versions counted once)
+        // and whether a browser can play them
         g.MapGet("/games/systems", async (LibraryCatalog catalog, AppDbContext db) =>
         {
             var enabled = EnabledIds(catalog);
-            var counts = await db.Games.Where(x => enabled.Contains(x.LibraryId)).GroupBy(x => x.System)
-                .Select(x => new { x.Key, n = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.n);
+            var rows = await db.Games.Where(x => enabled.Contains(x.LibraryId)).Select(x => new { x.Id, x.System, x.Title }).ToListAsync();
+            var counts = rows.GroupBy(x => x.System)
+                .ToDictionary(x => x.Key, x => x.Select(r => GroupKey(r.Id, r.Title)).Distinct().Count());
             return GameSystems.All.Where(s => counts.ContainsKey(s.Id))
                 .Select(s => new { s.Id, s.Name, games = counts[s.Id], playable = s.Core is not null });
         });
@@ -53,9 +55,26 @@ public static class GameEndpoints
                 ? $"{Path.GetFileNameWithoutExtension(file)}-{game.ModifiedUtc.Ticks:x}.zip" : file;
             var installed = emulator.Installed is not null;
             var coreReady = system?.Core is { } core && installed && emulator.Cores().Contains(core);
+
+            // Its versions in the enabled libraries, best first, each told apart in words
+            var key = GroupKey(game.Id, game.Title);
+            var enabled = EnabledIds(catalog);
+            var same = await db.Games.Where(x => x.System == game.System && enabled.Contains(x.LibraryId))
+                .Select(x => new { x.Id, x.Title, x.RelativePath, x.LibraryId }).ToListAsync();
+            var versions = GameVersions.Best(same.Where(x => x.Id == game.Id || GroupKey(x.Id, x.Title) == key), x => x.RelativePath);
+            var labels = GameVersions.Labels(versions.Select(x => x.RelativePath[(x.RelativePath.LastIndexOf('/') + 1)..]).ToList());
+            var libraries = versions.Select(x => x.LibraryId).Distinct().Count();
+
             return Results.Ok(new
             {
                 game.Id, game.Title, game.Size, file,
+                // Without its tags (the file name, shown too, has them)
+                name = GameVersions.Name(game.Title),
+                versions = versions.Select((x, i) => new
+                {
+                    x.Id,
+                    label = libraries > 1 ? $"{labels[i]} ({catalog.Get(x.LibraryId)?.Name})" : labels[i],
+                }).ToList(),
                 library = new { lib.Id, lib.Name },
                 system = new { id = game.System, name = system?.Name ?? game.System, core = system?.Core, bios = system?.Bios },
                 image = ImageUrl(game),
@@ -140,20 +159,39 @@ public static class GameEndpoints
         }, "application/zip", Path.GetFileNameWithoutExtension(path) + ".zip");
     }
 
-    /// <summary>Games as tiles, by system (in the table's order) and then name.</summary>
+    /// <summary>
+    /// Games as tiles, by system (in the table's order) and then name (without tags): a game's versions among them as
+    /// one tile, opening the best of them, with the picture of the best that has one.
+    /// </summary>
     public static async Task<List<object>> Tiles(IQueryable<Game> games)
     {
-        var rows = await games.Select(x => new { x.Id, x.Title, x.System, x.ImagePath, x.ArtName, x.ArtCheckedUtc }).ToListAsync();
+        var rows = await games.Select(x => new { x.Id, x.Title, x.System, x.RelativePath, x.ImagePath, x.ArtName, x.ArtCheckedUtc }).ToListAsync();
         var order = GameSystems.All.Select((s, i) => (s.Id, i)).ToDictionary(x => x.Id, x => x.i);
-        return rows.OrderBy(x => order.GetValueOrDefault(x.System, int.MaxValue)).ThenBy(x => x.Title, StringComparer.OrdinalIgnoreCase)
+        return rows.GroupBy(x => (x.System, key: GroupKey(x.Id, x.Title)))
+            .Select(g =>
+            {
+                var best = GameVersions.Best(g, x => x.RelativePath);
+                var first = best[0];
+                var pictured = best.FirstOrDefault(x => x.ImagePath is not null || x.ArtName is not null)
+                    ?? best.FirstOrDefault(x => Games.GameArt.MayHaveArt(x.System, x.ArtCheckedUtc));
+                return new
+                {
+                    first.Id, Title = GameVersions.Name(first.Title), first.System,
+                    versions = best.Count, image = pictured is null ? null : $"/api/images/game/{pictured.Id}",
+                };
+            })
+            .OrderBy(x => order.GetValueOrDefault(x.System, int.MaxValue)).ThenBy(x => x.Title, StringComparer.OrdinalIgnoreCase)
             .Select(x => (object)new
             {
                 x.Id, x.Title, system = x.System,
                 systemName = GameSystems.Get(x.System)?.Name ?? x.System,
                 playable = GameSystems.Get(x.System)?.Core is not null,
-                image = HasPicture(x.ImagePath, x.ArtName, x.System, x.ArtCheckedUtc) ? $"/api/images/game/{x.Id}" : null,
+                x.versions, x.image,
             }).ToList();
     }
+
+    // The versions of a game share it (a name of tags alone is a game of its own)
+    private static string GroupKey(int id, string title) => GameVersions.Key(title) is { Length: > 0 } key ? key : "#" + id;
 
     private static string? ImageUrl(Game game) =>
         HasPicture(game.ImagePath, game.ArtName, game.System, game.ArtCheckedUtc) ? $"/api/images/game/{game.Id}" : null;

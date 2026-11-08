@@ -223,8 +223,11 @@ button.chip-x:hover { color: var(--danger); }
 /* A system no browser emulator plays: listed, dimmed */
 .chip.off { opacity: .6; }
 .game-page { display: grid; grid-template-columns: minmax(160px, 280px) 1fr; gap: 24px; align-items: start; }
+.game-info { min-width: 0; overflow-wrap: anywhere; }
 .game-info h1 { margin-top: 0; }
 @media (max-width: 640px) { .game-page { grid-template-columns: 1fr; } .game-cover { max-width: 240px; } }
+.game-version { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.game-version select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
 .game-actions { margin: 12px 0; }
 .game-actions a.button { display: inline-block; background: var(--accent); color: var(--accent-text); border-radius: 8px; padding: 8px 18px; }
 .game-actions a.button:hover { text-decoration: none; }

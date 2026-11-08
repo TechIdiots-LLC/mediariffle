@@ -19,6 +19,8 @@
   find No-Intro ones, the game's region preferred), fetched once and kept on the server, so the art of your games stays
   if the service goes. Tiles fill in as they're shown, and the rest in the background after each scan.
   `Games.BoxArt: false` turns it off.
+- A game's versions (regions, revisions, bad dumps, hacks, translations) show as one tile, named without the tags and
+  opening the best of them; its page has a Version list, each one's tags in words.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

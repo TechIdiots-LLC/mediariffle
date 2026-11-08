@@ -21,6 +21,18 @@ How a file's system is found (the same rules as 360 Riffle, so one games folder 
 - A zip next to the same game unpacked (`Game.zip` and `Game.nds`) is listed once.
 - A `.cue` takes its tracks along, an `.m3u` its discs: they're played as one game, sent to the browser zipped.
 
+### Versions of a game
+
+Sets often have a game many times over: regions, revisions, bad dumps, hacks, translations. Files of one system whose
+names are the same without their tags (`Zelda (U) (V1.1) [!]`, `Zelda (G) [b1]`, `Zelda (U) [T+Spa]`, a DS set's
+`2333 Kung Fu Panda (US)` and `2418 Kung Fu Panda (DE)`) are one game: one tile, named without the tags, saying how many
+versions there are. The tile opens the best of them: a good dump before a bad one, a hack, a translation or a beta;
+then USA, World, Europe, untagged, Japan; a verified dump (`[!]`); the later revision.
+
+The game's page has a **Version** list, best first, with each one's tags in words ("USA · v1.1 · verified", "Germany ·
+bad dump", "USA · Spanish translation 1.0 by DJTraducciones"); picking one opens it. Each version keeps its own saves
+in the browser. Favorites and lists hold the version that was added; a list with two versions of a game shows it once.
+
 ### Box art
 
 A picture named like the game beside it wins: in its folder, or in a `boxart`, `covers`, `images`, `Named_Boxarts`
