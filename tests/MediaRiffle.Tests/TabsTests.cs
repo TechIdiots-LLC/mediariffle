@@ -5,7 +5,7 @@ namespace MediaRiffle.Tests;
 
 public class TabsTests
 {
-    private static LibraryInfo Lib(LibraryKind kind, bool enabled = true) => new(1, kind.ToString(), kind, "/x", [], enabled);
+    private static LibraryInfo Lib(LibraryKind kind, bool enabled = true) => new(1, kind.ToString(), [kind], "/x", [], enabled);
 
     [Fact]
     public void ATabShowsOnlyWithAnEnabledLibraryOfItsKind()

@@ -136,21 +136,60 @@ public sealed partial class LibraryScanner : BackgroundService
         return summary.Length == 0 ? "No libraries configured" : summary.ToString().Trim();
     }
 
+    /// <summary>
+    /// A library with each of its kinds: its games (ROMs and disc images, by the game rules), then its media: audio for
+    /// Music, videos for Shows and Movies (with both, an episode by its name or season folder, else a movie). A kind
+    /// taken off the library takes what was filed under it away; files are filed again under the kind they are now.
+    /// </summary>
     private async Task<(int Added, int Updated, int Removed, int Failed)> ScanLibraryAsync(LibraryInfo lib, CancellationToken ct)
     {
-        if (lib.Kind == LibraryKind.Games) return await ScanGamesAsync(lib, ct);
+        int added = 0, updated = 0, removed = 0, failed = 0;
+        if (lib.Has(LibraryKind.Games)) (added, updated, removed, failed) = await ScanGamesAsync(lib, ct);
+        else
+        {
+            using var scope = scopes.CreateScope();
+            removed += await scope.ServiceProvider.GetRequiredService<AppDbContext>().Games.Where(g => g.LibraryId == lib.Id).ExecuteDeleteAsync(ct);
+        }
+        if (lib.Kinds.Any(k => k != LibraryKind.Games))
+        {
+            var m = await ScanMediaAsync(lib, ct);
+            added += m.Added; updated += m.Updated; removed += m.Removed; failed += m.Failed;
+        }
+        return (added, updated, removed, failed);
+    }
+
+    /// <summary>What a file in the library is filed as: null when none of its kinds takes it.</summary>
+    public static MediaKind? KindOf(LibraryInfo lib, string relativePath)
+    {
+        if (MediaNameParser.IsAudio(relativePath)) return lib.Has(LibraryKind.Music) ? MediaKind.Track : null;
+        if (!MediaNameParser.IsVideo(relativePath)) return null;
+        bool shows = lib.Has(LibraryKind.Shows), movies = lib.Has(LibraryKind.Movies);
+        if (!shows && !movies) return null;
+        return shows && (!movies || MediaNameParser.LooksLikeEpisode(relativePath)) ? MediaKind.Episode : MediaKind.Movie;
+    }
+
+    private async Task<(int Added, int Updated, int Removed, int Failed)> ScanMediaAsync(LibraryInfo lib, CancellationToken ct)
+    {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var root = Path.GetFullPath(lib.Path);
 
         var onDisk = new Dictionary<string, FileInfo>(StringComparer.Ordinal);
         var enumeration = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.Hidden | FileAttributes.System };
+        // With Games too: a disc game's audio tracks (beside its .cue) aren't music
+        var discFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var candidates = new List<string>();
         foreach (var path in Directory.EnumerateFiles(root, "*", enumeration))
         {
-            if (!MediaNameParser.Belongs(path, lib.Kind)) continue;
+            if (lib.Has(LibraryKind.Games) && path.EndsWith(".cue", StringComparison.OrdinalIgnoreCase)) discFolders.Add(Path.GetDirectoryName(path)!);
+            if (KindOf(lib, path) is not null) candidates.Add(path);
+        }
+        foreach (var path in candidates)
+        {
+            if (MediaNameParser.IsAudio(path) && discFolders.Contains(Path.GetDirectoryName(path)!)) continue;
             var info = new FileInfo(path);
             // Release "sample" clips aren't the episode or movie
-            if (lib.Kind != LibraryKind.Music && info.Name.Contains("sample", StringComparison.OrdinalIgnoreCase) && info.Length < 200L * 1024 * 1024) continue;
+            if (MediaNameParser.IsVideo(path) && info.Name.Contains("sample", StringComparison.OrdinalIgnoreCase) && info.Length < 200L * 1024 * 1024) continue;
             onDisk[Path.GetRelativePath(root, path).Replace('\\', '/')] = info;
         }
 
@@ -194,26 +233,29 @@ public sealed partial class LibraryScanner : BackgroundService
             }
             else failed++;
 
-            if (lib.Kind == LibraryKind.Music) await FileTrackAsync(db, lib, file, ct);
-            else if (lib.Kind == LibraryKind.Shows) await FileEpisodeAsync(db, lib, file, ct);
-            else await FileMovieAsync(db, lib, file, ct);
+            await FileAsync(db, lib, file, ct);
 
             if (isNew) { db.MediaFiles.Add(file); added++; } else updated++;
             await db.SaveChangesAsync(ct);   // per file, so the shows and movies it created are found by the next
         }
 
-        // Episodes filed before the parser knew better (e.g. a show's other series, "UK - Season 01", once merged into
-        // its own seasons) are filed again from their path; the file isn't read again
-        if (lib.Kind == LibraryKind.Shows)
+        // Files the library's kinds now take as something else (a kind added or taken off: a Shows library given
+        // Movies) are filed again as that, and episodes filed before the parser knew better (e.g. a show's other series,
+        // "UK - Season 01", once merged into its own seasons) under their season; the file isn't read again
         {
             var seasons = await db.Seasons.Where(s => s.Show!.LibraryId == lib.Id).ToDictionaryAsync(s => s.Id, ct);
             var probed = toProbe.Select(kv => kv.Key).ToHashSet(StringComparer.Ordinal);
             foreach (var file in known.Values.Where(f => onDisk.ContainsKey(f.RelativePath) && !probed.Contains(f.RelativePath)))
             {
-                var ep = MediaNameParser.ParseEpisode(file.RelativePath);
-                if (ep is null || (file.SeasonId is { } sid && seasons.TryGetValue(sid, out var s) && s.Series == ep.Series && s.Number == ep.Season))
-                    continue;
-                await FileEpisodeAsync(db, lib, file, ct);
+                var kind = KindOf(lib, file.RelativePath);
+                if (kind == file.Kind)
+                {
+                    if (kind != MediaKind.Episode) continue;
+                    var ep = MediaNameParser.ParseEpisode(file.RelativePath);
+                    if (ep is null || (file.SeasonId is { } sid && seasons.TryGetValue(sid, out var s) && s.Series == ep.Series && s.Number == ep.Season))
+                        continue;
+                }
+                await FileAsync(db, lib, file, ct);
                 await db.SaveChangesAsync(ct);
                 updated++;
             }
@@ -305,6 +347,14 @@ public sealed partial class LibraryScanner : BackgroundService
     /// <summary>The year in a date tag: "1969", "1969-09-26", "2003-01-01T00:00:00Z".</summary>
     internal static int? Year(string? tag) =>
         tag is { Length: >= 4 } && int.TryParse(tag[..4], out var y) && y is > 1000 and < 3000 ? y : null;
+
+    /// <summary>Files a file under what the library's kinds take it as (see <see cref="KindOf"/>).</summary>
+    private static Task FileAsync(AppDbContext db, LibraryInfo lib, MediaFile file, CancellationToken ct) => KindOf(lib, file.RelativePath) switch
+    {
+        MediaKind.Track => FileTrackAsync(db, lib, file, ct),
+        MediaKind.Episode => FileEpisodeAsync(db, lib, file, ct),
+        _ => FileMovieAsync(db, lib, file, ct),
+    };
 
     public static async Task FileEpisodeAsync(AppDbContext db, LibraryInfo lib, MediaFile file, CancellationToken ct)
     {

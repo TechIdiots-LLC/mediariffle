@@ -13,8 +13,15 @@ namespace MediaRiffle.Server.Api;
 public sealed record InviteRequest(bool IsAdmin, int Days);
 public sealed record QualityCapRequest(string? MaxQuality);
 public sealed record RoleRequest(bool IsAdmin);
-public sealed record LibraryRequest(string Name, Options.LibraryKind Kind, string Path, string? Tags, bool Enabled = true);
-public sealed record PathCheckRequest(string Path, Options.LibraryKind Kind = Options.LibraryKind.Shows);
+/// <summary>A library to add or change: its kinds (Kind alone, from before a library could have several, still works).</summary>
+public sealed record LibraryRequest(string Name, List<Options.LibraryKind>? Kinds, string Path, string? Tags, bool Enabled = true, Options.LibraryKind? Kind = null)
+{
+    public List<Options.LibraryKind> AllKinds => Kinds is { Count: > 0 } ? Kinds.Distinct().Order().ToList() : Kind is { } k ? [k] : [];
+}
+public sealed record PathCheckRequest(string Path, List<Options.LibraryKind>? Kinds = null, Options.LibraryKind? Kind = null)
+{
+    public List<Options.LibraryKind> AllKinds => Kinds is { Count: > 0 } ? Kinds.Distinct().Order().ToList() : [Kind ?? Options.LibraryKind.Shows];
+}
 
 /// <summary>Admin only: invites, users, library scans and the streams running now.</summary>
 public static class AdminEndpoints
@@ -162,8 +169,9 @@ public static class AdminEndpoints
             return (await db.Libraries.OrderBy(l => l.Name).ToListAsync())
                 .Select(l => new
                 {
-                    l.Id, l.Name, kind = l.Kind.ToString(), l.Path, l.Tags, l.Enabled,
-                    files = counts.TryGetValue(l.Id, out var c) ? c.n : games.GetValueOrDefault(l.Id),
+                    l.Id, l.Name, kinds = l.KindList.Select(k => k.ToString()), l.Path, l.Tags, l.Enabled,
+                    // Its media files and games together (a library can hold both)
+                    files = (counts.TryGetValue(l.Id, out var c) ? c.n : 0) + games.GetValueOrDefault(l.Id),
                     unreadable = c?.bad ?? 0,
                     status = scanner.Status.TryGetValue(l.Id, out var s) ? s : null,
                 });
@@ -172,11 +180,9 @@ public static class AdminEndpoints
         g.MapPost("/libraries", async (LibraryRequest req, AppDbContext db, LibraryCatalog catalog) =>
         {
             if (await Validate(req, db, null) is { } problem) return problem;
-            db.Libraries.Add(new MediaLibrary
-            {
-                Name = req.Name.Trim(), Kind = req.Kind, Path = req.Path.Trim(),
-                Tags = MediaLibrary.NormalizeTags(req.Tags), Enabled = req.Enabled,
-            });
+            var lib = new MediaLibrary { Name = req.Name.Trim(), Path = req.Path.Trim(), Tags = MediaLibrary.NormalizeTags(req.Tags), Enabled = req.Enabled };
+            lib.SetKinds(req.AllKinds);
+            db.Libraries.Add(lib);
             await db.SaveChangesAsync();
             await catalog.ReloadAsync();   // and the scanner picks it up
             return Results.Ok();
@@ -187,11 +193,13 @@ public static class AdminEndpoints
             var lib = await db.Libraries.FirstOrDefaultAsync(l => l.Id == id);
             if (lib is null) return Results.NotFound();
             if (await Validate(req, db, id) is { } problem) return problem;
-            // A new folder or kind means what was scanned from the old one no longer applies
-            if (!string.Equals(lib.Path, req.Path.Trim(), StringComparison.Ordinal) || lib.Kind != req.Kind)
+            // A new folder means what was scanned from the old one no longer applies. Kinds added or taken off don't: the
+            // scan files what's there again under the kinds it has now (and drops what none of them takes), so
+            // everyone's place in what stays is kept.
+            if (!string.Equals(lib.Path, req.Path.Trim(), StringComparison.Ordinal))
                 await ForgetContents(db, id);
             lib.Name = req.Name.Trim();
-            lib.Kind = req.Kind;
+            lib.SetKinds(req.AllKinds);
             lib.Path = req.Path.Trim();
             lib.Tags = MediaLibrary.NormalizeTags(req.Tags);
             lib.Enabled = req.Enabled;
@@ -221,17 +229,22 @@ public static class AdminEndpoints
                 var sample = new List<string>();
                 int count = 0;
                 var opts = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
+                var kinds = req.AllKinds;
+                var lib = new LibraryInfo(0, "", kinds, path, [], true);
+                var found = new Dictionary<string, int>();
                 foreach (var f in Directory.EnumerateFiles(path, "*", opts))
                 {
-                    if (req.Kind == Options.LibraryKind.Games
-                            ? GameSystems.Classify(System.IO.Path.GetRelativePath(path, f)) is null
-                            : !MediaNameParser.Belongs(f, req.Kind))
-                        continue;
-                    if (sample.Count < 5) sample.Add(System.IO.Path.GetRelativePath(path, f).Replace('\\', '/'));
+                    var rel = System.IO.Path.GetRelativePath(path, f);
+                    var what = kinds.Contains(Options.LibraryKind.Games) && GameSystems.Classify(rel) is not null ? "game"
+                        : LibraryScanner.KindOf(lib, f) switch { MediaKind.Track => "music", null => null, _ => "video" };
+                    if (what is null) continue;
+                    found[what] = found.GetValueOrDefault(what) + 1;
+                    if (sample.Count < 5) sample.Add(rel.Replace('\\', '/'));
                     if (++count >= 1000) break;
                 }
-                var what = req.Kind switch { Options.LibraryKind.Music => "music", Options.LibraryKind.Games => "game", _ => "video" };
-                return (true, count == 0 ? $"The folder is readable but has no {what} files." : $"Readable: {(count >= 1000 ? "1000+" : count)} {what} files.", count, sample);
+                var looked = string.Join(" or ", kinds.Select(k => k switch { Options.LibraryKind.Music => "music", Options.LibraryKind.Games => "game", _ => "video" }).Distinct());
+                var counts = string.Join(", ", found.Select(x => $"{x.Value} {x.Key}"));
+                return (true, count == 0 ? $"The folder is readable but has no {looked} files." : $"Readable: {(count >= 1000 ? "1000+ files: " : "")}{counts} files.", count, sample);
             });
             if (await Task.WhenAny(check, Task.Delay(TimeSpan.FromSeconds(15))) != check)
                 return Results.Ok(new { ok = false, message = "No answer within 15 s: is the file server reachable?" });
@@ -276,7 +289,8 @@ public static class AdminEndpoints
             return Results.BadRequest(new { error = $"There's already a library called {name}." });
         if (!System.IO.Path.IsPathFullyQualified(req.Path?.Trim() ?? ""))
             return Results.BadRequest(new { error = "The folder must be a full path, e.g. /mnt/media/Shows or \\\\server\\share\\Shows." });
-        if (!Enum.IsDefined(req.Kind)) return Results.BadRequest(new { error = "Unknown library kind." });
+        if (req.AllKinds.Count == 0) return Results.BadRequest(new { error = "Tick what the folder holds: shows, movies, music or games." });
+        if (!req.AllKinds.All(Enum.IsDefined)) return Results.BadRequest(new { error = "Unknown library kind." });
         return null;
     }
 

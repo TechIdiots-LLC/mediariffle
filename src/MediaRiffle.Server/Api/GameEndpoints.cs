@@ -36,7 +36,7 @@ public static class GameEndpoints
         });
 
         g.MapGet("/libraries/{id:int}/games", async (int id, LibraryCatalog catalog, AppDbContext db) =>
-            catalog.Get(id) is not { Enabled: true, Kind: Options.LibraryKind.Games } ? Results.NotFound()
+            catalog.Get(id) is not { Enabled: true } gl || !gl.Has(Options.LibraryKind.Games) ? Results.NotFound()
                 : Results.Ok(await Tiles(db.Games.Where(x => x.LibraryId == id))));
 
         // With what the play page needs: the emulator core, the file's address, the BIOS, and whether it can start

@@ -21,12 +21,13 @@ public static class LibraryEndpoints
         g.MapGet("/libraries", async (LibraryCatalog catalog, AppDbContext db) =>
         {
             var counts = await db.MediaFiles.GroupBy(f => f.LibraryId).Select(x => new { x.Key, n = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.n);
-            foreach (var x in await db.Games.GroupBy(x => x.LibraryId).Select(x => new { x.Key, n = x.Count() }).ToListAsync()) counts[x.Key] = x.n;
-            return catalog.Enabled.Select(l => new { l.Id, l.Name, kind = l.Kind.ToString(), l.Tags, files = counts.GetValueOrDefault(l.Id) });
+            foreach (var x in await db.Games.GroupBy(x => x.LibraryId).Select(x => new { x.Key, n = x.Count() }).ToListAsync()) counts[x.Key] = counts.GetValueOrDefault(x.Key) + x.n;
+            // kind: the first of its kinds, for apps from before a library could have several
+            return catalog.Enabled.Select(l => new { l.Id, l.Name, kind = l.Kinds[0].ToString(), kinds = l.Kinds.Select(k => k.ToString()), l.Tags, files = counts.GetValueOrDefault(l.Id) });
         });
 
         g.MapGet("/libraries/{id:int}", (int id, LibraryCatalog catalog) =>
-            catalog.Get(id) is { Enabled: true } l ? Results.Ok(new { l.Id, l.Name, kind = l.Kind.ToString(), l.Tags }) : Results.NotFound());
+            catalog.Get(id) is { Enabled: true } l ? Results.Ok(new { l.Id, l.Name, kind = l.Kinds[0].ToString(), kinds = l.Kinds.Select(k => k.ToString()), l.Tags }) : Results.NotFound());
 
         g.MapGet("/libraries/{id:int}/shows", async (int id, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
             catalog.Get(id) is not { Enabled: true } ? Results.NotFound() : Results.Ok(await ShowsIn(db, users.GetUserId(me)!, [id])));
@@ -62,7 +63,7 @@ public static class LibraryEndpoints
                     music = byKind.Where(x => Tabs.Of(x.Kind) == Tabs.Music).Sum(x => x.n),
                     games,
                     // The kinds of library carrying it, so a tab can list a category whose libraries are still empty
-                    libraryTabs = catalog.Enabled.Where(l => ids.Contains(l.Id)).Select(l => Tabs.Of(l.Kind)).Distinct(),
+                    libraryTabs = catalog.Enabled.Where(l => ids.Contains(l.Id)).SelectMany(l => Tabs.Of(l)).Distinct(),
                 });
             }
             return result;

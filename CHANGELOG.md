@@ -15,6 +15,10 @@
 - Admin → Games shows each user's game saves and states, and the space they take.
 - **Scan one library**: each library under Admin → Libraries has its own Scan, beside Edit; its row says when it's
   waiting, scanning and done. Scan now still scans them all.
+- **A library can hold several kinds**: tick Shows, Movies, Music and Games as the folder has them, when adding or
+  editing it. A scan files each file once (with Shows and Movies both, a video named like an episode or in a season
+  folder is an episode, the rest movies). Such a library is listed once under Admin and shows under each of its tabs;
+  its page has a section per kind. Changing what a library holds files it again, keeping everyone's place.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

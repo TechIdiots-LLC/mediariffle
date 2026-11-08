@@ -18,7 +18,7 @@ public static class MusicEndpoints
         var g = app.MapGroup("/api").RequireAuthorization().AllowDevices();
 
         g.MapGet("/libraries/{id:int}/artists", async (int id, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
-            catalog.Get(id) is not { Enabled: true, Kind: LibraryKind.Music } ? Results.NotFound()
+            catalog.Get(id) is not { Enabled: true } ml || !ml.Has(LibraryKind.Music) ? Results.NotFound()
                 : Results.Ok(await ArtistTiles(db, users.GetUserId(me)!, db.Artists.Where(a => a.LibraryId == id))));
 
         g.MapGet("/artists/{id:int}", async (int id, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>

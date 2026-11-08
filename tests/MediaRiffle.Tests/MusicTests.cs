@@ -97,7 +97,7 @@ public class MusicTests
         var dbLib = new Server.Data.MediaLibrary { Name = "Music", Kind = LibraryKind.Music, Path = "/music" };
         db.Libraries.Add(dbLib);
         await db.SaveChangesAsync();
-        var lib = new LibraryInfo(dbLib.Id, "Music", LibraryKind.Music, "/music", [], true);
+        var lib = new LibraryInfo(dbLib.Id, "Music", [LibraryKind.Music], "/music", [], true);
 
         async Task<Server.Data.MediaFile> File(string path, string tags)
         {

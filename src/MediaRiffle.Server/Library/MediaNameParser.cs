@@ -103,6 +103,19 @@ public static partial class MediaNameParser
     /// by their season folders, <c>Show/UK - Season 01/…</c>, or for files loose in the show's folder by a name that
     /// isn't the show's, <c>Show/drag.race.espana.s01e01.mkv</c>.
     /// </summary>
+    /// <summary>
+    /// Whether a video is an episode rather than a movie, in a library that has both: named as one ("S01E02", "1x02"),
+    /// or in a season's folder ("Season 1", "Specials", "UK - Season 01").
+    /// </summary>
+    public static bool LooksLikeEpisode(string relativePath)
+    {
+        var parts = relativePath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return false;
+        var fileName = Path.GetFileNameWithoutExtension(parts[^1]);
+        if (SxxEyy().IsMatch(fileName) || NxNN().IsMatch(fileName)) return true;
+        return parts[..^1].Any(f => SeasonFolder().IsMatch(f) || SpecialsFolder().IsMatch(f) || SeriesSeasonFolder().IsMatch(f));
+    }
+
     public static EpisodeInfo? ParseEpisode(string relativePath)
     {
         var parts = relativePath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);

@@ -35,6 +35,8 @@ async function loadState() {
 
 const TAB_NAMES = { videos: 'Videos', music: 'Music', games: 'Games' };
 const LIBRARY_TAB = { Shows: 'videos', Movies: 'videos', Music: 'music', Games: 'games' };
+// The tabs a library is under: one for each of its kinds' tabs
+const libraryTabs = l => [...new Set((l.kinds ?? [l.kind]).map(k => LIBRARY_TAB[k]))];
 const TAB_KEY = 'mediariffle.tab';
 let currentTab = null;   // the tab marked in the top bar
 
@@ -100,7 +102,7 @@ const routes = [
   [/^#\/switch$/, switchView],
   [/^#\/add-account(?:\/(.+))?$/, m => signInForm(m[1] ? decodeURIComponent(m[1]) : '')],
   [/^#\/(videos|music|games)$/, m => tabView(m[1])],
-  [/^#\/library\/(\d+)$/, m => libraryView(+m[1])],
+  [/^#\/library\/(\d+)(?:\/(videos|music|games))?$/, m => libraryView(+m[1], m[2])],
   // A category or list opened from a tab ends in it ("…/music"): only that tab's part of it is shown and played
   [/^#\/tag\/([^/]+)(?:\/(videos|music|games))?$/, m => tagView(decodeURIComponent(m[1]), m[2])],
   [/^#\/list\/([^/]+)(?:\/(videos|music|games))?$/, m => listView(decodeURIComponent(m[1]), m[2])],
@@ -742,7 +744,7 @@ async function tabView(tab) {
   const [allLibraries, recent, tags, lists, favorites, systems] = await Promise.all([api('/api/libraries'),
     tab === 'videos' ? api('/api/continue') : games ? api('/api/games/continue') : [], api('/api/tags'), api('/api/lists'),
     api(`/api/lists/${FAVORITES}`), games ? api('/api/games/systems') : []]);
-  const libraries = allLibraries.filter(l => LIBRARY_TAB[l.kind] === tab);
+  const libraries = allLibraries.filter(l => libraryTabs(l).includes(tab));
   const myLists = lists.filter(l => !isFavorites(l.tag) && l[tab] > 0);
   const myTags = tags.filter(t => t[tab] > 0 || t.libraryTabs?.includes(tab));
   const hasFavorites = music ? favorites.artists.length || favorites.albums.length || favorites.tracks.length
@@ -763,8 +765,8 @@ async function tabView(tab) {
         s.name, h('span', { class: 'muted' }, ` ${s.games}`)))) : null } : undefined,
     libraries: { title: 'Libraries', body: libraries.length
       ? h('div', { class: 'grid' }, libraries.map(l =>
-          h('a', { class: 'tile card', href: `#/library/${l.id}` },
-            h('div', { class: 'name' }, l.name), h('div', { class: 'sub' }, `${l.kind} · ${l.files} files`),
+          h('a', { class: 'tile card', href: `#/library/${l.id}/${tab}` },
+            h('div', { class: 'name' }, l.name), h('div', { class: 'sub' }, `${(l.kinds ?? [l.kind]).join(', ')} · ${l.files} files`),
             l.tags.length ? h('div', { class: 'sub' }, l.tags.join(', ')) : null)))
       : h('p', { class: 'muted' }, state.user.isAdmin ? 'No libraries yet: add them under Admin.' : 'No libraries yet.') },
     // One row that scrolls sideways, most recent first (the server sends the last 20)
@@ -837,23 +839,32 @@ async function tabView(tab) {
   draw();
 }
 
-async function libraryView(id) {
+// A library: what it holds, each kind under a heading of its own when it has several. Opened from a tab (#/library/<id>/
+// <tab>), only the kinds of that tab, and Play all and Shuffle play only that part.
+const LIBRARY_PARTS = {
+  Shows: { path: 'shows', tiles: items => showTiles(items), title: 'Shows' },
+  Movies: { path: 'movies', tiles: items => movieTiles(items), title: 'Movies' },
+  Music: { path: 'artists', tiles: items => artistTiles(items), title: 'Music' },
+  Games: { path: 'games', tiles: items => gameTiles(items), title: 'Games' },
+};
+
+async function libraryView(id, tab) {
   const lib = await api(`/api/libraries/${id}`);
-  markTab(LIBRARY_TAB[lib.kind]);
-  const kind = { Shows: 'shows', Movies: 'movies', Music: 'artists', Games: 'games' }[lib.kind];
-  const tiles = { Shows: showTiles, Movies: movieTiles, Music: artistTiles, Games: gameTiles }[lib.kind];
-  const items = await api(`/api/libraries/${id}/${kind}`);
+  const all = lib.kinds ?? [lib.kind];
+  const kinds = tab ? all.filter(k => LIBRARY_TAB[k] === tab) : all;
+  if (!kinds.length) { forward(`#/library/${id}`); return; }
+  tab = tab ?? LIBRARY_TAB[kinds[0]];
+  markTab(tab);
+  const parts = await Promise.all(kinds.map(async k => ({ k, items: await api(`/api/libraries/${id}/${LIBRARY_PARTS[k].path}`), grid: h('div', { class: 'grid' }) })));
   const name = i => i.title ?? i.name;
-  const grid = h('div', { class: 'grid' });
-  const draw = q => mount(grid, tiles(items.filter(i => !q || name(i).toLowerCase().includes(q))));
+  const draw = q => parts.forEach(p => mount(p.grid, LIBRARY_PARTS[p.k].tiles(p.items.filter(i => !q || name(i).toLowerCase().includes(q)))));
   draw('');
-  const tab = LIBRARY_TAB[lib.kind];
   mount(view,
     // Games are played one at a time, so no Play all or Shuffle
-    h('div', { class: 'row' }, h('h1', {}, lib.name), lib.kind === 'Games' ? null : playButtons({ library: id }, lib.name), filterBox(draw)),
+    h('div', { class: 'row' }, h('h1', {}, lib.name), kinds.some(k => k !== 'Games') ? playButtons(inTab({ library: id }, tab), lib.name) : null, filterBox(draw)),
     lib.tags.length ? h('p', { class: 'muted' }, 'Categories: ', lib.tags.map((t, i) => [i ? ', ' : '', h('a', { href: `#/tag/${encodeURIComponent(t)}/${tab}` }, t)])) : null,
-    grid,
-    items.length ? null : h('p', { class: 'muted' }, 'Nothing here yet. An admin can rescan under Admin.'));
+    parts.map(p => parts.length === 1 ? p.grid : p.items.length ? [h('h2', {}, LIBRARY_PARTS[p.k].title), p.grid] : null),
+    parts.some(p => p.items.length) ? null : h('p', { class: 'muted' }, 'Nothing here yet. An admin can rescan under Admin.'));
 }
 
 // A category: every show, movie and artist in the libraries carrying this tag, to browse or play through. Opened from
@@ -1203,21 +1214,25 @@ async function playView(fileId) {
 // Add or edit a library, in place of the "Add a library" button
 function libraryForm(lib) {
   const name = h('input', { value: lib?.name ?? '', maxlength: 100, required: true });
-  const kind = h('select', {}, ['Shows', 'Movies', 'Music', 'Games'].map(k => h('option', { value: k, selected: (lib?.kind ?? 'Shows') === k }, k)));
+  // What the folder holds: any of them; a scan files each file under the one it is
+  const had = lib?.kinds ?? ['Shows'];
+  const kindBoxes = ['Shows', 'Movies', 'Music', 'Games'].map(k => ({ k, box: h('input', { type: 'checkbox', value: k, checked: had.includes(k) }) }));
+  const kinds = () => kindBoxes.filter(x => x.box.checked).map(x => x.k);
   const path = h('input', { value: lib?.path ?? '', size: 50, placeholder: '/mnt/media/Shows or \\\\files.example.lan\\Media\\Shows', required: true });
   const tags = h('input', { value: lib?.tags ?? '', size: 40, placeholder: 'e.g. Cartoons, Kids' });
   const enabled = h('input', { type: 'checkbox', checked: lib?.enabled ?? true });
   const msg = h('p', { class: 'muted' });
   const check = async () => {
     msg.className = 'muted'; msg.textContent = 'Checking…';
-    const r = await api('/api/admin/libraries/check', { method: 'POST', body: { path: path.value, kind: kind.value } });
+    if (!kinds().length) { msg.className = 'error'; msg.textContent = 'Tick what the folder holds first.'; return; }
+    const r = await api('/api/admin/libraries/check', { method: 'POST', body: { path: path.value, kinds: kinds() } });
     msg.className = r.ok ? 'ok' : 'error';
     mount(msg, r.message, r.sample?.length ? h('br') : null, (r.sample ?? []).map(s => [h('br'), h('code', {}, s)]));
   };
   const save = async e => {
     e.preventDefault();
     try {
-      const body = { name: name.value, kind: kind.value, path: path.value, tags: tags.value, enabled: enabled.checked };
+      const body = { name: name.value, kinds: kinds(), path: path.value, tags: tags.value, enabled: enabled.checked };
       if (lib) await api(`/api/admin/libraries/${lib.id}`, { method: 'PUT', body });
       else await api('/api/admin/libraries', { method: 'POST', body });
       await loadState();   // a library of a new kind brings its tab, the last of a kind takes it away
@@ -1227,11 +1242,13 @@ function libraryForm(lib) {
   mount(document.getElementById('library-form'), h('form', { class: 'card form-wide', onsubmit: save },
     h('h2', {}, lib ? `Edit ${lib.name}` : 'Add a library'),
     h('label', {}, 'Name', name),
-    h('label', {}, 'Kind', kind),
+    h('fieldset', { class: 'kinds' }, h('legend', {}, 'Holds'),
+      kindBoxes.map(x => h('label', { class: 'row' }, x.box, x.k)),
+      h('p', { class: 'muted' }, 'Tick all it has: each file is filed once. With both Shows and Movies, a video named like an episode (S01E02, 1x02) or in a season folder is an episode, the rest are movies.')),
     h('label', {}, 'Folder', h('span', { class: 'row' }, path, h('button', { type: 'button', class: 'secondary', onclick: check }, 'Check folder'))),
     h('label', {}, 'Tags', tags),
     h('label', { class: 'row' }, enabled, 'Enabled'),
-    lib && lib.path ? h('p', { class: 'muted' }, 'Changing the folder or kind rescans it from scratch.') : null,
+    lib && lib.path ? h('p', { class: 'muted' }, 'Changing the folder rescans it from scratch. Changing what it holds files it again, keeping everyone\'s place.') : null,
     msg,
     h('div', { class: 'row' }, h('button', { type: 'submit' }, lib ? 'Save' : 'Add and scan'),
       h('button', { type: 'button', class: 'secondary', onclick: () => adminView() }, 'Cancel'))));
@@ -1381,14 +1398,14 @@ async function adminView() {
     h('h2', {}, 'Libraries'),
     h('p', { class: 'muted' }, 'Folders of shows, movies, music or games, on this server or a file share. Tags (comma-separated, as in Media Library Manager) are the categories everyone can browse and shuffle.'),
     libraries.length ? h('table', {},
-      h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Kind'), h('th', {}, 'Folder'), h('th', {}, 'Tags'), h('th', {}, 'Files'), h('th', {}, 'Status'), h('th', {})),
+      h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Holds'), h('th', {}, 'Folder'), h('th', {}, 'Tags'), h('th', {}, 'Files'), h('th', {}, 'Status'), h('th', {})),
       libraries.map(l => {
         const files = h('td', {}), status = h('td', {});
         cells.set(l.id, { files, status });
         fillRow(l);
         return [l, files, status];
       }).map(([l, files, status]) => h('tr', { class: l.enabled ? '' : 'muted' },
-        h('td', {}, l.name, l.enabled ? null : ' (disabled)'), h('td', {}, l.kind), h('td', {}, h('code', {}, l.path)),
+        h('td', {}, l.name, l.enabled ? null : ' (disabled)'), h('td', {}, l.kinds.join(', ')), h('td', {}, h('code', {}, l.path)),
         h('td', {}, l.tags ?? ''), files, status,
         h('td', { class: 'row' },
           h('button', { class: 'secondary', onclick: () => libraryForm(l) }, 'Edit'),
@@ -1407,7 +1424,7 @@ async function adminView() {
       : h('p', {}, 'No libraries yet.'),
     h('div', { class: 'row' }, h('button', { class: 'secondary', onclick: async () => { await api('/api/admin/scan', { method: 'POST' }); scanMsg.textContent = 'Scan requested…'; } }, 'Scan now'), scanMsg),
     h('div', { id: 'library-form' }, h('button', { onclick: () => libraryForm(null) }, 'Add a library')),
-    libraries.some(l => l.kind === 'Games') ? [h('h2', {}, 'Games'), adminGamesSection()] : null,
+    libraries.some(l => l.kinds.includes('Games')) ? [h('h2', {}, 'Games'), adminGamesSection()] : null,
     h('h2', {}, 'Invite someone'),
     h('div', { class: 'card' },
       h('div', { class: 'row' }, h('label', { class: 'row' }, asAdmin, 'Admin'), h('label', { class: 'row' }, 'Valid for', days, 'days'),

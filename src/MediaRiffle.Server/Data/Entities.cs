@@ -74,7 +74,13 @@ public sealed class MediaLibrary
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    /// <summary>The first of its <see cref="KindList"/> (what a library had before it could have several).</summary>
     public Options.LibraryKind Kind { get; set; }
+    /// <summary>
+    /// What the folder holds, comma-separated ("Shows, Movies"): a scan files each file under the one it is (see
+    /// LibraryScanner). Null for <see cref="Kind"/> alone.
+    /// </summary>
+    public string? Kinds { get; set; }
     /// <summary>Absolute folder: a local path, a mount point, or a UNC path on Windows.</summary>
     public string Path { get; set; } = string.Empty;
     /// <summary>Comma-separated, e.g. "Cartoons, Kids". See <see cref="TagList"/>.</summary>
@@ -83,6 +89,26 @@ public sealed class MediaLibrary
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
     public IReadOnlyList<string> TagList => ParseTags(Tags);
+
+    /// <summary>Its kinds, in their order (Shows, Movies, Music, Games); at least <see cref="Kind"/>.</summary>
+    public IReadOnlyList<Options.LibraryKind> KindList
+    {
+        get
+        {
+            var kinds = (Kinds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(k => Enum.TryParse<Options.LibraryKind>(k, true, out var kind) ? kind : (Options.LibraryKind?)null)
+                .OfType<Options.LibraryKind>().ToList();
+            return kinds.Count == 0 ? [Kind] : kinds.Distinct().Order().ToArray();
+        }
+    }
+
+    /// <summary>Sets the kinds (one at least): <see cref="Kind"/> the first, <see cref="Kinds"/> all of them.</summary>
+    public void SetKinds(IEnumerable<Options.LibraryKind> kinds)
+    {
+        var list = kinds.Distinct().Order().ToList();
+        Kind = list[0];
+        Kinds = list.Count == 1 ? null : string.Join(", ", list);
+    }
 
     public static IReadOnlyList<string> ParseTags(string? raw) =>
         raw is null ? [] : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

@@ -6,7 +6,7 @@ game and its BIOS, so playing costs it nothing but the download.
 
 ## 1. Add a Games library
 
-Admin → Libraries → **Add a library**, kind **Games**, and the folder (a local path or a share, as for other
+Admin → Libraries → **Add a library**, tick **Games** (with whatever else the folder holds), and the folder (a local path or a share, as for other
 libraries). The games show under a **Games** tab, by system.
 
 How a file's system is found (the same rules as 360 Riffle, so one games folder serves both):

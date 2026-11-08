@@ -6,7 +6,11 @@ using Microsoft.Extensions.Options;
 namespace MediaRiffle.Server.Library;
 
 /// <summary>A library as the rest of the app sees it.</summary>
-public sealed record LibraryInfo(int Id, string Name, LibraryKind Kind, string Path, IReadOnlyList<string> Tags, bool Enabled);
+/// <summary>A library as the rest of the server sees it: its kinds (one at least) in their order.</summary>
+public sealed record LibraryInfo(int Id, string Name, IReadOnlyList<LibraryKind> Kinds, string Path, IReadOnlyList<string> Tags, bool Enabled)
+{
+    public bool Has(LibraryKind kind) => Kinds.Contains(kind);
+}
 
 /// <summary>
 /// The libraries, kept in memory: they're read on every file lookup and scan, and change only when an admin edits
@@ -46,7 +50,7 @@ public sealed class LibraryCatalog(IServiceScopeFactory scopes, IOptions<MediaRi
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var rows = await db.Libraries.OrderBy(l => l.Name).ToListAsync();
-        _all = rows.Select(l => new LibraryInfo(l.Id, l.Name, l.Kind, l.Path, l.TagList, l.Enabled)).ToList();
+        _all = rows.Select(l => new LibraryInfo(l.Id, l.Name, l.KindList, l.Path, l.TagList, l.Enabled)).ToList();
         if (raiseChanged) Changed?.Invoke(this, EventArgs.Empty);
     }
 

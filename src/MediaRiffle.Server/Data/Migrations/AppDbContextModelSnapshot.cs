@@ -601,6 +601,9 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.Property<int>("Kind")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Kinds")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("TEXT");
