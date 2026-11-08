@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.15.0
+### ✨ Features and improvements
 - **Videos and Music tabs** take the place of Home: each has its own lists, favorites, categories and libraries, and
   its own Customize order. A list or category holding both shows only the tab's part, and Play all, Shuffle and Clear
   act on that part alone. The name in the top bar opens the tab you used last; on a phone the tabs get their own row.
@@ -19,10 +26,8 @@
   find No-Intro ones, the game's region preferred), fetched once and kept on the server, so the art of your games stays
   if the service goes. Tiles fill in as they're shown, and the rest in the background after each scan.
   `Games.BoxArt: false` turns it off.
-- _...Add new stuff here..._
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
 
 ## 0.14.1
 ### ✨ Features and improvements
