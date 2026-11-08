@@ -26,6 +26,23 @@ public class PlaybackPlannerTests
     }
 
     [Fact]
+    public void H264InAviWithBFramesIsConvertedBecauseACopyWouldStutter()
+    {
+        var withB = V("h264") with { ReorderFrames = 2 };
+        Assert.Equal(PlaybackMode.Transcode, PlaybackPlanner.Decide(Probe("avi", withB, A(1, "mp3")), ".avi", null, null).Mode);
+        // The same video in a container that records the order, and AVI without B-frames, are still copied
+        Assert.Equal(PlaybackMode.Remux, PlaybackPlanner.Decide(Probe("matroska,webm", withB, A(1, "mp3")), ".mkv", null, null).Mode);
+        Assert.Equal(PlaybackMode.Remux, PlaybackPlanner.Decide(Probe("avi", V("h264"), A(1, "mp3")), ".avi", null, null).Mode);
+    }
+
+    [Fact]
+    public void BFramesAreReadFromTheProbe()
+    {
+        var probe = ProbeResult.Parse("""{"format":{"format_name":"avi"},"streams":[{"index":0,"codec_type":"video","codec_name":"h264","has_b_frames":2}]}""");
+        Assert.True(probe.Video!.HasBFrames);
+    }
+
+    [Fact]
     public void MkvWithH264IsRemuxedNotTranscoded()
     {
         var plan = PlaybackPlanner.Decide(Probe("matroska,webm", V("h264"), A(1, "ac3", 6)), ".mkv", null, null);

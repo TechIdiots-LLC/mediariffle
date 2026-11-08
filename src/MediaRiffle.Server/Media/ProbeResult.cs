@@ -9,8 +9,12 @@ public enum StreamType { Video, Audio, Subtitle, Other }
 public sealed record ProbeStream(
     int Index, StreamType Type, string Codec, string? Profile, string? PixelFormat,
     int Width, int Height, int Channels, string? Language, string? Title, bool IsDefault, bool IsForced,
-    string? ColorTransfer = null, string? ColorPrimaries = null, int? DolbyVisionProfile = null, int? DolbyVisionCompatibility = null)
+    string? ColorTransfer = null, string? ColorPrimaries = null, int? DolbyVisionProfile = null, int? DolbyVisionCompatibility = null,
+    int ReorderFrames = 0)
 {
+    /// <summary>Whether frames are stored in a different order from the one they're shown in (ReorderFrames, ffprobe's has_b_frames).</summary>
+    public bool HasBFrames => ReorderFrames > 0;
+
     /// <summary>
     /// HDR video: HDR10 / HDR10+ / Dolby Vision's base layer (PQ, "smpte2084") or HLG ("arib-std-b67"). Converted to
     /// ordinary (SDR) H.264 it needs tone mapping, or it looks washed out.
@@ -123,7 +127,7 @@ public sealed class ProbeResult
                     Int(s, "width"), Int(s, "height"), Int(s, "channels"),
                     Str(tags, "language"), Str(tags, "title"),
                     Int(disposition, "default") == 1, Int(disposition, "forced") == 1,
-                    Str(s, "color_transfer"), Str(s, "color_primaries"), dv?.Profile, dv?.Compatibility));
+                    Str(s, "color_transfer"), Str(s, "color_primaries"), dv?.Profile, dv?.Compatibility, Int(s, "has_b_frames")));
             }
         }
         return new ProbeResult

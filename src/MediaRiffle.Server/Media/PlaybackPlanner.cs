@@ -113,6 +113,11 @@ public static class PlaybackPlanner
             video.Codec is "vp8" or "vp9" or "av1" && (audio is null || audio.Codec is "opus" or "vorbis"))
             return Pass(PlaybackMode.Direct, "WebM", SegmentFormat.Ts);
 
+        // AVI has a time for each frame as it's stored and none for when it's shown. Copied, B-frames (stored after the
+        // frame they're shown before) would be given their stored order, and the picture steps back and forth: stutter.
+        // Decoding puts them in order. (Without B-frames the two orders are the same, and it can be copied.)
+        if (h264 && video.HasBFrames && probe.FormatName.Split(',').Contains("avi"))
+            return Transcode("H.264 with B-frames in AVI, which doesn't record their order: converting so it plays smoothly");
         if (h264) return Pass(PlaybackMode.Remux, $"H.264 in {probe.FormatName}: video copied", SegmentFormat.Ts);
         if (hevc) return Pass(PlaybackMode.Remux, "HEVC copied: this device decodes it", SegmentFormat.Fmp4);
         return Transcode(video.Codec == "hevc"
