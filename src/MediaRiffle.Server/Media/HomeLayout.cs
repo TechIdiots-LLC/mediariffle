@@ -1,8 +1,8 @@
 namespace MediaRiffle.Server.Media;
 
 /// <summary>
-/// Which sections each top tab (Videos, Music) shows and in what order, per user (Customize on the tab). Stored as each
-/// changed tab's section ids in order, a hidden one with a leading "-": "videos:continue,-libraries,lists;music:…".
+/// Which sections each top tab (Videos, Music, Games) shows and in what order, per user (Customize on the tab). Stored
+/// as each changed tab's section ids in order, a hidden one with a leading "-": "videos:continue,-libraries,lists;music:…".
 /// Before the tabs there was one home page, stored as "lists,categories,…" alone: that is read as every tab's.
 /// </summary>
 public static class HomeLayout
@@ -12,6 +12,7 @@ public static class HomeLayout
     {
         ["videos"] = ["lists", "favorites", "categories", "libraries", "continue"],
         ["music"] = ["lists", "favorites", "categories", "libraries"],
+        ["games"] = ["lists", "favorites", "categories", "systems", "libraries"],
     };
 
     /// <summary>Every tab's sections to send a client: the stored layout where there is one, else the default.</summary>

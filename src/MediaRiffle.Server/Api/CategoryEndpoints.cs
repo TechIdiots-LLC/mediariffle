@@ -31,11 +31,11 @@ public static class CategoryEndpoints
             foreach (var t in list)
             {
                 if (existing.Any(e => e.ShowId == t.ShowId && e.MovieId == t.MovieId && e.ArtistId == t.ArtistId &&
-                                      e.AlbumId == t.AlbumId && e.MediaFileId == t.MediaFileId)) continue;
+                                      e.AlbumId == t.AlbumId && e.MediaFileId == t.MediaFileId && e.GameId == t.GameId)) continue;
                 db.CategoryItems.Add(new CategoryItem
                 {
                     Tag = existing.FirstOrDefault()?.Tag ?? list[0].Tag,
-                    ShowId = t.ShowId, MovieId = t.MovieId, ArtistId = t.ArtistId, AlbumId = t.AlbumId, MediaFileId = t.MediaFileId,
+                    ShowId = t.ShowId, MovieId = t.MovieId, ArtistId = t.ArtistId, AlbumId = t.AlbumId, MediaFileId = t.MediaFileId, GameId = t.GameId,
                 });
                 added++;
             }

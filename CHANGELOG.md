@@ -5,6 +5,11 @@
 - **Videos and Music tabs** take the place of Home: each has its own lists, favorites, categories and libraries, and
   its own Customize order. A list or category holding both shows only the tab's part, and Play all, Shuffle and Clear
   act on that part alone. The name in the top bar opens the tab you used last; on a phone the tabs get their own row.
+- **Games libraries** and a **Games tab**: point a library of the new Games kind at a ROM folder and its games are
+  listed by system (NES to PSP, Nintendo DS, arcade and more), with box art found beside them, in lists, favorites and
+  categories like everything else. The system comes from the extension, or from a folder named for it (the same rules
+  as 360 Riffle). BIOS, emulator and program folders are skipped, a zip beside the same game unpacked is listed once,
+  and a disc game's .cue or .m3u brings its tracks and discs with it.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

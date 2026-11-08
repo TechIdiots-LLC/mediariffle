@@ -230,6 +230,7 @@ app.MapHiddenEndpoints();
 app.MapRequestEndpoints();
 app.MapCategoryEndpoints();
 app.MapMusicEndpoints();
+app.MapGameEndpoints();
 app.MapMusicCastEndpoints();
 app.MapExternalPlayerEndpoints();
 app.MapPlaybackEndpoints();

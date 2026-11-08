@@ -21,6 +21,7 @@ public static class LibraryEndpoints
         g.MapGet("/libraries", async (LibraryCatalog catalog, AppDbContext db) =>
         {
             var counts = await db.MediaFiles.GroupBy(f => f.LibraryId).Select(x => new { x.Key, n = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.n);
+            foreach (var x in await db.Games.GroupBy(x => x.LibraryId).Select(x => new { x.Key, n = x.Count() }).ToListAsync()) counts[x.Key] = x.n;
             return catalog.Enabled.Select(l => new { l.Id, l.Name, kind = l.Kind.ToString(), l.Tags, files = counts.GetValueOrDefault(l.Id) });
         });
 
@@ -33,12 +34,12 @@ public static class LibraryEndpoints
         g.MapGet("/libraries/{id:int}/movies", async (int id, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
             catalog.Get(id) is not { Enabled: true } ? Results.NotFound() : Results.Ok(await MoviesIn(db, users.GetUserId(me)!, [id])));
 
-        // Categories: the tags on the libraries (as in MediaLibraryManager), each with what's in it
-        // Each with how many files it has, in all and per tab (videos, music), so a tab lists only the categories with
-        // something of its own in them
+        // Categories: the tags on the libraries (as in MediaLibraryManager), each with how many files it has, in all and
+        // per tab (videos, music, games), so a tab lists only the categories with something of its own in them
         g.MapGet("/tags", async (LibraryCatalog catalog, AppDbContext db) =>
         {
             var counts = await db.MediaFiles.GroupBy(f => new { f.LibraryId, f.Kind }).Select(x => new { x.Key.LibraryId, x.Key.Kind, n = x.Count() }).ToListAsync();
+            var gameCounts = await db.Games.GroupBy(x => x.LibraryId).Select(x => new { x.Key, n = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.n);
             // The libraries' tags, and the categories an admin made from a list (what's on one that no tagged library holds is added)
             var enabled = catalog.Enabled.Select(l => l.Id).ToHashSet();
             var made = await db.CategoryItems.Select(c => c.Tag).Distinct().ToListAsync();
@@ -50,13 +51,16 @@ public static class LibraryEndpoints
                 byKind.AddRange((await ListEndpoints.FilesIn(db, db.CategoryItems.Where(c => c.Tag == name),
                         db.MediaFiles.Where(f => enabled.Contains(f.LibraryId) && !ids.Contains(f.LibraryId)))
                     .GroupBy(f => f.Kind).Select(x => new { x.Key, n = x.Count() }).ToListAsync()).Select(x => (x.Key, x.n)));
-                var files = byKind.Sum(x => x.n);
+                var games = ids.Sum(id => gameCounts.GetValueOrDefault(id)) + await db.Games.CountAsync(x =>
+                    enabled.Contains(x.LibraryId) && !ids.Contains(x.LibraryId) && db.CategoryItems.Any(c => c.Tag == name && c.GameId == x.Id));
+                var files = byKind.Sum(x => x.n) + games;
                 if (ids.Count > 0 || files > 0) result.Add(new
                 {
                     tag = ids.Count > 0 ? catalog.Tags.First(t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase)) : name,
                     files,
                     videos = byKind.Where(x => Tabs.Of(x.Kind) == Tabs.Videos).Sum(x => x.n),
                     music = byKind.Where(x => Tabs.Of(x.Kind) == Tabs.Music).Sum(x => x.n),
+                    games,
                     // The kinds of library carrying it, so a tab can list a category whose libraries are still empty
                     libraryTabs = catalog.Enabled.Where(l => ids.Contains(l.Id)).Select(l => Tabs.Of(l.Kind)).Distinct(),
                 });
@@ -79,6 +83,7 @@ public static class LibraryEndpoints
                 movies = await MovieTiles(db, userId, db.Movies.Where(m => ids.Contains(m.LibraryId) || (enabled.Contains(m.LibraryId) && made.Any(c => c.MovieId == m.Id)))),
                 artists = await MusicEndpoints.ArtistTiles(db, userId, db.Artists.Where(a => ids.Contains(a.LibraryId) || (enabled.Contains(a.LibraryId) && made.Any(c => c.ArtistId == a.Id)))),
                 albums = await MusicEndpoints.AlbumTiles(db, userId, db.Albums.Where(a => enabled.Contains(a.LibraryId) && made.Any(c => c.AlbumId == a.Id))),
+                games = await GameEndpoints.Tiles(db.Games.Where(x => ids.Contains(x.LibraryId) || (enabled.Contains(x.LibraryId) && made.Any(c => c.GameId == x.Id)))),
             });
         });
 

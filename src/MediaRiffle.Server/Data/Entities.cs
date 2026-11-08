@@ -206,7 +206,28 @@ public sealed class MediaFile
 }
 
 /// <summary>
-/// A user's own tag on a show, a movie, an artist, an album or a single track (exactly one of the five ids):
+/// One game in a Games library, played in the browser's emulator: a ROM (or a zip of one), or a disc game's .cue or
+/// .m3u, whose tracks and discs go with it. Kept apart from <see cref="MediaFile"/>: nothing here is probed or streamed.
+/// </summary>
+public sealed class Game
+{
+    public int Id { get; set; }
+    public int LibraryId { get; set; }
+    /// <summary>Relative to the library root, with forward slashes.</summary>
+    public string RelativePath { get; set; } = string.Empty;
+    /// <summary>Library.GameSystems' id for its system, e.g. "snes".</summary>
+    public string System { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    /// <summary>A picture found beside it (box art), relative to the library; null when there's none.</summary>
+    public string? ImagePath { get; set; }
+    /// <summary>With a disc game's tracks or discs.</summary>
+    public long Size { get; set; }
+    public DateTime ModifiedUtc { get; set; }
+    public DateTime AddedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A user's own tag on a show, a movie, an artist, an album, a single track or a game (exactly one of the ids):
 /// everything a user tagged the same way is one of their lists, as the admins' library tags are everyone's categories;
 /// a list of tracks is a playlist. Favorites is the list named <see cref="Favorites"/>. Goes with what it tags, and with
 /// the user.
@@ -225,6 +246,7 @@ public sealed class UserTag : ITagged
     public int? AlbumId { get; set; }
     /// <summary>A single track (music only; an episode is listed with its show).</summary>
     public int? MediaFileId { get; set; }
+    public int? GameId { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
 
@@ -291,6 +313,7 @@ public interface ITagged
     int? ArtistId { get; }
     int? AlbumId { get; }
     int? MediaFileId { get; }
+    int? GameId { get; }
 }
 
 /// <summary>
@@ -307,5 +330,6 @@ public sealed class CategoryItem : ITagged
     public int? ArtistId { get; set; }
     public int? AlbumId { get; set; }
     public int? MediaFileId { get; set; }
+    public int? GameId { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }

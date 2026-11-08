@@ -13,7 +13,7 @@ namespace MediaRiffle.Server.Library;
 /// filed under their show/season or movie, files that are gone are dropped. Runs at start, every
 /// ScanIntervalMinutes, and when an admin asks. Replaces TongueD's prep_sql_shows/prep_sql_movies.
 /// </summary>
-public sealed class LibraryScanner : BackgroundService
+public sealed partial class LibraryScanner : BackgroundService
 {
     private readonly IServiceScopeFactory scopes;
     private readonly IOptions<MediaRiffleOptions> options;
@@ -111,6 +111,7 @@ public sealed class LibraryScanner : BackgroundService
 
     private async Task<(int Added, int Updated, int Removed, int Failed)> ScanLibraryAsync(LibraryInfo lib, CancellationToken ct)
     {
+        if (lib.Kind == LibraryKind.Games) return await ScanGamesAsync(lib, ct);
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var root = Path.GetFullPath(lib.Path);

@@ -211,6 +211,17 @@ button.chip-x:hover { color: var(--danger); }
 .tile .art.music, .listen-art .art { aspect-ratio: 1; }
 .art.music::before { content: "♪"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 48px; color: var(--muted); }
 .art.music img { position: relative; z-index: 1; }
+
+/* Games: box art of any shape fits whole on a square; without it, the system's name */
+.art.game { aspect-ratio: 1; background: var(--border); border-radius: var(--radius); overflow: hidden; position: relative; }
+.art.game img { position: relative; z-index: 1; width: 100%; height: 100%; object-fit: contain; display: block; }
+.art.game .system { position: absolute; inset: 0; display: grid; place-items: center; padding: 8px; text-align: center;
+  font-weight: 600; font-size: 18px; color: var(--muted); }
+/* A system no browser emulator plays: listed, dimmed */
+.chip.off { opacity: .6; }
+.game-page { display: grid; grid-template-columns: minmax(160px, 280px) 1fr; gap: 24px; align-items: start; }
+.game-info h1 { margin-top: 0; }
+@media (max-width: 640px) { .game-page { grid-template-columns: 1fr; } .game-cover { max-width: 240px; } }
 .listen-art .art { position: relative; overflow: hidden; border-radius: var(--radius); background: var(--border); }
 .listen-art .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .album-head, .listen { display: grid; grid-template-columns: minmax(140px, 260px) 1fr; gap: 20px; align-items: start; margin-bottom: 16px; }

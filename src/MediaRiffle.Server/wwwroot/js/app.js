@@ -6,6 +6,7 @@ import { music, nowPlayingView, trackRows } from './music.js';
 import { avatarEl, BUILT_IN, photoToJpeg } from './avatar.js';
 import { adminGate, mfaSettings, askCheck } from './mfa.js';
 import { requestsView } from './requests.js';
+import { gameTiles, gameView, systemView } from './games.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
@@ -29,8 +30,8 @@ async function loadState() {
 // The media is split into top tabs (those the server has libraries for), each with its own lists, favorites,
 // categories and libraries. "#/" opens the one last used on this device.
 
-const TAB_NAMES = { videos: 'Videos', music: 'Music' };
-const LIBRARY_TAB = { Shows: 'videos', Movies: 'videos', Music: 'music' };
+const TAB_NAMES = { videos: 'Videos', music: 'Music', games: 'Games' };
+const LIBRARY_TAB = { Shows: 'videos', Movies: 'videos', Music: 'music', Games: 'games' };
 const TAB_KEY = 'mediariffle.tab';
 let currentTab = null;   // the tab marked in the top bar
 
@@ -44,10 +45,11 @@ function startTab() {
 // The tab a page belongs to: '' for one outside them all (Admin, Profile), null for one that could be either (a
 // library, a category opened without a tab), which keeps the tab it was opened from
 function tabOf(hash) {
-  const m = hash.match(/^#\/(videos|music|requests)$/) ?? hash.match(/^#\/(?:tag|list)\/[^/]+\/(videos|music)$/);
+  const m = hash.match(/^#\/(videos|music|games|requests)$/) ?? hash.match(/^#\/(?:tag|list)\/[^/]+\/(videos|music|games)$/);
   if (m) return m[1];
   if (/^#\/(show|movie|play)\//.test(hash)) return 'videos';
   if (/^#\/(artist|album|listen)\/|^#\/now$/.test(hash)) return 'music';
+  if (/^#\/(game|system)\//.test(hash)) return 'games';
   if (/^#\/(admin|profile|link)$/.test(hash)) return '';
   return null;
 }
@@ -92,11 +94,13 @@ const routes = [
   [/^#\/logout$/, logout],
   [/^#\/switch$/, switchView],
   [/^#\/add-account(?:\/(.+))?$/, m => signInForm(m[1] ? decodeURIComponent(m[1]) : '')],
-  [/^#\/(videos|music)$/, m => tabView(m[1])],
+  [/^#\/(videos|music|games)$/, m => tabView(m[1])],
   [/^#\/library\/(\d+)$/, m => libraryView(+m[1])],
   // A category or list opened from a tab ends in it ("…/music"): only that tab's part of it is shown and played
-  [/^#\/tag\/([^/]+)(?:\/(videos|music))?$/, m => tagView(decodeURIComponent(m[1]), m[2])],
-  [/^#\/list\/([^/]+)(?:\/(videos|music))?$/, m => listView(decodeURIComponent(m[1]), m[2])],
+  [/^#\/tag\/([^/]+)(?:\/(videos|music|games))?$/, m => tagView(decodeURIComponent(m[1]), m[2])],
+  [/^#\/list\/([^/]+)(?:\/(videos|music|games))?$/, m => listView(decodeURIComponent(m[1]), m[2])],
+  [/^#\/game\/(\d+)$/, m => gameView(view, +m[1], { listsControl })],
+  [/^#\/system\/(\w+)$/, m => systemView(view, m[1])],
   [/^#\/show\/(\d+)$/, m => showView(+m[1])],
   [/^#\/movie\/(\d+)$/, m => movieView(+m[1])],
   [/^#\/artist\/(\d+)$/, m => artistView(+m[1])],
@@ -136,7 +140,7 @@ function numberPage(hash) {
   }
   // The player's page uses the screen's width (a large or 4K screen gets a large picture); the others keep theirs
   document.body.classList.toggle('play-page', /^#\/play\//.test(hash));
-  backButton.hidden = /^#?\/?$/.test(hash) || /^#\/(videos|music)$/.test(hash) || /^#\/(login|setup|join\/|reset\/)/.test(hash);
+  backButton.hidden = /^#?\/?$/.test(hash) || /^#\/(videos|music|games)$/.test(hash) || /^#\/(login|setup|join\/|reset\/)/.test(hash);
   markTab(tabOf(hash));
 }
 
@@ -713,29 +717,33 @@ function filterBox(onChange) {
 // "#/" (the name in the top bar, the home-screen app's start): the tab last used here
 function homeView() { forward(`#/${startTab()}`); }
 
-// A top tab: the user's lists, favorites and the categories with something of this tab's in them, its libraries, and
-// (Videos) Continue watching, each in the order the user set for this tab
+// A top tab: the user's lists, favorites and the categories with something of this tab's in them, its libraries,
+// (Videos) Continue watching and (Games) the systems, each in the order the user set for this tab
 async function tabView(tab) {
   try { localStorage.setItem(TAB_KEY, tab); } catch { }
-  const music = tab === 'music';
-  const [allLibraries, recent, tags, lists, favorites] = await Promise.all([api('/api/libraries'), music ? [] : api('/api/continue'),
-    api('/api/tags'), api('/api/lists'), api(`/api/lists/${FAVORITES}`)]);
+  const music = tab === 'music', games = tab === 'games';
+  const [allLibraries, recent, tags, lists, favorites, systems] = await Promise.all([api('/api/libraries'),
+    tab === 'videos' ? api('/api/continue') : [], api('/api/tags'), api('/api/lists'), api(`/api/lists/${FAVORITES}`),
+    games ? api('/api/games/systems') : []]);
   const libraries = allLibraries.filter(l => LIBRARY_TAB[l.kind] === tab);
   const myLists = lists.filter(l => !isFavorites(l.tag) && l[tab] > 0);
   const myTags = tags.filter(t => t[tab] > 0 || t.libraryTabs?.includes(tab));
   const hasFavorites = music ? favorites.artists.length || favorites.albums.length || favorites.tracks.length
-    : favorites.shows.length || favorites.movies.length;
+    : games ? favorites.games.length : favorites.shows.length || favorites.movies.length;
   // Each section: its heading, and what's under it (null when there's nothing to show; Customize still lists it)
   const sections = {
     lists: { title: 'My lists', body: myLists.length ? h('div', { class: 'chips' }, myLists.map(l =>
       h('a', { class: 'chip', href: `#/list/${encodeURIComponent(l.tag)}/${tab}` }, l.tag, h('span', { class: 'muted' }, ` ${l[tab]}`)))) : null },
     favorites: { title: '★ Favorites', body: hasFavorites ? h('div', { class: 'grid' }, music
         ? [artistTiles(favorites.artists), albumTiles(favorites.albums, true)]
-        : [showTiles(favorites.shows), movieTiles(favorites.movies)]) : null,
-      link: hasFavorites ? h('a', { href: `#/list/${FAVORITES}/${tab}` }, music && favorites.tracks.length
+        : games ? gameTiles(favorites.games) : [showTiles(favorites.shows), movieTiles(favorites.movies)]) : null,
+      link: hasFavorites && !games ? h('a', { href: `#/list/${FAVORITES}/${tab}` }, music && favorites.tracks.length
         ? `${favorites.tracks.length} song${favorites.tracks.length === 1 ? '' : 's'}, play or shuffle →` : 'Play or shuffle →') : null },
     categories: { title: 'Categories', body: myTags.length ? h('div', { class: 'chips' }, myTags.map(t =>
       h('a', { class: 'chip', href: `#/tag/${encodeURIComponent(t.tag)}/${tab}` }, t.tag, h('span', { class: 'muted' }, ` ${t[tab]}`)))) : null },
+    systems: games ? { title: 'Systems', body: systems.length ? h('div', { class: 'chips' }, systems.map(s =>
+      h('a', { class: 'chip' + (s.playable ? '' : ' off'), href: `#/system/${encodeURIComponent(s.id)}`, title: s.playable ? null : 'Not playable in a browser' },
+        s.name, h('span', { class: 'muted' }, ` ${s.games}`)))) : null } : undefined,
     libraries: { title: 'Libraries', body: libraries.length
       ? h('div', { class: 'grid' }, libraries.map(l =>
           h('a', { class: 'tile card', href: `#/library/${l.id}` },
@@ -743,7 +751,7 @@ async function tabView(tab) {
             l.tags.length ? h('div', { class: 'sub' }, l.tags.join(', ')) : null)))
       : h('p', { class: 'muted' }, state.user.isAdmin ? 'No libraries yet: add them under Admin.' : 'No libraries yet.') },
     // One row that scrolls sideways, most recent first (the server sends the last 20)
-    continue: music ? undefined : { title: 'Continue watching', body: recent.length ? h('div', { class: 'strip' }, recent.map(r => {
+    continue: tab !== 'videos' ? undefined : { title: 'Continue watching', body: recent.length ? h('div', { class: 'strip' }, recent.map(r => {
       // ×: off this list (not hidden: the place is kept, and watching it again brings it back)
       const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}`, onclick: () => { clearQueue(); sessionStorage.setItem(RESUME_KEY, String(r.file.id)); } },
         art(r.file.image, r.file.duration ? r.file.position / r.file.duration : 0),
@@ -758,7 +766,7 @@ async function tabView(tab) {
     })) : null },
   };
 
-  if (!sections.continue) delete sections.continue;
+  for (const id of Object.keys(sections)) if (!sections[id]) delete sections[id];
 
   // The user's own order for this tab, with "-" before a hidden section (kept on the account, so it follows them to
   // other devices)
@@ -810,16 +818,18 @@ async function tabView(tab) {
 async function libraryView(id) {
   const lib = await api(`/api/libraries/${id}`);
   markTab(LIBRARY_TAB[lib.kind]);
-  const kind = { Shows: 'shows', Movies: 'movies', Music: 'artists' }[lib.kind];
-  const tiles = { Shows: showTiles, Movies: movieTiles, Music: artistTiles }[lib.kind];
+  const kind = { Shows: 'shows', Movies: 'movies', Music: 'artists', Games: 'games' }[lib.kind];
+  const tiles = { Shows: showTiles, Movies: movieTiles, Music: artistTiles, Games: gameTiles }[lib.kind];
   const items = await api(`/api/libraries/${id}/${kind}`);
   const name = i => i.title ?? i.name;
   const grid = h('div', { class: 'grid' });
   const draw = q => mount(grid, tiles(items.filter(i => !q || name(i).toLowerCase().includes(q))));
   draw('');
+  const tab = LIBRARY_TAB[lib.kind];
   mount(view,
-    h('div', { class: 'row' }, h('h1', {}, lib.name), playButtons({ library: id }, lib.name), filterBox(draw)),
-    lib.tags.length ? h('p', { class: 'muted' }, 'Categories: ', lib.tags.map((t, i) => [i ? ', ' : '', h('a', { href: `#/tag/${encodeURIComponent(t)}` }, t)])) : null,
+    // Games are played one at a time, so no Play all or Shuffle
+    h('div', { class: 'row' }, h('h1', {}, lib.name), lib.kind === 'Games' ? null : playButtons({ library: id }, lib.name), filterBox(draw)),
+    lib.tags.length ? h('p', { class: 'muted' }, 'Categories: ', lib.tags.map((t, i) => [i ? ', ' : '', h('a', { href: `#/tag/${encodeURIComponent(t)}/${tab}` }, t)])) : null,
     grid,
     items.length ? null : h('p', { class: 'muted' }, 'Nothing here yet. An admin can rescan under Admin.'));
 }
@@ -828,19 +838,23 @@ async function libraryView(id) {
 // a tab, only that tab's part of it.
 async function tagView(tag, tab) {
   const t = await api(`/api/tags/${encodeURIComponent(tag)}`);
-  if (tab === 'music') t.shows = t.movies = [];
-  if (tab === 'videos') t.artists = t.albums = [];
+  if (tab && tab !== 'videos') t.shows = t.movies = [];
+  if (tab && tab !== 'music') t.artists = t.albums = [];
+  if (tab && tab !== 'games') t.games = [];
   const showGrid = h('div', { class: 'grid' }), movieGrid = h('div', { class: 'grid' }), artistGrid = h('div', { class: 'grid' }), albumGrid = h('div', { class: 'grid' });
+  const gameGrid = h('div', { class: 'grid' });
   const draw = q => {
     const match = i => !q || (i.title ?? i.name).toLowerCase().includes(q);
     mount(showGrid, showTiles(t.shows.filter(match)));
     mount(movieGrid, movieTiles(t.movies.filter(match)));
     mount(artistGrid, artistTiles(t.artists.filter(match)));
     mount(albumGrid, albumTiles(t.albums.filter(match), true));
+    mount(gameGrid, gameTiles(t.games.filter(match)));
   };
   draw('');
+  const playable = t.shows.length || t.movies.length || t.artists.length || t.albums.length;
   mount(view,
-    h('div', { class: 'row' }, h('h1', {}, t.tag), playButtons(inTab({ tag: t.tag }, tab), t.tag), filterBox(draw),
+    h('div', { class: 'row' }, h('h1', {}, t.tag), playable ? playButtons(inTab({ tag: t.tag }, tab), t.tag) : null, filterBox(draw),
       // The part an admin made from a list (the libraries' own tags are changed under Admin → Libraries)
       state.user.isAdmin && t.fromLists ? h('button', { class: 'secondary', onclick: async () => {
         if (!confirm(`Take what was added from lists out of the category "${t.tag}"? The lists themselves stay.`)) return;
@@ -850,7 +864,8 @@ async function tagView(tag, tab) {
     t.shows.length ? [h('h2', {}, 'Shows'), showGrid] : null,
     t.movies.length ? [h('h2', {}, 'Movies'), movieGrid] : null,
     t.artists.length ? [h('h2', {}, 'Music'), artistGrid] : null,
-    t.albums.length ? [h('h2', {}, 'Albums'), albumGrid] : null);
+    t.albums.length ? [h('h2', {}, 'Albums'), albumGrid] : null,
+    t.games.length ? [h('h2', {}, 'Games'), gameGrid] : null);
 }
 
 // ── Music ────────────────────────────────────────────────────────────────────
@@ -947,20 +962,26 @@ function nowView() { onLeave(nowPlayingView(view, t => listsControl('track', t.i
 // on the list, and Delete (Clear) takes off only this part.
 async function listView(tag, tab) {
   const t = await api(`/api/lists/${encodeURIComponent(tag)}`);
-  const videoCount = t.shows.length + t.movies.length, musicCount = t.artists.length + t.albums.length + t.tracks.length;
-  const otherPart = tab === 'music' ? videoCount : tab === 'videos' ? musicCount : 0;
-  if (tab === 'music') t.shows = t.movies = [];
-  if (tab === 'videos') t.artists = t.albums = t.tracks = [];
-  const part = tab === 'music' ? 'the music' : 'the shows and movies';
+  const counts = {
+    videos: t.shows.length + t.movies.length,
+    music: t.artists.length + t.albums.length + t.tracks.length,
+    games: t.games.length,
+  };
+  const otherPart = tab ? Object.entries(counts).filter(([k]) => k !== tab).reduce((n, [, c]) => n + c, 0) : 0;
+  if (tab && tab !== 'videos') t.shows = t.movies = [];
+  if (tab && tab !== 'music') t.artists = t.albums = t.tracks = [];
+  if (tab && tab !== 'games') t.games = [];
+  const part = { music: 'the music', games: 'the games', videos: 'the shows and movies' }[tab];
   const suffix = tab ? `/${tab}` : '';
   const showGrid = h('div', { class: 'grid' }), movieGrid = h('div', { class: 'grid' });
-  const artistGrid = h('div', { class: 'grid' }), albumGrid = h('div', { class: 'grid' });
+  const artistGrid = h('div', { class: 'grid' }), albumGrid = h('div', { class: 'grid' }), gameGrid = h('div', { class: 'grid' });
   const draw = q => {
     const match = i => !q || (i.title ?? i.name).toLowerCase().includes(q);
     mount(showGrid, showTiles(t.shows.filter(match)));
     mount(movieGrid, movieTiles(t.movies.filter(match)));
     mount(artistGrid, artistTiles(t.artists.filter(match)));
     mount(albumGrid, albumTiles(t.albums.filter(match), true));
+    mount(gameGrid, gameTiles(t.games.filter(match)));
   };
   draw('');
   // Its tracks: picking one plays the list from there; × takes it out of the list
@@ -975,9 +996,10 @@ async function listView(tag, tab) {
     x => startQueue(inTab({ list: t.tag }, tab), false, t.tag, x.id).catch(e => alert(e.message)),
     x => h('button', { class: 'chip-x', title: `Take out of ${t.tag}`, onclick: () => remove(x) }, '×'));
   onLeave(tracks.cleanup);
-  const empty = !t.shows.length && !t.movies.length && !t.artists.length && !t.albums.length && !t.tracks.length;
+  const playable = t.shows.length || t.movies.length || t.artists.length || t.albums.length || t.tracks.length;
+  const empty = !playable && !t.games.length;
   mount(view,
-    h('div', { class: 'row' }, h('h1', {}, t.favorites ? '★ Favorites' : t.tag), empty ? null : playButtons(inTab({ list: t.tag }, tab), t.tag), empty ? null : filterBox(draw),
+    h('div', { class: 'row' }, h('h1', {}, t.favorites ? '★ Favorites' : t.tag), playable ? playButtons(inTab({ list: t.tag }, tab), t.tag) : null, empty ? null : filterBox(draw),
       // Rename (two lists by one name become one: the whole list, every tab's part) or delete the list; Favorites can
       // be cleared, not renamed
       t.favorites ? null : h('button', { class: 'secondary', onclick: async () => {
@@ -1003,12 +1025,13 @@ async function listView(tag, tab) {
           location.hash = tab ? `#/${tab}` : '#/';
         } catch (e) { alert(e.message); }
       } }, t.favorites ? 'Clear favorites' : otherPart ? 'Clear this part' : 'Delete list')),
-    h('p', { class: 'muted' }, 'Only you see your lists. Add a show, movie, artist or album to one from its page, and a song from Now playing.'),
+    h('p', { class: 'muted' }, 'Only you see your lists. Add a show, movie, artist, album or game to one from its page, and a song from Now playing.'),
     t.shows.length ? [h('h2', {}, 'Shows'), showGrid] : null,
     t.movies.length ? [h('h2', {}, 'Movies'), movieGrid] : null,
     t.artists.length ? [h('h2', {}, 'Artists'), artistGrid] : null,
     t.albums.length ? [h('h2', {}, 'Albums'), albumGrid] : null,
     t.tracks.length ? [h('h2', {}, 'Songs'), tracks.element] : null,
+    t.games.length ? [h('h2', {}, 'Games'), gameGrid] : null,
     empty ? h('p', {}, 'Nothing in this list.') : null);
 }
 
@@ -1158,7 +1181,7 @@ async function playView(fileId) {
 // Add or edit a library, in place of the "Add a library" button
 function libraryForm(lib) {
   const name = h('input', { value: lib?.name ?? '', maxlength: 100, required: true });
-  const kind = h('select', {}, ['Shows', 'Movies', 'Music'].map(k => h('option', { value: k, selected: (lib?.kind ?? 'Shows') === k }, k)));
+  const kind = h('select', {}, ['Shows', 'Movies', 'Music', 'Games'].map(k => h('option', { value: k, selected: (lib?.kind ?? 'Shows') === k }, k)));
   const path = h('input', { value: lib?.path ?? '', size: 50, placeholder: '/mnt/media/Shows or \\\\files.example.lan\\Media\\Shows', required: true });
   const tags = h('input', { value: lib?.tags ?? '', size: 40, placeholder: 'e.g. Cartoons, Kids' });
   const enabled = h('input', { type: 'checkbox', checked: lib?.enabled ?? true });

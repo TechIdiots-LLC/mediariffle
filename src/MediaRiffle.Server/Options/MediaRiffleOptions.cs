@@ -1,10 +1,11 @@
 namespace MediaRiffle.Server.Options;
 
-public enum LibraryKind { Shows, Movies, Music }
+public enum LibraryKind { Shows, Movies, Music, Games }
 
 /// <summary>
 /// A folder of media: a "Shows" library holds Show/Season NN/episode files, a "Movies" library holds movie files, a
-/// "Music" library holds Artist/Album/track files (read from their tags when they have them).
+/// "Music" library holds Artist/Album/track files (read from their tags when they have them), a "Games" library holds
+/// game files for the browser's emulator, in folders named for their systems where the extension doesn't say.
 /// </summary>
 public sealed class LibraryOptions
 {

@@ -19,6 +19,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<MediaRequest> Requests => Set<MediaRequest>();
     public DbSet<CategoryItem> CategoryItems => Set<CategoryItem>();
     public DbSet<LinkedDevice> LinkedDevices => Set<LinkedDevice>();
+    public DbSet<Game> Games => Set<Game>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -61,6 +62,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         b.Entity<Album>().HasOne<Artist>().WithMany().HasForeignKey(a => a.ArtistId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<MediaFile>().HasIndex(f => f.AlbumId);
 
+        // Games go with their library, and are listed by system and name
+        b.Entity<Game>().HasOne<MediaLibrary>().WithMany().HasForeignKey(g => g.LibraryId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Game>().HasIndex(g => new { g.LibraryId, g.RelativePath }).IsUnique();
+        b.Entity<Game>().HasIndex(g => new { g.System, g.Title });
+        b.Entity<Game>().Property(g => g.Title).UseCollation("NOCASE");
+
         b.Entity<PlaybackProgress>().HasKey(p => new { p.UserId, p.MediaFileId });
         b.Entity<PlaybackProgress>().HasIndex(p => new { p.UserId, p.UpdatedUtc });
 
@@ -78,6 +85,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         b.Entity<UserTag>().HasOne<Artist>().WithMany().HasForeignKey(t => t.ArtistId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<UserTag>().HasOne<Album>().WithMany().HasForeignKey(t => t.AlbumId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<UserTag>().HasOne<MediaFile>().WithMany().HasForeignKey(t => t.MediaFileId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<UserTag>().HasIndex(t => t.GameId);
+        b.Entity<UserTag>().HasOne<Game>().WithMany().HasForeignKey(t => t.GameId).OnDelete(DeleteBehavior.Cascade);
 
         // Categories made from lists: by name, and gone with what they tag
         b.Entity<CategoryItem>().Property(c => c.Tag).HasMaxLength(UserTag.MaxLength).UseCollation("NOCASE");
@@ -87,6 +96,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         b.Entity<CategoryItem>().HasOne<Artist>().WithMany().HasForeignKey(c => c.ArtistId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<CategoryItem>().HasOne<Album>().WithMany().HasForeignKey(c => c.AlbumId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<CategoryItem>().HasOne<MediaFile>().WithMany().HasForeignKey(c => c.MediaFileId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<CategoryItem>().HasOne<Game>().WithMany().HasForeignKey(c => c.GameId).OnDelete(DeleteBehavior.Cascade);
 
         b.Entity<MediaRequest>().HasIndex(r => new { r.UserId, r.DoneUtc });
         b.Entity<MediaRequest>().HasOne<AppUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);

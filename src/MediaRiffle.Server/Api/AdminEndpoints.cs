@@ -156,11 +156,12 @@ public static class AdminEndpoints
             var counts = await db.MediaFiles.GroupBy(f => f.LibraryId)
                 .Select(x => new { x.Key, n = x.Count(), bad = x.Count(f => f.ProbeError != null) })
                 .ToDictionaryAsync(x => x.Key);
+            var games = await db.Games.GroupBy(x => x.LibraryId).Select(x => new { x.Key, n = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.n);
             return (await db.Libraries.OrderBy(l => l.Name).ToListAsync())
                 .Select(l => new
                 {
                     l.Id, l.Name, kind = l.Kind.ToString(), l.Path, l.Tags, l.Enabled,
-                    files = counts.TryGetValue(l.Id, out var c) ? c.n : 0,
+                    files = counts.TryGetValue(l.Id, out var c) ? c.n : games.GetValueOrDefault(l.Id),
                     unreadable = c?.bad ?? 0,
                     status = scanner.Status.TryGetValue(l.Id, out var s) ? s : null,
                 });
@@ -220,11 +221,14 @@ public static class AdminEndpoints
                 var opts = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
                 foreach (var f in Directory.EnumerateFiles(path, "*", opts))
                 {
-                    if (!MediaNameParser.Belongs(f, req.Kind)) continue;
+                    if (req.Kind == Options.LibraryKind.Games
+                            ? GameSystems.Classify(System.IO.Path.GetRelativePath(path, f)) is null
+                            : !MediaNameParser.Belongs(f, req.Kind))
+                        continue;
                     if (sample.Count < 5) sample.Add(System.IO.Path.GetRelativePath(path, f).Replace('\\', '/'));
                     if (++count >= 1000) break;
                 }
-                var what = req.Kind == Options.LibraryKind.Music ? "music" : "video";
+                var what = req.Kind switch { Options.LibraryKind.Music => "music", Options.LibraryKind.Games => "game", _ => "video" };
                 return (true, count == 0 ? $"The folder is readable but has no {what} files." : $"Readable: {(count >= 1000 ? "1000+" : count)} {what} files.", count, sample);
             });
             if (await Task.WhenAny(check, Task.Delay(TimeSpan.FromSeconds(15))) != check)
@@ -275,5 +279,6 @@ public static class AdminEndpoints
         await db.Seasons.Where(s => db.Shows.Any(sh => sh.Id == s.ShowId && sh.LibraryId == libraryId)).ExecuteDeleteAsync();
         await db.Shows.Where(s => s.LibraryId == libraryId).ExecuteDeleteAsync();
         await db.Movies.Where(m => m.LibraryId == libraryId).ExecuteDeleteAsync();
+        await db.Games.Where(g => g.LibraryId == libraryId).ExecuteDeleteAsync();
     }
 }

@@ -183,6 +183,9 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("GameId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("MediaFileId")
                         .HasColumnType("INTEGER");
 
@@ -204,6 +207,8 @@ namespace MediaRiffle.Server.Data.Migrations
 
                     b.HasIndex("ArtistId");
 
+                    b.HasIndex("GameId");
+
                     b.HasIndex("MediaFileId");
 
                     b.HasIndex("MovieId");
@@ -213,6 +218,50 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.HasIndex("Tag");
 
                     b.ToTable("CategoryItems");
+                });
+
+            modelBuilder.Entity("MediaRiffle.Server.Data.Game", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("AddedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ImagePath")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("System")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LibraryId", "RelativePath")
+                        .IsUnique();
+
+                    b.HasIndex("System", "Title");
+
+                    b.ToTable("Games");
                 });
 
             modelBuilder.Entity("MediaRiffle.Server.Data.HiddenItem", b =>
@@ -632,6 +681,9 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("GameId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("MediaFileId")
                         .HasColumnType("INTEGER");
 
@@ -656,6 +708,8 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.HasIndex("AlbumId");
 
                     b.HasIndex("ArtistId");
+
+                    b.HasIndex("GameId");
 
                     b.HasIndex("MediaFileId");
 
@@ -853,6 +907,11 @@ namespace MediaRiffle.Server.Data.Migrations
                         .HasForeignKey("ArtistId")
                         .OnDelete(DeleteBehavior.Cascade);
 
+                    b.HasOne("MediaRiffle.Server.Data.Game", null)
+                        .WithMany()
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.HasOne("MediaRiffle.Server.Data.MediaFile", null)
                         .WithMany()
                         .HasForeignKey("MediaFileId")
@@ -867,6 +926,15 @@ namespace MediaRiffle.Server.Data.Migrations
                         .WithMany()
                         .HasForeignKey("ShowId")
                         .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("MediaRiffle.Server.Data.Game", b =>
+                {
+                    b.HasOne("MediaRiffle.Server.Data.MediaLibrary", null)
+                        .WithMany()
+                        .HasForeignKey("LibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MediaRiffle.Server.Data.HiddenItem", b =>
@@ -984,6 +1052,11 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.HasOne("MediaRiffle.Server.Data.Artist", null)
                         .WithMany()
                         .HasForeignKey("ArtistId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MediaRiffle.Server.Data.Game", null)
+                        .WithMany()
+                        .HasForeignKey("GameId")
                         .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("MediaRiffle.Server.Data.MediaFile", null)

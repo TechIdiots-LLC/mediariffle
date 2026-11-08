@@ -24,15 +24,20 @@ public static class ListEndpoints
     {
         var g = app.MapGroup("/api").RequireAuthorization();
 
-        // The user's lists with how many things each has (in all, and of each tab's: shows and movies, music), Favorites
-        // first, then by name
+        // The user's lists with how many things each has (in all, and of each tab's: shows and movies, music, games),
+        // Favorites first, then by name
         g.MapGet("/lists", async (ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
         {
             var userId = users.GetUserId(me);
             var rows = await Visible(db, catalog, db.UserTags.Where(t => t.UserId == userId))
-                .Select(t => new { t.Tag, music = t.ArtistId != null || t.AlbumId != null || t.MediaFileId != null }).ToListAsync();
+                .Select(t => new { t.Tag, game = t.GameId != null, music = t.ArtistId != null || t.AlbumId != null || t.MediaFileId != null })
+                .ToListAsync();
             return rows.GroupBy(r => r.Tag)
-                .Select(x => new { tag = x.Key, items = x.Count(), videos = x.Count(r => !r.music), music = x.Count(r => r.music) })
+                .Select(x => new
+                {
+                    tag = x.Key, items = x.Count(),
+                    videos = x.Count(r => !r.music && !r.game), music = x.Count(r => r.music), games = x.Count(r => r.game),
+                })
                 .OrderBy(r => !IsFavorites(r.tag)).ThenBy(r => r.tag, StringComparer.OrdinalIgnoreCase);
         }).AllowDevices();
 
@@ -47,6 +52,7 @@ public static class ListEndpoints
             {
                 Tabs.Music => entries.Where(t => t.ArtistId != null || t.AlbumId != null || t.MediaFileId != null),
                 Tabs.Videos => entries.Where(t => t.ShowId != null || t.MovieId != null),
+                Tabs.Games => entries.Where(t => t.GameId != null),
                 null or "" => entries,
                 _ => entries.Where(_ => false),
             };
@@ -71,7 +77,7 @@ public static class ListEndpoints
             foreach (var t in moving)
             {
                 var already = existing.Any(e => e.Id != t.Id && e.ShowId == t.ShowId && e.MovieId == t.MovieId &&
-                    e.ArtistId == t.ArtistId && e.AlbumId == t.AlbumId && e.MediaFileId == t.MediaFileId);
+                    e.ArtistId == t.ArtistId && e.AlbumId == t.AlbumId && e.MediaFileId == t.MediaFileId && e.GameId == t.GameId);
                 if (already) db.UserTags.Remove(t);
                 else t.Tag = name;
             }
@@ -93,9 +99,10 @@ public static class ListEndpoints
             var tracks = await MusicEndpoints.TrackRows(db, userId!, mine.Where(t => t.MediaFileId != null)
                 .Join(db.MediaFiles.Where(f => enabled.Contains(f.LibraryId)), t => t.MediaFileId, f => f.Id, (t, f) => new { t.CreatedUtc, f })
                 .OrderBy(x => x.CreatedUtc).Select(x => x.f));
+            var games = await GameEndpoints.Tiles(db.Games.Where(x => enabled.Contains(x.LibraryId) && mine.Any(t => t.GameId == x.Id)));
             // The name as the user wrote it (the lookup ignores case)
             var stored = await mine.Select(t => t.Tag).FirstOrDefaultAsync() ?? name;
-            return Results.Ok(new { tag = stored, favorites = IsFavorites(stored), shows, movies, artists, albums, tracks });
+            return Results.Ok(new { tag = stored, favorites = IsFavorites(stored), shows, movies, artists, albums, tracks, games });
         }).AllowDevices();
 
         // One show's or movie's place in the user's lists, and setting it (the whole set at once)
@@ -116,6 +123,7 @@ public static class ListEndpoints
                 { Artist: { } x } => await db.Artists.AnyAsync(a => a.Id == x),
                 { Album: { } x } => await db.Albums.AnyAsync(a => a.Id == x),
                 { Track: { } x } => await db.MediaFiles.AnyAsync(f => f.Id == x && f.Kind == MediaKind.Track),
+                { Game: { } x } => await db.Games.AnyAsync(f => f.Id == x),
                 _ => false,
             };
             if (!exists) return Results.NotFound();
@@ -145,6 +153,7 @@ public static class ListEndpoints
                 {
                     UserId = userId, Tag = existing ?? w,
                     ShowId = item.Show, MovieId = item.Movie, ArtistId = item.Artist, AlbumId = item.Album, MediaFileId = item.Track,
+                    GameId = item.Game,
                 });
             }
             await db.SaveChangesAsync();
@@ -153,7 +162,7 @@ public static class ListEndpoints
     }
 
     /// <summary>What's being listed: exactly one of these.</summary>
-    private sealed record ItemRef(int? Show = null, int? Movie = null, int? Artist = null, int? Album = null, int? Track = null);
+    private sealed record ItemRef(int? Show = null, int? Movie = null, int? Artist = null, int? Album = null, int? Track = null, int? Game = null);
 
     private static ItemRef? Item(string kind, int id) => kind.ToLowerInvariant() switch
     {
@@ -162,6 +171,7 @@ public static class ListEndpoints
         "artist" => new ItemRef(Artist: id),
         "album" => new ItemRef(Album: id),
         "track" => new ItemRef(Track: id),
+        "game" => new ItemRef(Game: id),
         _ => null,
     };
 
@@ -174,11 +184,12 @@ public static class ListEndpoints
             { Movie: { } x } => mine.Where(t => t.MovieId == x),
             { Artist: { } x } => mine.Where(t => t.ArtistId == x),
             { Album: { } x } => mine.Where(t => t.AlbumId == x),
+            { Game: { } x } => mine.Where(t => t.GameId == x),
             _ => mine.Where(t => t.MediaFileId == item.Track),
         };
     }
 
-    /// <summary>Entries whose show, movie, artist, album or track is in an enabled library.</summary>
+    /// <summary>Entries whose show, movie, artist, album, track or game is in an enabled library.</summary>
     private static IQueryable<UserTag> Visible(AppDbContext db, LibraryCatalog catalog, IQueryable<UserTag> tags)
     {
         var enabled = EnabledIds(catalog);
@@ -187,7 +198,8 @@ public static class ListEndpoints
             (t.MovieId != null && db.Movies.Any(m => m.Id == t.MovieId && enabled.Contains(m.LibraryId))) ||
             (t.ArtistId != null && db.Artists.Any(a => a.Id == t.ArtistId && enabled.Contains(a.LibraryId))) ||
             (t.AlbumId != null && db.Albums.Any(a => a.Id == t.AlbumId && enabled.Contains(a.LibraryId))) ||
-            (t.MediaFileId != null && db.MediaFiles.Any(f => f.Id == t.MediaFileId && enabled.Contains(f.LibraryId))));
+            (t.MediaFileId != null && db.MediaFiles.Any(f => f.Id == t.MediaFileId && enabled.Contains(f.LibraryId))) ||
+            (t.GameId != null && db.Games.Any(x => x.Id == t.GameId && enabled.Contains(x.LibraryId))));
     }
 
     /// <summary>

@@ -4,14 +4,19 @@ using MediaRiffle.Server.Options;
 namespace MediaRiffle.Server.Library;
 
 /// <summary>
-/// The top tabs the media is split into: Videos (show and movie libraries) and Music. Lists and categories can hold
-/// both; each tab shows and plays only its own part of them.
+/// The top tabs the media is split into: Videos (show and movie libraries), Music and Games. Lists and categories can
+/// hold all three; each tab shows and plays only its own part of them.
 /// </summary>
 public static class Tabs
 {
-    public const string Videos = "videos", Music = "music";
+    public const string Videos = "videos", Music = "music", Games = "games";
 
-    public static string Of(LibraryKind kind) => kind == LibraryKind.Music ? Music : Videos;
+    public static string Of(LibraryKind kind) => kind switch
+    {
+        LibraryKind.Music => Music,
+        LibraryKind.Games => Games,
+        _ => Videos,
+    };
 
     public static string Of(MediaKind kind) => kind == MediaKind.Track ? Music : Videos;
 
@@ -20,6 +25,7 @@ public static class Tabs
     {
         Videos => [MediaKind.Episode, MediaKind.Movie],
         Music => [MediaKind.Track],
+        Games => [],
         _ => null,
     };
 
@@ -27,7 +33,7 @@ public static class Tabs
     public static IReadOnlyList<string> For(IEnumerable<LibraryInfo> libraries)
     {
         var have = libraries.Select(l => Of(l.Kind)).ToHashSet();
-        var tabs = new[] { Videos, Music }.Where(have.Contains).ToList();
+        var tabs = new[] { Videos, Music, Games }.Where(have.Contains).ToList();
         return tabs.Count > 0 ? tabs : [Videos];
     }
 }
