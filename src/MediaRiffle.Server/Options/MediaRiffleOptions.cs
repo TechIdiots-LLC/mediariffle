@@ -112,6 +112,9 @@ public sealed class GamesOptions
     /// limit. A save or state that would go over it is refused, with how much is used.
     /// </summary>
     public int SpacePerUserMB { get; set; }
+
+    /// <summary>How many save states each user keeps of a game, the oldest going as new ones come; 0 for all of them.</summary>
+    public int StatesPerGame { get; set; }
 }
 
 public sealed class MediaRiffleOptions

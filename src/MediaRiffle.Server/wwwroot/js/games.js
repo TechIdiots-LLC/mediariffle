@@ -59,7 +59,50 @@ export async function gameView(view, id, { listsControl }) {
         g.notReady
           ? h('p', { class: 'muted' }, g.notReady)
           : h('div', { class: 'game-actions' }, h('a', { class: 'button', href: `/game.html#${g.id}` }, '▶ Play')),
-        listsControl('game', g.id))));
+        g.save ? h('p', { class: 'muted' }, `Your save was last kept ${when(g.save.updatedUtc)}.`) : null,
+        listsControl('game', g.id))),
+    statesSection(g));
+}
+
+const when = iso => new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+
+// The user's save states of the game: Resume opens the game at one (game.html#<game>/<state>)
+function statesSection(g) {
+  const list = h('div', { class: 'state-list' });
+  const section = h('section', { class: 'game-states', hidden: true }, h('h2', {}, 'Save states'), list);
+  api(`/api/games/${g.id}/states`).then(states => {
+    if (!states.length) return;
+    mount(list, states.map(s => {
+      const card = h('div', { class: 'state-card' },
+        h(g.notReady ? 'div' : 'a', { class: 'state-pick', href: g.notReady ? null : `/game.html#${g.id}/${s.id}`, title: 'Resume from here' },
+          s.picture ? h('img', { src: s.picture, alt: '', loading: 'lazy' }) : h('span', { class: 'state-none' }, 'No picture'),
+          h('span', {}, when(s.createdUtc))),
+        h('button', { class: 'tile-x', title: 'Delete this state', 'aria-label': 'Delete this state', onclick: async () => {
+          if (!confirm('Delete this save state?')) return;
+          try { await api(`/api/games/states/${s.id}`, { method: 'DELETE' }); card.remove(); } catch (e) { alert(e.message); }
+        } }, '×'));
+      return card;
+    }));
+    section.hidden = false;
+  }).catch(() => { });
+  return section;
+}
+
+// Games tab → Continue playing: the user's last-played games, most recent first; the picture is the latest state's
+// screenshot where there's one. × takes one off (its saves stay; playing it again puts it back).
+export function continueTiles(games) {
+  return games.map(g => {
+    const tile = h('a', { class: 'tile continue', href: `/game.html#${g.id}` },
+      gameArt(g),
+      h('button', { class: 'tile-x', title: 'Remove from Continue playing', 'aria-label': 'Remove from Continue playing',
+        onclick: async e => {
+          e.preventDefault(); e.stopPropagation();
+          try { await api(`/api/games/${g.id}/continue`, { method: 'DELETE' }); tile.remove(); } catch (err) { alert(err.message); }
+        } }, '×'),
+      h('div', { class: 'name', title: g.title }, g.title),
+      h('div', { class: 'sub' }, g.systemName));
+    return tile;
+  });
 }
 
 // Admin → Games: the browser emulator (EmulatorJS and its cores: not part of MediaRiffle, so downloaded from npm here,
@@ -73,7 +116,7 @@ export function adminGamesSection() {
     return r;
   };
 
-  const draw = s => {
+  const draw = (s, saves) => {
     const busy = !!s.progress;
     const wanted = s.cores.filter(c => c.games > 0 && !c.installed);
     const note = h('span', { class: 'muted' });
@@ -132,14 +175,23 @@ export function adminGamesSection() {
             if (!file) return;
             try { await upload(`/api/admin/emulator/bios/${b.system}?name=${encodeURIComponent(file.name)}`, file); refresh(); }
             catch (err) { alert(err.message); }
-          } }))))));
+          } }))))),
+      // Each user's game saves and save states, kept in the data folder's gamesaves/
+      h('h3', {}, 'Game saves'),
+      h('p', { class: 'muted' }, saves.limitMB ? `Up to ${saves.limitMB} MB each (MediaRiffle:Games:SpacePerUserMB)`
+        : 'No limit on the space they take (MediaRiffle:Games:SpacePerUserMB).',
+        saves.statesPerGame ? ` The last ${saves.statesPerGame} save states of each game are kept.` : ''),
+      saves.users.length ? h('table', {},
+        h('tr', {}, h('th', {}, 'User'), h('th', {}, 'Saves'), h('th', {}, 'States'), h('th', {}, 'Space')),
+        saves.users.map(u => h('tr', {}, h('td', {}, u.name), h('td', {}, String(u.saves)), h('td', {}, String(u.states)), h('td', {}, size(u.bytes)))))
+        : h('p', { class: 'muted' }, 'None yet.'));
     clearTimeout(timer);
     if (busy) timer = setTimeout(refresh, 2000);
   };
 
   async function refresh() {
     if (!box.isConnected && timer) return;   // left Admin
-    try { draw(await api('/api/admin/emulator')); }
+    try { const [s, saves] = await Promise.all([api('/api/admin/emulator'), api('/api/admin/gamesaves')]); draw(s, saves); }
     catch (err) { mount(box, h('p', { class: 'error' }, err.message)); }
   }
   refresh();

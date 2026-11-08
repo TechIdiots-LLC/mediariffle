@@ -249,6 +249,23 @@ public sealed class GamePlay
     public DateTime? SaveUtc { get; set; }
     /// <summary>FNV-1a of the save, which the game page compares with the one in its browser; null when there's none.</summary>
     public string? SaveHash { get; set; }
+    /// <summary>Taken off Continue playing (its ×); playing it again puts it back.</summary>
+    public bool LeftContinue { get; set; }
+}
+
+/// <summary>
+/// A save state a user made of a game (the emulator's Save State), with the screenshot taken with it: files beside the
+/// play's save (state-{Id}, state-{Id}.pic).
+/// </summary>
+public sealed class GameSaveState
+{
+    public int Id { get; set; }
+    public int PlayId { get; set; }
+    public DateTime CreatedUtc { get; set; }
+    public long Size { get; set; }
+    /// <summary>The screenshot's type (image/png, image/jpeg, image/webp); null when there's none.</summary>
+    public string? PictureType { get; set; }
+    public long PictureSize { get; set; }
 }
 
 /// <summary>

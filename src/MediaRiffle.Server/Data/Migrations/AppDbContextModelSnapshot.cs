@@ -307,6 +307,9 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.Property<DateTime>("LastPlayedUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("LeftContinue")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("SaveHash")
                         .HasColumnType("TEXT");
 
@@ -332,6 +335,34 @@ namespace MediaRiffle.Server.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("GamePlays");
+                });
+
+            modelBuilder.Entity("MediaRiffle.Server.Data.GameSaveState", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("PictureSize")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PictureType")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PlayId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayId", "CreatedUtc");
+
+                    b.ToTable("GameStates");
                 });
 
             modelBuilder.Entity("MediaRiffle.Server.Data.HiddenItem", b =>
@@ -1021,6 +1052,15 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.HasOne("MediaRiffle.Server.Data.AppUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MediaRiffle.Server.Data.GameSaveState", b =>
+                {
+                    b.HasOne("MediaRiffle.Server.Data.GamePlay", null)
+                        .WithMany()
+                        .HasForeignKey("PlayId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

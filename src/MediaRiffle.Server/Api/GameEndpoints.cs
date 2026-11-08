@@ -200,7 +200,8 @@ public static class GameEndpoints
     // The versions of a game share it (a name of tags alone is a game of its own)
     private static string GroupKey(int id, string title) => GameVersions.Key(title) is { Length: > 0 } key ? key : "#" + id;
 
-    private static string? ImageUrl(Game game) =>
+    /// <summary>The address of a game's picture (box art), or null when it has none.</summary>
+    public static string? ImageUrl(Game game) =>
         HasPicture(game.ImagePath, game.ArtName, game.System, game.ArtCheckedUtc) ? $"/api/images/game/{game.Id}" : null;
 
     // One beside it, box art kept, or box art not looked for yet (a game known to have none gets no address, so its

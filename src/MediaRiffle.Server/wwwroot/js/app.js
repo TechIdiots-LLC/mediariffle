@@ -6,7 +6,7 @@ import { music, nowPlayingView, trackRows } from './music.js';
 import { avatarEl, BUILT_IN, photoToJpeg } from './avatar.js';
 import { adminGate, mfaSettings, askCheck } from './mfa.js';
 import { requestsView } from './requests.js';
-import { gameTiles, gameView, systemView, adminGamesSection } from './games.js';
+import { gameTiles, gameView, systemView, adminGamesSection, continueTiles } from './games.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
@@ -740,8 +740,8 @@ async function tabView(tab) {
   try { localStorage.setItem(TAB_KEY, tab); } catch { }
   const music = tab === 'music', games = tab === 'games';
   const [allLibraries, recent, tags, lists, favorites, systems] = await Promise.all([api('/api/libraries'),
-    tab === 'videos' ? api('/api/continue') : [], api('/api/tags'), api('/api/lists'), api(`/api/lists/${FAVORITES}`),
-    games ? api('/api/games/systems') : []]);
+    tab === 'videos' ? api('/api/continue') : games ? api('/api/games/continue') : [], api('/api/tags'), api('/api/lists'),
+    api(`/api/lists/${FAVORITES}`), games ? api('/api/games/systems') : []]);
   const libraries = allLibraries.filter(l => LIBRARY_TAB[l.kind] === tab);
   const myLists = lists.filter(l => !isFavorites(l.tag) && l[tab] > 0);
   const myTags = tags.filter(t => t[tab] > 0 || t.libraryTabs?.includes(tab));
@@ -768,7 +768,9 @@ async function tabView(tab) {
             l.tags.length ? h('div', { class: 'sub' }, l.tags.join(', ')) : null)))
       : h('p', { class: 'muted' }, state.user.isAdmin ? 'No libraries yet: add them under Admin.' : 'No libraries yet.') },
     // One row that scrolls sideways, most recent first (the server sends the last 20)
-    continue: tab !== 'videos' ? undefined : { title: 'Continue watching', body: recent.length ? h('div', { class: 'strip' }, recent.map(r => {
+    // Games: the last played, opening straight into the game
+    continue: games ? { title: 'Continue playing', body: recent.length ? h('div', { class: 'strip' }, continueTiles(recent)) : null }
+      : tab !== 'videos' ? undefined : { title: 'Continue watching', body: recent.length ? h('div', { class: 'strip' }, recent.map(r => {
       // ×: off this list (not hidden: the place is kept, and watching it again brings it back)
       const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}`, onclick: () => { clearQueue(); sessionStorage.setItem(RESUME_KEY, String(r.file.id)); } },
         art(r.file.image, r.file.duration ? r.file.position / r.file.duration : 0),

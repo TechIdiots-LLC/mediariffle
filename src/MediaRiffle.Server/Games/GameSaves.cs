@@ -23,6 +23,26 @@ public sealed class GameSaves(IOptions<MediaRiffleOptions> options)
 
     public string SavePath(string userId, int playId) => Path.Combine(Folder(userId, playId), "save");
 
+    /// <summary>The most a save state may be (a PSP's run to 40 MB or so).</summary>
+    public const long MaxState = 256L * 1024 * 1024;
+
+    /// <summary>The most a state's screenshot may be.</summary>
+    public const long MaxPicture = 8L * 1024 * 1024;
+
+    /// <summary>How many states a user keeps of each game; 0 for all.</summary>
+    public int StatesPerGame => options.Value.Games.StatesPerGame;
+
+    public string StatePath(string userId, int playId, int stateId) => Path.Combine(Folder(userId, playId), $"state-{stateId}");
+
+    public string PicturePath(string userId, int playId, int stateId) => Path.Combine(Folder(userId, playId), $"state-{stateId}.pic");
+
+    /// <summary>A state's files.</summary>
+    public void DeleteState(string userId, int playId, int stateId)
+    {
+        File.Delete(StatePath(userId, playId, stateId));
+        File.Delete(PicturePath(userId, playId, stateId));
+    }
+
     /// <summary>A removed user's saves.</summary>
     public void DeleteUser(string userId)
     {
@@ -31,9 +51,14 @@ public sealed class GameSaves(IOptions<MediaRiffleOptions> options)
         catch (IOException) { }
     }
 
-    /// <summary>How much a user's saves take, in bytes.</summary>
-    public static async Task<long> UsedAsync(AppDbContext db, string userId) =>
-        await db.GamePlays.Where(p => p.UserId == userId).SumAsync(p => (long?)p.SaveSize) ?? 0;
+    /// <summary>How much a user's saves and states take, in bytes.</summary>
+    public static async Task<long> UsedAsync(AppDbContext db, string userId)
+    {
+        var saves = await db.GamePlays.Where(p => p.UserId == userId).SumAsync(p => (long?)p.SaveSize) ?? 0;
+        var states = await db.GameStates.Where(s => db.GamePlays.Any(p => p.Id == s.PlayId && p.UserId == userId))
+            .SumAsync(s => (long?)(s.Size + s.PictureSize)) ?? 0;
+        return saves + states;
+    }
 
     /// <summary>Why a user can't keep <paramref name="adding"/> bytes more, or null when they can.</summary>
     public async Task<string?> OverLimitAsync(AppDbContext db, string userId, long adding)
@@ -41,7 +66,8 @@ public sealed class GameSaves(IOptions<MediaRiffleOptions> options)
         if (Limit <= 0 || adding <= 0) return null;
         var used = await UsedAsync(db, userId);
         return used + adding <= Limit ? null
-            : $"Your game saves would take more than the {options.Value.Games.SpacePerUserMB} MB you have ({used / 1024 / 1024} MB used).";
+            : $"Your game saves and states would take more than the {options.Value.Games.SpacePerUserMB} MB you have " +
+              $"({used / 1024 / 1024} MB used). Delete some save states on the game's page to make room.";
     }
 
     /// <summary>Writes a file whole or not at all (a half-written save is worse than the one before).</summary>

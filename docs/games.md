@@ -113,7 +113,12 @@ quicker. Press **Start** (browsers want a tap or click before games may make sou
   the server's if it was saved on another device, this browser's if you played here since. A save from before
   MediaRiffle kept them is taken up the first time. Saves go by the game's system and file name, so they stay when a
   game is moved or its library scanned again. `Games.SpacePerUserMB` can limit the space each user's saves take.
-- **Save states** are kept in that browser.
+- **Save states**: the emulator's Save State (in the bar under the game) keeps the state on the server, per user,
+  with a screenshot. Load State shows them to pick from, over the game. A game's page lists them with Resume (which
+  opens the game at that state) and ×. `Games.StatesPerGame` can keep only the latest few of each game.
+- **Continue playing**, on the Games tab, has the games you played last, with the screenshot of your latest state;
+  a tile opens straight into the game (its save loaded). × takes one off until you play it again.
+- Admin → Games shows how many saves and states each user has, and the space they take.
 
 The game page has its own security settings, looser than the rest of the site's because the emulator needs them:
 WebAssembly and `'unsafe-eval'` (the cores evaluate code), still only this site's own scripts, and cross-origin

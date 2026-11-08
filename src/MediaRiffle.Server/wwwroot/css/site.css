@@ -238,6 +238,18 @@ body.game-body { background: #000; }
 .game-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .game-layout { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.9em; white-space: nowrap; }
 .game-layout[hidden], .game-note[hidden], .game-status[hidden] { display: none; }
+/* Save states: picked from over the game (Load State), or on a game's page (Resume) */
+.state-picker { position: absolute; inset: 0; z-index: 10000; background: rgba(0, 0, 0, .75); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.state-box { background: var(--surface); color: var(--text); border-radius: var(--radius); padding: 16px; width: min(900px, 100%); max-height: 100%; overflow: auto; }
+.state-box h2 { margin: 0; }
+.state-box .spacer { flex: 1; }
+.state-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-top: 12px; }
+.game-states { margin-top: 24px; }
+.game-states[hidden] { display: none; }
+.state-card { position: relative; }
+.state-pick { display: grid; gap: 6px; width: 100%; padding: 6px; background: transparent; color: var(--text); border: 1px solid var(--border); border-radius: 8px; text-align: left; cursor: pointer; font-size: .9em; }
+a.state-pick:hover, button.state-pick:hover { border-color: var(--accent); text-decoration: none; }
+.state-pick img, .state-none { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #000; border-radius: 4px; display: grid; place-items: center; color: var(--muted); }
 .game-status { color: var(--muted); font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .game-status.error { color: var(--danger); white-space: normal; }
 .game-layout select { max-width: 16em; }

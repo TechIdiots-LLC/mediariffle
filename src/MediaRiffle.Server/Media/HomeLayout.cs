@@ -12,7 +12,7 @@ public static class HomeLayout
     {
         ["videos"] = ["lists", "favorites", "categories", "libraries", "continue"],
         ["music"] = ["lists", "favorites", "categories", "libraries"],
-        ["games"] = ["lists", "favorites", "categories", "systems", "libraries"],
+        ["games"] = ["continue", "lists", "favorites", "categories", "systems", "libraries"],
     };
 
     /// <summary>Every tab's sections to send a client: the stored layout where there is one, else the default.</summary>

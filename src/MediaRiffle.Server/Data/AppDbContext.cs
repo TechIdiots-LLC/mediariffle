@@ -22,6 +22,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<Game> Games => Set<Game>();
     public DbSet<GameControls> GameControls => Set<GameControls>();
     public DbSet<GamePlay> GamePlays => Set<GamePlay>();
+    public DbSet<GameSaveState> GameStates => Set<GameSaveState>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -73,6 +74,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         b.Entity<GamePlay>().HasIndex(p => new { p.UserId, p.LastPlayedUtc });
         b.Entity<GamePlay>().Property(p => p.FileName).UseCollation("NOCASE");
         b.Entity<GamePlay>().HasOne<AppUser>().WithMany().HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<GameSaveState>().HasIndex(s => new { s.PlayId, s.CreatedUtc });
+        b.Entity<GameSaveState>().HasOne<GamePlay>().WithMany().HasForeignKey(s => s.PlayId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<GameControls>().HasKey(c => new { c.UserId, c.System });
         b.Entity<GameControls>().HasOne<AppUser>().WithMany().HasForeignKey(c => c.UserId).OnDelete(DeleteBehavior.Cascade);
 

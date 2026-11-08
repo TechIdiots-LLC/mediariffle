@@ -1,12 +1,13 @@
-// The game page (game.html#<id>): EmulatorJS, as added by an admin under Admin → Games, playing one game. It's a page
+// The game page (game.html#<id>, or #<id>/<state> to start from one of the user's save states): EmulatorJS, as added by an admin under Admin → Games, playing one game. It's a page
 // of its own because the emulator needs a Content Security Policy (WebAssembly) and cross-origin isolation (threads)
 // that the rest of the site doesn't have. Controllers work through the browser's Gamepad API: press a button once.
 
 import { api } from './api.js';
 import { setUpControls } from './game-controls.js';
 import { setUpSaves } from './game-saves.js';
+import { setUpStates } from './game-states.js';
 
-const id = Number(location.hash.slice(1));
+const [id, resumeId] = location.hash.slice(1).split('/').map(Number);
 const back = document.getElementById('back');
 const message = document.getElementById('message');
 
@@ -26,6 +27,14 @@ back.addEventListener('click', async e => {
 function show(text) {
   message.textContent = text;
   message.hidden = false;
+}
+
+// The line at the top that says when the save or a state was last kept, or why it wasn't
+const statusLine = document.getElementById('save-status');
+function showStatus(text, error = false) {
+  statusLine.textContent = text;
+  statusLine.classList.toggle('error', error);
+  statusLine.hidden = !text;
 }
 
 async function start() {
@@ -68,6 +77,7 @@ async function start() {
       };
       setUpControls(emulator, game);
       setUpSaves(emulator, game, leaving);
+      setUpStates(emulator, game, resumeId || null, showStatus);
     },
   });
   if (game.biosUrl) window.EJS_biosUrl = game.biosUrl;

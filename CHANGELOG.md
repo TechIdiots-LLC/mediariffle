@@ -9,6 +9,10 @@
 - **Game saves on the server**: a game's own save (battery save, memory card) is kept per user on the server as well as
   in the browser, so you carry on from any device; written every 30 seconds and when you leave the game.
   `Games.SpacePerUserMB` can limit the space each user's saves take.
+- **Save states on the server**, with a screenshot each: the emulator's Save State keeps them per user, Load State shows
+  them to pick from, and a game's page lists them with Resume. `Games.StatesPerGame` can keep only the latest few.
+- **Continue playing** on the Games tab: the games you played last, opening straight into the game.
+- Admin → Games shows each user's game saves and states, and the space they take.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
