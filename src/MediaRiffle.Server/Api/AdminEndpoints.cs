@@ -247,6 +247,14 @@ public static class AdminEndpoints
         });
 
         g.MapPost("/scan", (LibraryScanner scanner) => { scanner.RequestScan(); return Results.Accepted(); });
+        // One library only (its Scan button)
+        g.MapPost("/libraries/{id:int}/scan", (int id, LibraryScanner scanner, LibraryCatalog catalog) =>
+        {
+            if (catalog.Get(id) is not { } lib) return Results.NotFound();
+            if (!lib.Enabled) return Results.BadRequest(new { error = $"{lib.Name} is switched off: switch it on under Edit to scan it." });
+            scanner.RequestScan(id);
+            return Results.Accepted();
+        });
         g.MapGet("/scan", (LibraryScanner scanner) => new { scanner.IsScanning, scanner.LastScanUtc, scanner.LastResult, scanner.Progress });
 
         g.MapGet("/sessions", async (StreamSessionManager sessions, UserManager<AppUser> users) =>

@@ -13,6 +13,8 @@
   them to pick from, and a game's page lists them with Resume. `Games.StatesPerGame` can keep only the latest few.
 - **Continue playing** on the Games tab: the games you played last, opening straight into the game.
 - Admin → Games shows each user's game saves and states, and the space they take.
+- **Scan one library**: each library under Admin → Libraries has its own Scan, beside Edit; its row says when it's
+  waiting, scanning and done. Scan now still scans them all.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

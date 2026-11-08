@@ -43,8 +43,24 @@ public sealed partial class LibraryScanner : BackgroundService
     public IReadOnlyDictionary<int, LibraryScanStatus> Status => _status;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, LibraryScanStatus> _status = new();
 
-    /// <summary>Asks for a scan as soon as the current one (if any) is done.</summary>
-    public void RequestScan() => _requests.Writer.TryWrite(true);
+    // What the next scan covers: every library, or only these (Admin → Libraries → a library's Scan)
+    private volatile bool _all;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> _only = new();
+
+    /// <summary>Asks for a scan of every library as soon as the current one (if any) is done.</summary>
+    public void RequestScan()
+    {
+        _all = true;
+        _requests.Writer.TryWrite(true);
+    }
+
+    /// <summary>Asks for a scan of one library as soon as the current one (if any) is done.</summary>
+    public void RequestScan(int libraryId)
+    {
+        _only[libraryId] = 0;
+        _status[libraryId] = new("queued", "Waiting to scan…", DateTime.UtcNow);
+        _requests.Writer.TryWrite(true);
+    }
 
     /// <summary>Raised after each scan (Games.GameArt looks for the new games' box art).</summary>
     public event EventHandler? Scanned;
@@ -60,11 +76,18 @@ public sealed partial class LibraryScanner : BackgroundService
             using var wait = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
             if (interval > 0) wait.CancelAfter(TimeSpan.FromMinutes(interval));
             try { await _requests.Reader.ReadAsync(wait.Token); }
-            catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested) { /* interval reached */ }
+            catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested) { _all = true; /* interval reached */ }
             catch (OperationCanceledException) { break; }
 
+            // Every library, or only those asked for one by one
+            var all = _all;
+            _all = false;
+            var only = _only.Keys.ToHashSet();
+            foreach (var id in only) _only.TryRemove(id, out _);
+            if (!all && only.Count == 0) continue;
+
             IsScanning = true;
-            try { LastResult = await ScanAllAsync(stoppingToken); }
+            try { LastResult = await ScanAllAsync(all ? null : only, stoppingToken); }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
             {
@@ -81,10 +104,10 @@ public sealed partial class LibraryScanner : BackgroundService
         }
     }
 
-    private async Task<string> ScanAllAsync(CancellationToken ct)
+    private async Task<string> ScanAllAsync(IReadOnlySet<int>? only, CancellationToken ct)
     {
         var summary = new StringBuilder();
-        foreach (var lib in catalog.Enabled)
+        foreach (var lib in catalog.Enabled.Where(l => only is null || only.Contains(l.Id)))
         {
             Progress = $"{lib.Name}: looking for files…";
             if (!Directory.Exists(lib.Path))

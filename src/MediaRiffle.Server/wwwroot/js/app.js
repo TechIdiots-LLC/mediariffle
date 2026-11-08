@@ -1392,6 +1392,14 @@ async function adminView() {
         h('td', {}, l.tags ?? ''), files, status,
         h('td', { class: 'row' },
           h('button', { class: 'secondary', onclick: () => libraryForm(l) }, 'Edit'),
+          // This library only: its row says when it's waiting, scanning and done
+          h('button', { class: 'secondary', disabled: !l.enabled, title: l.enabled ? `Scan ${l.name} now` : 'Switched off', onclick: async () => {
+            try {
+              await api(`/api/admin/libraries/${l.id}/scan`, { method: 'POST' });
+              const c = cells.get(l.id);
+              if (c) { c.status.textContent = 'Waiting to scan…'; c.status.className = 'muted'; }
+            } catch (e) { alert(e.message); }
+          } }, 'Scan'),
           h('button', { class: 'danger', onclick: async () => {
             if (!confirm(`Remove ${l.name}? Its files stay where they are; only MediaRiffle's list of them (and everyone's place in them) goes.`)) return;
             await api(`/api/admin/libraries/${l.id}`, { method: 'DELETE' }); await loadState(); adminView();
