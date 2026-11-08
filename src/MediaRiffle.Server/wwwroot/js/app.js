@@ -10,6 +10,9 @@ import { gameTiles, gameView, systemView, adminGamesSection } from './games.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
+// The page's own buttons in the top bar, before Admin (a tab's Customize): each page fills it, and it's emptied on
+// every page change
+const pageActions = h('span', { class: 'page-actions' });
 let state = { setupNeeded: false, user: null };
 let player = null;
 // Counts pages shown, so a page that took a while to load (a slow fetch) can tell another has been shown since
@@ -69,6 +72,7 @@ function renderNav() {
     (state.tabs ?? []).map(t => h('a', { class: 'tab', href: `#/${t}`, 'data-tab': t }, TAB_NAMES[t] ?? t)),
     h('a', { class: 'tab', href: '#/requests', 'data-tab': 'requests' }, 'Requests'),
     h('span', { class: 'spacer' }),
+    pageActions,
     state.user.isAdmin ? h('a', { href: '#/admin' }, 'Admin') : null,
     h('details', { class: 'usermenu' },
       h('summary', {}, avatarEl(state.user.avatar, 'sm', state.user.name), ' ', state.user.name),
@@ -152,6 +156,7 @@ async function route() {
   if (player) { player.destroy(); player = null; }
   if (pageTimer) { clearInterval(pageTimer); pageTimer = null; }
   for (const fn of leaving.splice(0)) fn();
+  mount(pageActions);
   // Full screen carries on from one video to the next (see inTheater), and ends on any other page
   if (!/^#\/play\//.test(location.hash)) exitTheater();
   const hash = location.hash || '#/';
@@ -819,11 +824,14 @@ async function tabView(tab) {
       head, hidden ? null : s.body);
   };
 
-  const draw = () => mount(view,
-    h('div', { class: 'row home-bar' },
-      editing ? h('span', { class: 'muted' }, 'Drag a heading (or use ▲ ▼) to reorder; untick Show to hide a section.') : null,
-      h('button', { class: 'secondary', onclick: () => { editing = !editing; draw(); } }, editing ? 'Done' : 'Customize')),
-    layout.map(sectionView));
+  // Customize is in the top bar, beside Admin
+  const draw = () => {
+    mount(pageActions, h('button', { class: 'link', onclick: () => { editing = !editing; draw(); } }, editing ? 'Done' : 'Customize'));
+    mount(view,
+      editing ? h('div', { class: 'row home-bar' },
+        h('span', { class: 'muted' }, 'Drag a heading (or use ▲ ▼) to reorder; untick Show to hide a section.')) : null,
+      layout.map(sectionView));
+  };
   draw();
 }
 
