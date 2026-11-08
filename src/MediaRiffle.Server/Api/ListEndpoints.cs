@@ -30,19 +30,21 @@ public static class ListEndpoints
         {
             var userId = users.GetUserId(me);
             var rows = await Visible(db, catalog, db.UserTags.Where(t => t.UserId == userId))
-                .Select(t => new { t.Tag, game = t.GameId != null, music = t.ArtistId != null || t.AlbumId != null || t.MediaFileId != null })
+                .Select(t => new { t.Tag, game = t.GameId != null, music = t.ArtistId != null || t.AlbumId != null || t.MediaFileId != null, movie = t.MovieId != null })
                 .ToListAsync();
             return rows.GroupBy(r => r.Tag)
                 .Select(x => new
                 {
                     tag = x.Key, items = x.Count(),
-                    videos = x.Count(r => !r.music && !r.game), music = x.Count(r => r.music), games = x.Count(r => r.game),
+                    shows = x.Count(r => !r.music && !r.game && !r.movie), movies = x.Count(r => r.movie),
+                    music = x.Count(r => r.music), games = x.Count(r => r.game),
+                    videos = x.Count(r => !r.music && !r.game),   // shows and movies, for apps from before they were apart
                 })
                 .OrderBy(r => !IsFavorites(r.tag)).ThenBy(r => r.tag, StringComparer.OrdinalIgnoreCase);
         }).AllowDevices();
 
         // A whole list gone: everything taken off it (nothing leaves the library), including what's in a library that's
-        // switched off, which its page can't show. With `tab` (videos, music), only that tab's part of it.
+        // switched off, which its page can't show. With `tab` (shows, movies, music, games), only that tab's part of it.
         g.MapDelete("/lists/{tag}", async (string tag, string? tab, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
         {
             var userId = users.GetUserId(me);
@@ -51,6 +53,8 @@ public static class ListEndpoints
             entries = tab?.Trim().ToLowerInvariant() switch
             {
                 Tabs.Music => entries.Where(t => t.ArtistId != null || t.AlbumId != null || t.MediaFileId != null),
+                Tabs.Shows => entries.Where(t => t.ShowId != null),
+                Tabs.Movies => entries.Where(t => t.MovieId != null),
                 Tabs.Videos => entries.Where(t => t.ShowId != null || t.MovieId != null),
                 Tabs.Games => entries.Where(t => t.GameId != null),
                 null or "" => entries,

@@ -33,8 +33,12 @@ async function loadState() {
 // The media is split into top tabs, each with its own lists, favorites, categories and libraries. A tab shows only
 // while an enabled library of its kind is there. "#/" opens the one last used on this device.
 
-const TAB_NAMES = { videos: 'Videos', music: 'Music', games: 'Games' };
-const LIBRARY_TAB = { Shows: 'videos', Movies: 'videos', Music: 'music', Games: 'games' };
+const TAB_NAMES = { shows: 'Shows', movies: 'Movies', music: 'Music', games: 'Games' };
+const LIBRARY_TAB = { Shows: 'shows', Movies: 'movies', Music: 'music', Games: 'games' };
+// The tab that was Videos, before Shows and Movies had one each: a link from then (a category, a list) shows both
+const BOTH = 'videos';
+const hasShows = tab => !tab || tab === 'shows' || tab === BOTH;
+const hasMovies = tab => !tab || tab === 'movies' || tab === BOTH;
 // The tabs a library is under: one for each of its kinds' tabs
 const libraryTabs = l => [...new Set((l.kinds ?? [l.kind]).map(k => LIBRARY_TAB[k]))];
 const TAB_KEY = 'mediariffle.tab';
@@ -45,15 +49,17 @@ function startTab() {
   const tabs = state.tabs ?? [];
   let saved = null;
   try { saved = localStorage.getItem(TAB_KEY); } catch { }
+  if (saved === BOTH) saved = 'shows';
   return tabs.includes(saved) ? saved : tabs[0] ?? null;
 }
 
 // The tab a page belongs to: '' for one outside them all (Admin, Profile), null for one that could be either (a
 // library, a category opened without a tab), which keeps the tab it was opened from
 function tabOf(hash) {
-  const m = hash.match(/^#\/(videos|music|games|requests)$/) ?? hash.match(/^#\/(?:tag|list)\/[^/]+\/(videos|music|games)$/);
+  const m = hash.match(/^#\/(shows|movies|music|games|requests)$/) ?? hash.match(/^#\/(?:tag|list)\/[^/]+\/(shows|movies|music|games)$/);
   if (m) return m[1];
-  if (/^#\/(show|movie|play)\//.test(hash)) return 'videos';
+  if (/^#\/show\//.test(hash)) return 'shows';
+  if (/^#\/movie\//.test(hash)) return 'movies';
   if (/^#\/(artist|album|listen)\/|^#\/now$/.test(hash)) return 'music';
   if (/^#\/(game|system)\//.test(hash)) return 'games';
   if (/^#\/(admin|profile|link)$/.test(hash)) return '';
@@ -101,11 +107,13 @@ const routes = [
   [/^#\/logout$/, logout],
   [/^#\/switch$/, switchView],
   [/^#\/add-account(?:\/(.+))?$/, m => signInForm(m[1] ? decodeURIComponent(m[1]) : '')],
-  [/^#\/(videos|music|games)$/, m => tabView(m[1])],
-  [/^#\/library\/(\d+)(?:\/(videos|music|games))?$/, m => libraryView(+m[1], m[2])],
+  [/^#\/(shows|movies|music|games)$/, m => tabView(m[1])],
+  // Videos, from before Shows and Movies had a tab each (a bookmark)
+  [/^#\/videos$/, () => forward('#/shows')],
+  [/^#\/library\/(\d+)(?:\/(shows|movies|music|games))?$/, m => libraryView(+m[1], m[2])],
   // A category or list opened from a tab ends in it ("…/music"): only that tab's part of it is shown and played
-  [/^#\/tag\/([^/]+)(?:\/(videos|music|games))?$/, m => tagView(decodeURIComponent(m[1]), m[2])],
-  [/^#\/list\/([^/]+)(?:\/(videos|music|games))?$/, m => listView(decodeURIComponent(m[1]), m[2])],
+  [/^#\/tag\/([^/]+)(?:\/(shows|movies|videos|music|games))?$/, m => tagView(decodeURIComponent(m[1]), m[2])],
+  [/^#\/list\/([^/]+)(?:\/(shows|movies|videos|music|games))?$/, m => listView(decodeURIComponent(m[1]), m[2])],
   [/^#\/game\/(\d+)$/, m => gameView(view, +m[1], { listsControl })],
   [/^#\/system\/(\w+)$/, m => systemView(view, m[1])],
   [/^#\/show\/(\d+)$/, m => showView(+m[1])],
@@ -147,7 +155,7 @@ function numberPage(hash) {
   }
   // The player's page uses the screen's width (a large or 4K screen gets a large picture); the others keep theirs
   document.body.classList.toggle('play-page', /^#\/play\//.test(hash));
-  backButton.hidden = /^#?\/?$/.test(hash) || /^#\/(videos|music|games)$/.test(hash) || /^#\/(login|setup|join\/|reset\/)/.test(hash);
+  backButton.hidden = /^#?\/?$/.test(hash) || /^#\/(shows|movies|music|games)$/.test(hash) || /^#\/(login|setup|join\/|reset\/)/.test(hash);
   markTab(tabOf(hash));
 }
 
@@ -735,27 +743,27 @@ function homeView() {
 }
 
 // A top tab: the user's lists, favorites and the categories with something of this tab's in them, its libraries,
-// (Videos) Continue watching and (Games) the systems, each in the order the user set for this tab
+// (Shows, Movies) Continue watching and (Games) Continue playing and the systems, each in the order the user set for this tab
 async function tabView(tab) {
   // A tab whose libraries are gone or switched off (an old link, a bookmark): the start page instead
   if (!(state.tabs ?? []).includes(tab)) { forward('#/'); return; }
   try { localStorage.setItem(TAB_KEY, tab); } catch { }
-  const music = tab === 'music', games = tab === 'games';
+  const music = tab === 'music', games = tab === 'games', shows = tab === 'shows', movies = tab === 'movies';
   const [allLibraries, recent, tags, lists, favorites, systems] = await Promise.all([api('/api/libraries'),
-    tab === 'videos' ? api('/api/continue') : games ? api('/api/games/continue') : [], api('/api/tags'), api('/api/lists'),
+    shows || movies ? api(`/api/continue?tab=${tab}`) : games ? api('/api/games/continue') : [], api('/api/tags'), api('/api/lists'),
     api(`/api/lists/${FAVORITES}`), games ? api('/api/games/systems') : []]);
   const libraries = allLibraries.filter(l => libraryTabs(l).includes(tab));
   const myLists = lists.filter(l => !isFavorites(l.tag) && l[tab] > 0);
   const myTags = tags.filter(t => t[tab] > 0 || t.libraryTabs?.includes(tab));
   const hasFavorites = music ? favorites.artists.length || favorites.albums.length || favorites.tracks.length
-    : games ? favorites.games.length : favorites.shows.length || favorites.movies.length;
+    : games ? favorites.games.length : shows ? favorites.shows.length : favorites.movies.length;
   // Each section: its heading, and what's under it (null when there's nothing to show; Customize still lists it)
   const sections = {
     lists: { title: 'My lists', body: myLists.length ? h('div', { class: 'chips' }, myLists.map(l =>
       h('a', { class: 'chip', href: `#/list/${encodeURIComponent(l.tag)}/${tab}` }, l.tag, h('span', { class: 'muted' }, ` ${l[tab]}`)))) : null },
     favorites: { title: '★ Favorites', body: hasFavorites ? h('div', { class: 'grid' }, music
         ? [artistTiles(favorites.artists), albumTiles(favorites.albums, true)]
-        : games ? gameTiles(favorites.games) : [showTiles(favorites.shows), movieTiles(favorites.movies)]) : null,
+        : games ? gameTiles(favorites.games) : shows ? showTiles(favorites.shows) : movieTiles(favorites.movies)) : null,
       link: hasFavorites && !games ? h('a', { href: `#/list/${FAVORITES}/${tab}` }, music && favorites.tracks.length
         ? `${favorites.tracks.length} song${favorites.tracks.length === 1 ? '' : 's'}, play or shuffle →` : 'Play or shuffle →') : null },
     categories: { title: 'Categories', body: myTags.length ? h('div', { class: 'chips' }, myTags.map(t =>
@@ -772,7 +780,7 @@ async function tabView(tab) {
     // One row that scrolls sideways, most recent first (the server sends the last 20)
     // Games: the last played, opening straight into the game
     continue: games ? { title: 'Continue playing', body: recent.length ? h('div', { class: 'strip' }, continueTiles(recent)) : null }
-      : tab !== 'videos' ? undefined : { title: 'Continue watching', body: recent.length ? h('div', { class: 'strip' }, recent.map(r => {
+      : !shows && !movies ? undefined : { title: 'Continue watching', body: recent.length ? h('div', { class: 'strip' }, recent.map(r => {
       // ×: off this list (not hidden: the place is kept, and watching it again brings it back)
       const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}`, onclick: () => { clearQueue(); sessionStorage.setItem(RESUME_KEY, String(r.file.id)); } },
         art(r.file.image, r.file.duration ? r.file.position / r.file.duration : 0),
@@ -871,7 +879,8 @@ async function libraryView(id, tab) {
 // a tab, only that tab's part of it.
 async function tagView(tag, tab) {
   const t = await api(`/api/tags/${encodeURIComponent(tag)}`);
-  if (tab && tab !== 'videos') t.shows = t.movies = [];
+  if (!hasShows(tab)) t.shows = [];
+  if (!hasMovies(tab)) t.movies = [];
   if (tab && tab !== 'music') t.artists = t.albums = [];
   if (tab && tab !== 'games') t.games = [];
   const showGrid = h('div', { class: 'grid' }), movieGrid = h('div', { class: 'grid' }), artistGrid = h('div', { class: 'grid' }), albumGrid = h('div', { class: 'grid' });
@@ -996,15 +1005,18 @@ function nowView() { onLeave(nowPlayingView(view, t => listsControl('track', t.i
 async function listView(tag, tab) {
   const t = await api(`/api/lists/${encodeURIComponent(tag)}`);
   const counts = {
-    videos: t.shows.length + t.movies.length,
+    shows: t.shows.length,
+    movies: t.movies.length,
     music: t.artists.length + t.albums.length + t.tracks.length,
     games: t.games.length,
   };
-  const otherPart = tab ? Object.entries(counts).filter(([k]) => k !== tab).reduce((n, [, c]) => n + c, 0) : 0;
-  if (tab && tab !== 'videos') t.shows = t.movies = [];
+  const mine = k => k === tab || (tab === BOTH && (k === 'shows' || k === 'movies'));
+  const otherPart = tab ? Object.entries(counts).filter(([k]) => !mine(k)).reduce((n, [, c]) => n + c, 0) : 0;
+  if (!hasShows(tab)) t.shows = [];
+  if (!hasMovies(tab)) t.movies = [];
   if (tab && tab !== 'music') t.artists = t.albums = t.tracks = [];
   if (tab && tab !== 'games') t.games = [];
-  const part = { music: 'the music', games: 'the games', videos: 'the shows and movies' }[tab];
+  const part = { shows: 'the shows', movies: 'the movies', music: 'the music', games: 'the games', videos: 'the shows and movies' }[tab];
   const suffix = tab ? `/${tab}` : '';
   const showGrid = h('div', { class: 'grid' }), movieGrid = h('div', { class: 'grid' });
   const artistGrid = h('div', { class: 'grid' }), albumGrid = h('div', { class: 'grid' }), gameGrid = h('div', { class: 'grid' });

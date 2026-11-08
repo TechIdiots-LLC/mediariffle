@@ -55,5 +55,5 @@ public class LibraryKindsTests
 
     [Fact]
     public void TabsComeFromEveryKind() =>
-        Assert.Equal(["videos", "music"], Tabs.For([Lib(LibraryKind.Shows, LibraryKind.Movies, LibraryKind.Music)]));
+        Assert.Equal(["shows", "movies", "music"], Tabs.For([Lib(LibraryKind.Shows, LibraryKind.Movies, LibraryKind.Music)]));
 }

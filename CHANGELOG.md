@@ -19,6 +19,8 @@
   editing it. A scan files each file once (with Shows and Movies both, a video named like an episode or in a season
   folder is an episode, the rest movies). Such a library is listed once under Admin and shows under each of its tabs;
   its page has a section per kind. Changing what a library holds files it again, keeping everyone's place.
+- **Shows and Movies tabs** in place of Videos: each with its own lists, favorites, categories, libraries and
+  Continue watching. A Customize order set for Videos carries over to both; old links to Videos open Shows.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

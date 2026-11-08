@@ -1,8 +1,8 @@
 namespace MediaRiffle.Server.Media;
 
 /// <summary>
-/// Which sections each top tab (Videos, Music, Games) shows and in what order, per user (Customize on the tab). Stored
-/// as each changed tab's section ids in order, a hidden one with a leading "-": "videos:continue,-libraries,lists;music:…".
+/// Which sections each top tab (Shows, Movies, Music, Games) shows and in what order, per user (Customize on the tab). Stored
+/// as each changed tab's section ids in order, a hidden one with a leading "-": "shows:continue,-libraries,lists;music:…".
 /// Before the tabs there was one home page, stored as "lists,categories,…" alone: that is read as every tab's.
 /// </summary>
 public static class HomeLayout
@@ -10,7 +10,8 @@ public static class HomeLayout
     /// <summary>Each tab's sections, in the order a user who never changed it sees them.</summary>
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> Tabs = new Dictionary<string, IReadOnlyList<string>>
     {
-        ["videos"] = ["lists", "favorites", "categories", "libraries", "continue"],
+        ["shows"] = ["lists", "favorites", "categories", "libraries", "continue"],
+        ["movies"] = ["lists", "favorites", "categories", "libraries", "continue"],
         ["music"] = ["lists", "favorites", "categories", "libraries"],
         ["games"] = ["continue", "lists", "favorites", "categories", "systems", "libraries"],
     };
@@ -63,7 +64,14 @@ public static class HomeLayout
         foreach (var part in stored.Split(';'))
         {
             var at = part.IndexOf(':');
-            if (at > 0 && Tabs.ContainsKey(part[..at])) result[part[..at]] = part[(at + 1)..].Split(',');
+            var tab = part[..Math.Max(at, 0)];
+            // Videos, from before Shows and Movies had a tab each: both of them, unless one was set since
+            if (tab == "videos")
+            {
+                foreach (var t in (string[])["shows", "movies"]) result.TryAdd(t, part[(at + 1)..].Split(','));
+                continue;
+            }
+            if (at > 0 && Tabs.ContainsKey(tab)) result[tab] = part[(at + 1)..].Split(',');
         }
         return result;
     }

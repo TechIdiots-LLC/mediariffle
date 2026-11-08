@@ -45,7 +45,7 @@ public static class AuthEndpoints
                 user = me is not null
                     ? new { name = me.UserName, isAdmin = user.IsInRole(Roles.Admin), avatar = Avatars.Of(me), homeLayout = Media.HomeLayout.Of(me.HomeLayout) }
                     : null,
-                // The top tabs there is something for (Videos, Music)
+                // The top tabs there is something for (Shows, Movies, Music, Games)
                 tabs = me is not null ? Library.Tabs.For(catalog.Enabled) : null,
                 // Other accounts signed in on this device, for Switch user
                 deviceAccounts = DeviceAccounts.Read(ctx).Count,
@@ -122,7 +122,7 @@ public static class AuthEndpoints
         // A top tab's sections: their order, and which are hidden (a leading "-")
         g.MapPut("/home-layout", async (HomeLayoutRequest req, ClaimsPrincipal principal, UserManager<AppUser> users) =>
         {
-            var tab = (req.Tab ?? Library.Tabs.Videos).Trim().ToLowerInvariant();
+            var tab = (req.Tab ?? Library.Tabs.Shows).Trim().ToLowerInvariant();
             if (!Media.HomeLayout.Tabs.ContainsKey(tab)) return Results.BadRequest(new { error = "No such tab." });
             var user = await users.GetUserAsync(principal);
             if (user is null) return Results.Unauthorized();

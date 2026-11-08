@@ -36,7 +36,7 @@ public static class LibraryEndpoints
             catalog.Get(id) is not { Enabled: true } ? Results.NotFound() : Results.Ok(await MoviesIn(db, users.GetUserId(me)!, [id])));
 
         // Categories: the tags on the libraries (as in MediaLibraryManager), each with how many files it has, in all and
-        // per tab (videos, music, games), so a tab lists only the categories with something of its own in them
+        // per tab (shows, movies, music, games), so a tab lists only the categories with something of its own in them
         g.MapGet("/tags", async (LibraryCatalog catalog, AppDbContext db) =>
         {
             var counts = await db.MediaFiles.GroupBy(f => new { f.LibraryId, f.Kind }).Select(x => new { x.Key.LibraryId, x.Key.Kind, n = x.Count() }).ToListAsync();
@@ -59,7 +59,9 @@ public static class LibraryEndpoints
                 {
                     tag = ids.Count > 0 ? catalog.Tags.First(t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase)) : name,
                     files,
-                    videos = byKind.Where(x => Tabs.Of(x.Kind) == Tabs.Videos).Sum(x => x.n),
+                    shows = byKind.Where(x => Tabs.Of(x.Kind) == Tabs.Shows).Sum(x => x.n),
+                    movies = byKind.Where(x => Tabs.Of(x.Kind) == Tabs.Movies).Sum(x => x.n),
+                    videos = byKind.Where(x => x.Kind != MediaKind.Track).Sum(x => x.n),   // both, for apps from before
                     music = byKind.Where(x => Tabs.Of(x.Kind) == Tabs.Music).Sum(x => x.n),
                     games,
                     // The kinds of library carrying it, so a tab can list a category whose libraries are still empty
@@ -251,11 +253,13 @@ public static class LibraryEndpoints
             return Results.Ok();
         });
 
-        g.MapGet("/continue", async (ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
+        // With `tab` (shows, movies), only that tab's
+        g.MapGet("/continue", async (string? tab, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
         {
             var userId = users.GetUserId(me)!;
             // Songs aren't resumed: only episodes and movies
-            var visible = HiddenEndpoints.NotHidden(db, userId, db.MediaFiles.Where(f => f.Kind != MediaKind.Track));
+            var kinds = Tabs.Kinds(tab) ?? [MediaKind.Episode, MediaKind.Movie];
+            var visible = HiddenEndpoints.NotHidden(db, userId, db.MediaFiles.Where(f => f.Kind != MediaKind.Track && kinds.Contains(f.Kind)));
             var recent = await db.Progress.Where(p => p.UserId == userId && !p.Finished && !p.LeftContinue && p.PositionSeconds > 30 && visible.Any(f => f.Id == p.MediaFileId))
                 .OrderByDescending(p => p.UpdatedUtc).Take(60).ToListAsync();
             var ids = recent.Select(p => p.MediaFileId).ToList();
