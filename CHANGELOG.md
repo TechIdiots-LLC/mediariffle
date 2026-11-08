@@ -5,6 +5,12 @@
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.18.0
+### ✨ Features and improvements
+
+### 🐞 Bug fixes
 - **Upgrades reach the browser**: the site's pages and scripts are checked for a newer version on each load. A browser
   could keep using its old scripts after an upgrade (after 0.17.0, the Shows and Movies tabs said "Page not found").
 - **Movies filed as shows** in a library holding both: a movie's folder named with a bare number ("300", "007"), ending
@@ -12,7 +18,6 @@
   "S02", "Specials"); the next scan files them again as movies, keeping everyone's place.
 - **Stutter in older shows**: H.264 in AVI with B-frames was copied, but AVI doesn't record the order frames are shown in,
   so the picture stepped back and forth. These are converted now, as DivX in AVI already was.
-- _...Add new stuff here..._
 
 ## 0.17.0
 ### ✨ Features and improvements
