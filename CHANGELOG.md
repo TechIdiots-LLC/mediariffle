@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.19.0
+### ✨ Features and improvements
 - **Lists to and from a file**: Profile → My lists as a file exports your lists (Favorites too) as a spreadsheet (CSV)
   file, and imports one, adding its rows to the lists it names or making those lists what it says, in its order. Rows
   name things (Movie "Heat", 1995), so an edited file, or one from another server, still finds them; an import says
@@ -9,10 +16,8 @@
 - **Categories to and from a file**: Admin → Categories exports the categories made from lists, and imports a file to
   add to them or update them, the same way. Lists, beside each user under Admin → Users, downloads that user's lists
   (a file of someone's lists imports as categories too).
-- _...Add new stuff here..._
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
 
 ## 0.18.0
 ### ✨ Features and improvements
