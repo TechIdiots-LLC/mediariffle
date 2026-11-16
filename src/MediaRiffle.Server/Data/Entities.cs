@@ -318,7 +318,7 @@ public sealed class GameControls
 /// a list of tracks is a playlist. Favorites is the list named <see cref="Favorites"/>. Goes with what it tags, and with
 /// the user.
 /// </summary>
-public sealed class UserTag : ITagged
+public sealed class UserTag : IListEntry
 {
     public const string Favorites = "Favorites";
     public const int MaxLength = 50;
@@ -402,12 +402,19 @@ public interface ITagged
     int? GameId { get; }
 }
 
+/// <summary>An entry of a list or category: its name, and when it was put on (a list's songs play in that order).</summary>
+public interface IListEntry : ITagged
+{
+    string Tag { get; set; }
+    DateTime CreatedUtc { get; set; }
+}
+
 /// <summary>
 /// One entry of a category made from an admin's list (Make category on the list's page): everyone sees the category
 /// beside the libraries' tags, and it holds what the list held. Like <see cref="UserTag"/> but nobody's: it goes with
 /// what it tags, and is removed by an admin.
 /// </summary>
-public sealed class CategoryItem : ITagged
+public sealed class CategoryItem : IListEntry
 {
     public int Id { get; set; }
     public string Tag { get; set; } = string.Empty;

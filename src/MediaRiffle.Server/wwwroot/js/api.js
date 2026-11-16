@@ -38,3 +38,24 @@ export async function api(path, { method = 'GET', body, keepalive = false } = {}
   if (!r.ok) throw new ApiError(r.status, data?.error ?? data?.detail ?? `Request failed (${r.status})`, data);
   return data;
 }
+
+// A file from the API saved by the browser, under the name the server gives it (or `fallbackName`)
+export async function download(path, fallbackName) {
+  const r = await fetch(path, { credentials: 'same-origin' });
+  if (r.status === 401) { location.hash = '#/login'; throw new ApiError(401, 'Please sign in.'); }
+  if (!r.ok) {
+    let data = null;
+    try { data = await r.json(); } catch { }
+    throw new ApiError(r.status, data?.error ?? (r.status === 404 ? 'There\'s nothing to export.' : `Request failed (${r.status})`), data);
+  }
+  const disposition = r.headers.get('Content-Disposition') ?? '';
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  const plain = /filename="?([^";]+)"?/i.exec(disposition)?.[1];
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(await r.blob());
+  a.download = utf8 ? decodeURIComponent(utf8) : plain ?? fallbackName;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}

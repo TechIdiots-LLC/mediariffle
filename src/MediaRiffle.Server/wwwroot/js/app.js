@@ -1,4 +1,5 @@
-import { api, refreshCsrf } from './api.js';
+import { api, refreshCsrf, download } from './api.js';
+import { listFileBox, LIST_FILE_HELP } from './list-file.js';
 import { h, mount, art, formatTime } from './dom.js';
 import { Player, inTheater, exitTheater } from './player.js';
 import { startQueue, positionOf, clearQueue } from './queue.js';
@@ -354,7 +355,10 @@ async function profileView() {
       message,
       google,
       h('h2', {}, 'Hidden'),
-      hidden));
+      hidden,
+      h('h2', {}, 'My lists as a file'),
+      h('p', { class: 'muted' }, 'Export your lists (Favorites too) as a spreadsheet file to keep or edit, and import one to add to them or update them. ' + LIST_FILE_HELP),
+      listFileBox({ noun: 'list', exportPath: '/api/list-file', importPath: '/api/list-file' })));
   if (mfa) mfaSettings(mfa);
   devicesSection(devices);
   hiddenSection(hidden);
@@ -1059,6 +1063,9 @@ async function listView(tag, tab) {
         try { const r = await api(`/api/admin/lists/${encodeURIComponent(t.tag)}/category`, { method: 'POST' }); location.hash = `#/tag/${encodeURIComponent(r.tag)}${suffix}`; }
         catch (e) { alert(e.message); }
       } }, 'Make category') : null,
+      // The whole list (every tab's part) as a file; Profile imports one
+      empty && !otherPart ? null : h('button', { class: 'secondary', title: 'Save this list as a spreadsheet file (Profile imports one)', onclick: () =>
+        download(`/api/list-file?tag=${encodeURIComponent(t.tag)}`, 'mediariffle-list.csv').catch(e => alert(e.message)) }, 'Export'),
       empty && otherPart ? null : h('button', { class: 'secondary', onclick: async () => {
         const question = t.favorites
           ? (otherPart ? `Take ${part} out of Favorites? The rest stays in them.` : 'Take everything out of Favorites?')

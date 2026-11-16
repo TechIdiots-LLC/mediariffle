@@ -109,6 +109,38 @@ public static class ListEndpoints
             return Results.Ok(new { tag = stored, favorites = IsFavorites(stored), shows, movies, artists, albums, tracks, games });
         }).AllowDevices();
 
+        // The user's lists as a CSV file (all of them, or `tag`), to keep, edit and import again. Not "/lists/…": that
+        // would hide a list of the same name.
+        g.MapGet("/list-file", async (string? tag, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
+            await ExportAsync(db, users.GetUserId(me)!, tag, "lists"));
+
+        // A list file into the user's lists: `mode` add (the default) puts its rows on the lists it names; replace makes
+        // those lists what it says, in its order. `preview` says what it would do without doing it.
+        g.MapPost("/list-file", async (HttpContext ctx, string? mode, bool? preview, ClaimsPrincipal me, UserManager<AppUser> users,
+            LibraryCatalog catalog, AppDbContext db, CancellationToken ct) =>
+        {
+            if (mode is not (null or "add" or "replace")) return Results.BadRequest(new { error = "mode is add or replace." });
+            var (text, error) = await ListFile.ReadAsync(ctx.Request, ct);
+            if (text is null) return Results.BadRequest(new { error });
+            var (rows, parseError) = ListFile.Parse(text);
+            if (rows is null) return Results.BadRequest(new { error = parseError });
+
+            var userId = users.GetUserId(me)!;
+            var enabled = catalog.Enabled.ToList();
+            var plan = await ListFile.ResolveAsync(db, rows, enabled, ListName);
+            var existing = await db.UserTags.Where(t => t.UserId == userId).ToListAsync(ct);
+            var result = await ListFile.ApplyAsync(db, existing, plan, mode == "replace", enabled.Select(l => l.Id).ToHashSet(),
+                (tag, e, when) => new UserTag
+                {
+                    UserId = userId, Tag = tag, CreatedUtc = when,
+                    ShowId = e.ShowId, MovieId = e.MovieId, ArtistId = e.ArtistId, AlbumId = e.AlbumId, MediaFileId = e.MediaFileId, GameId = e.GameId,
+                });
+            if (existing.Count + result.Added - result.Removed > MaxEntriesPerUser)
+                return Results.BadRequest(new { error = $"That's more list entries than one account can have ({MaxEntriesPerUser})." });
+            if (preview != true) await db.SaveChangesAsync(ct);
+            return Results.Ok(result);
+        });
+
         // One show's or movie's place in the user's lists, and setting it (the whole set at once)
         g.MapGet("/items/{kind}/{id:int}/lists", async (string kind, int id, ClaimsPrincipal me, UserManager<AppUser> users, AppDbContext db) =>
         {
@@ -215,13 +247,38 @@ public static class ListEndpoints
             (t.AlbumId != null && t.AlbumId == f.AlbumId) || (t.MediaFileId != null && t.MediaFileId == f.Id) ||
             (t.ArtistId != null && db.Albums.Any(a => a.Id == f.AlbumId && a.ArtistId == t.ArtistId))));
 
+    /// <summary>
+    /// A user's lists (or the one named <paramref name="tag"/>) as a list file, Favorites first and then by name, each
+    /// in the order things were put on it. Everything on them, including what's in a library that's switched off.
+    /// </summary>
+    public static async Task<IResult> ExportAsync(AppDbContext db, string userId, string? tag, string fileName)
+    {
+        var mine = db.UserTags.Where(t => t.UserId == userId);
+        var one = tag?.Trim() is { Length: > 0 } name ? name : null;
+        if (one is not null) mine = mine.Where(t => t.Tag == one);
+        var entries = (await mine.ToListAsync())
+            .OrderBy(t => !IsFavorites(t.Tag)).ThenBy(t => t.Tag, StringComparer.OrdinalIgnoreCase).ThenBy(t => t.CreatedUtc).ThenBy(t => t.Id).ToList();
+        if (one is not null && entries.Count == 0) return Results.NotFound();
+        var rows = await ListFile.RowsAsync(db, entries.Select(e => (e.Tag, (ITagged)e)).ToList());
+        return Results.File(ListFile.ToCsv("List", rows), "text/csv; charset=utf-8", ListFile.FileName(one is not null ? entries[0].Tag : fileName));
+    }
+
+    /// <summary>A list file's list name as it's kept (Favourites is Favorites), or why it can't be one.</summary>
+    private static (string? Name, string? Error) ListName(string raw)
+    {
+        var t = Clean(raw);
+        if (t.Length == 0) return (null, "No list name.");
+        if (t.Length > UserTag.MaxLength) return (null, $"A list's name can be at most {UserTag.MaxLength} characters.");
+        return (IsFavorites(t) ? UserTag.Favorites : t, null);
+    }
+
     private static HashSet<int> EnabledIds(LibraryCatalog catalog) => catalog.Enabled.Select(l => l.Id).ToHashSet();
 
-    private static bool IsFavorites(string tag) =>
+    internal static bool IsFavorites(string tag) =>
         string.Equals(tag, UserTag.Favorites, StringComparison.OrdinalIgnoreCase) || string.Equals(tag, "Favourites", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Trimmed, inner runs of spaces made one, commas (the separator when typing several) and control characters dropped.</summary>
-    private static string Clean(string? raw) =>
+    internal static string Clean(string? raw) =>
         string.Join(' ', new string((raw ?? "").Where(c => !char.IsControl(c) && c != ',').ToArray())
             .Split(' ', StringSplitOptions.RemoveEmptyEntries));
 }

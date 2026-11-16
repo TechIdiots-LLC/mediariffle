@@ -2,6 +2,10 @@
 
 ## master
 ### ✨ Features and improvements
+- **Lists to and from a file**: Profile → My lists as a file exports your lists (Favorites too) as a spreadsheet (CSV)
+  file, and imports one, adding its rows to the lists it names or making those lists what it says, in its order. Rows
+  name things (Movie "Heat", 1995), so an edited file, or one from another server, still finds them; an import says
+  what it will change and which rows found nothing before it does it. A list's page has Export for that list.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
