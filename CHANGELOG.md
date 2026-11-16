@@ -6,6 +6,9 @@
   file, and imports one, adding its rows to the lists it names or making those lists what it says, in its order. Rows
   name things (Movie "Heat", 1995), so an edited file, or one from another server, still finds them; an import says
   what it will change and which rows found nothing before it does it. A list's page has Export for that list.
+- **Categories to and from a file**: Admin → Categories exports the categories made from lists, and imports a file to
+  add to them or update them, the same way. Lists, beside each user under Admin → Users, downloads that user's lists
+  (a file of someone's lists imports as categories too).
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

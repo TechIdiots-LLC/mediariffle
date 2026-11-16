@@ -906,7 +906,9 @@ async function tagView(tag, tab) {
         if (!confirm(`Take what was added from lists out of the category "${t.tag}"? The lists themselves stay.`)) return;
         try { await api(`/api/admin/categories/${encodeURIComponent(t.tag)}`, { method: 'DELETE' }); location.hash = '#/'; }
         catch (e) { alert(e.message); }
-      } }, 'Remove list part') : null),
+      } }, 'Remove list part') : null,
+      state.user.isAdmin && t.fromLists ? h('button', { class: 'secondary', title: 'Save the part made from lists as a spreadsheet file (Admin imports one)', onclick: () =>
+        download(`/api/admin/categories/file?tag=${encodeURIComponent(t.tag)}`, 'mediariffle-category.csv').catch(e => alert(e.message)) }, 'Export') : null),
     t.shows.length ? [h('h2', {}, 'Shows'), showGrid] : null,
     t.movies.length ? [h('h2', {}, 'Movies'), movieGrid] : null,
     t.artists.length ? [h('h2', {}, 'Music'), artistGrid] : null,
@@ -1444,6 +1446,11 @@ async function adminView() {
     h('div', { class: 'row' }, h('button', { class: 'secondary', onclick: async () => { await api('/api/admin/scan', { method: 'POST' }); scanMsg.textContent = 'Scan requested…'; } }, 'Scan now'), scanMsg),
     h('div', { id: 'library-form' }, h('button', { onclick: () => libraryForm(null) }, 'Add a library')),
     libraries.some(l => l.kinds.includes('Games')) ? [h('h2', {}, 'Games'), adminGamesSection()] : null,
+    h('h2', {}, 'Categories'),
+    h('p', { class: 'muted' }, 'The categories made from lists (Make category on a list\'s page), as a spreadsheet file: export them to keep or edit, ' +
+      'and import one to add to them or update them; a file of someone\'s lists (Lists, under Users) works too. A library\'s own tags aren\'t in it: ' +
+      'they\'re set on the library. ' + LIST_FILE_HELP),
+    listFileBox({ noun: 'category', nouns: 'categories', exportPath: '/api/admin/categories/file', importPath: '/api/admin/categories/file' }),
     h('h2', {}, 'Invite someone'),
     h('div', { class: 'card' },
       h('div', { class: 'row' }, h('label', { class: 'row' }, asAdmin, 'Admin'), h('label', { class: 'row' }, 'Valid for', days, 'days'),
@@ -1479,6 +1486,9 @@ async function adminView() {
         h('td', {}, new Date(u.createdUtc).toLocaleDateString()),
         h('td', { class: 'row' },
           u.lockedOut ? h('button', { class: 'secondary', onclick: async () => { await api(`/api/admin/users/${u.id}/unlock`, { method: 'POST' }); adminView(); } }, 'Unlock') : null,
+          // Their lists as a file, to keep or to import as categories
+          h('button', { class: 'secondary', title: `Save ${u.userName}'s lists as a spreadsheet file`, onclick: () =>
+            download(`/api/admin/users/${u.id}/list-file`, 'mediariffle-lists.csv').catch(e => alert(e.message)) }, 'Lists'),
           // A one-time link for them to choose a new password (shown above the table, to send them)
           u.userName !== state.user.name ? h('button', { class: 'secondary', onclick: async () => {
             try { showResetLink(u.userName, (await api(`/api/admin/users/${u.id}/password-reset`, { method: 'POST' })).link); }
