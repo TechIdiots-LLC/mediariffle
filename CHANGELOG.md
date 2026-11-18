@@ -2,17 +2,22 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.20.0
+### ✨ Features and improvements
 - **Audio in your language**: Profile → Audio picks a language videos start in. When a video's default audio is in
   another language and it has a track in yours (not a commentary or audio description), it starts with that track; a
   dual-audio release that defaults to Hindi starts in English. Choosing audio in the player still overrides it.
-- _...Add new stuff here..._
 
 ### 🐞 Bug fixes
 - **"Loading…" stuck over a playing video**: it now goes as soon as the video is moving, even when the browser doesn't
   say it has recovered from a stall.
 - **Two languages playing at once** after changing the audio track: the old stream could keep playing beside the new
   one, and a second change made quickly could be lost (the menu saying one language, the sound another).
-- _...Add new stuff here..._
 
 ## 0.19.0
 ### ✨ Features and improvements
