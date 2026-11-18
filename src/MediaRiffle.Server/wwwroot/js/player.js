@@ -606,6 +606,15 @@ export class Player {
     on('canplay', doneLoading);
     on('seeked', doneLoading);
     on('timeupdate', doneLoading);
+    // And once the picture is moving, whatever events came (a stall can end with no 'playing' and readyState still low)
+    let lastTime = -1;
+    on('seeking', () => { lastTime = -1; });
+    on('timeupdate', () => {
+      const t = video.currentTime;
+      if (!video.paused && !video.seeking && lastTime >= 0 && t > lastTime &&
+          (this.status.textContent === 'Loading…' || this.status.textContent === 'Starting…')) this.status.textContent = '';
+      lastTime = t;
+    });
     on('ended', () => this.onEnded());
     on('error', () => {
       if (!this.session) return;

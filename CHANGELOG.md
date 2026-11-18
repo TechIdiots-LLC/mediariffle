@@ -5,6 +5,8 @@
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
+- **"Loading…" stuck over a playing video**: it now goes as soon as the video is moving, even when the browser doesn't
+  say it has recovered from a stall.
 - _...Add new stuff here..._
 
 ## 0.19.0
