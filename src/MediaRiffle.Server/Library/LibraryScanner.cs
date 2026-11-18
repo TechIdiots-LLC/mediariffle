@@ -10,8 +10,9 @@ namespace MediaRiffle.Server.Library;
 
 /// <summary>
 /// Keeps the database in step with the library folders: new and changed video files are probed with ffprobe and
-/// filed under their show/season or movie, files that are gone are dropped. Runs at start, every
-/// ScanIntervalMinutes, and when an admin asks. Replaces TongueD's prep_sql_shows/prep_sql_movies.
+/// filed under their show/season or movie, files that are gone are dropped. Runs at start, when an admin asks, and for
+/// each library every so often: its own interval (Admin → Libraries → Edit), or ScanIntervalMinutes. Replaces TongueD's
+/// prep_sql_shows/prep_sql_movies.
 /// </summary>
 public sealed partial class LibraryScanner : BackgroundService
 {
@@ -65,21 +66,40 @@ public sealed partial class LibraryScanner : BackgroundService
     /// <summary>Raised after each scan (Games.GameArt looks for the new games' box art).</summary>
     public event EventHandler? Scanned;
 
+    // When each library's last scan ended, for its interval
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _scanned = new();
+
+    /// <summary>The server's rescan interval in minutes (ScanIntervalMinutes), for a library without its own.</summary>
+    public int DefaultIntervalMinutes => Math.Max(0, options.Value.ScanIntervalMinutes);
+
+    /// <summary>A library's rescan interval in minutes: its own, else the server's; 0 for only at start and when asked.</summary>
+    public int IntervalOf(LibraryInfo lib) => lib.ScanIntervalMinutes is { } own ? Math.Max(0, own) : DefaultIntervalMinutes;
+
+    /// <summary>When a library's interval next rescans it; null when it has none, or hasn't been scanned yet.</summary>
+    public DateTime? NextScanUtc(LibraryInfo lib) =>
+        IntervalOf(lib) is var minutes and > 0 && _scanned.TryGetValue(lib.Id, out var at) ? at.AddMinutes(minutes) : null;
+
+    /// <summary>Whether a library's interval is up (one with an interval but never scanned, as after a failed scan, is).</summary>
+    public bool IsDue(LibraryInfo lib, DateTime now) =>
+        IntervalOf(lib) > 0 && (NextScanUtc(lib) is not { } next || next <= now);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!await ffmpeg.CheckAsync())
             LastResult = "ffprobe isn't available, so files can't be scanned";
         RequestScan();
-        var interval = options.Value.ScanIntervalMinutes;
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Woken by a request, or after a minute to see whose interval is up
             using var wait = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-            if (interval > 0) wait.CancelAfter(TimeSpan.FromMinutes(interval));
+            wait.CancelAfter(TimeSpan.FromMinutes(1));
             try { await _requests.Reader.ReadAsync(wait.Token); }
-            catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested) { _all = true; /* interval reached */ }
+            catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested) { /* a minute went by */ }
             catch (OperationCanceledException) { break; }
+            var now = DateTime.UtcNow;
+            foreach (var lib in catalog.Enabled.Where(l => IsDue(l, now))) _only[lib.Id] = 0;
 
-            // Every library, or only those asked for one by one
+            // Every library, or only those asked for (or due) one by one
             var all = _all;
             _all = false;
             var only = _only.Keys.ToHashSet();
@@ -116,6 +136,7 @@ public sealed partial class LibraryScanner : BackgroundService
                 log.LogWarning("Library {Name}: folder {Path} isn't available; skipped, nothing removed", lib.Name, lib.Path);
                 summary.Append($"{lib.Name}: folder not available. ");
                 _status[lib.Id] = new("unavailable", "The folder isn't available (not mounted, or this server's account can't see it); nothing was removed.", DateTime.UtcNow);
+                _scanned[lib.Id] = DateTime.UtcNow;   // tried again at its next interval, not every minute
                 continue;
             }
             _status[lib.Id] = new("scanning", "Scanning…", DateTime.UtcNow);
@@ -132,6 +153,7 @@ public sealed partial class LibraryScanner : BackgroundService
                 _status[lib.Id] = new("error", "Scan failed: " + ex.Message, DateTime.UtcNow);
                 throw;
             }
+            finally { _scanned[lib.Id] = DateTime.UtcNow; }   // its interval counts from when this ends, however it ends
         }
         return summary.Length == 0 ? "No libraries configured" : summary.ToString().Trim();
     }

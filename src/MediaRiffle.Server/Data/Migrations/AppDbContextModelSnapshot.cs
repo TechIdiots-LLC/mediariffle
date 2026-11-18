@@ -618,6 +618,9 @@ namespace MediaRiffle.Server.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ScanIntervalMinutes")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Tags")
                         .HasColumnType("TEXT");
 

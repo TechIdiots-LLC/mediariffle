@@ -91,6 +91,8 @@ public sealed class MediaLibrary
     /// <summary>Comma-separated, e.g. "Cartoons, Kids". See <see cref="TagList"/>.</summary>
     public string? Tags { get; set; }
     public bool Enabled { get; set; } = true;
+    /// <summary>How often it's rescanned, in minutes (0: only at start and when asked); null for the server's ScanIntervalMinutes.</summary>
+    public int? ScanIntervalMinutes { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
     public IReadOnlyList<string> TagList => ParseTags(Tags);

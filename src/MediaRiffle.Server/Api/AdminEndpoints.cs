@@ -13,8 +13,12 @@ namespace MediaRiffle.Server.Api;
 public sealed record InviteRequest(bool IsAdmin, int Days);
 public sealed record QualityCapRequest(string? MaxQuality);
 public sealed record RoleRequest(bool IsAdmin);
-/// <summary>A library to add or change: its kinds (Kind alone, from before a library could have several, still works).</summary>
-public sealed record LibraryRequest(string Name, List<Options.LibraryKind>? Kinds, string Path, string? Tags, bool Enabled = true, Options.LibraryKind? Kind = null)
+/// <summary>
+/// A library to add or change: its kinds (Kind alone, from before a library could have several, still works), and how
+/// often it's rescanned in minutes (0: only when asked; null: the server's ScanIntervalMinutes).
+/// </summary>
+public sealed record LibraryRequest(string Name, List<Options.LibraryKind>? Kinds, string Path, string? Tags, bool Enabled = true, Options.LibraryKind? Kind = null,
+    int? ScanIntervalMinutes = null)
 {
     public List<Options.LibraryKind> AllKinds => Kinds is { Count: > 0 } ? Kinds.Distinct().Order().ToList() : Kind is { } k ? [k] : [];
 }
@@ -160,7 +164,7 @@ public static class AdminEndpoints
         });
 
         // ── Libraries ──
-        g.MapGet("/libraries", async (AppDbContext db, LibraryScanner scanner) =>
+        g.MapGet("/libraries", async (AppDbContext db, LibraryScanner scanner, LibraryCatalog catalog) =>
         {
             var counts = await db.MediaFiles.GroupBy(f => f.LibraryId)
                 .Select(x => new { x.Key, n = x.Count(), bad = x.Count(f => f.ProbeError != null) })
@@ -174,13 +178,16 @@ public static class AdminEndpoints
                     files = (counts.TryGetValue(l.Id, out var c) ? c.n : 0) + games.GetValueOrDefault(l.Id),
                     unreadable = c?.bad ?? 0,
                     status = scanner.Status.TryGetValue(l.Id, out var s) ? s : null,
+                    // Its own interval (null: the server's), and when that next rescans it
+                    l.ScanIntervalMinutes,
+                    nextScanUtc = catalog.Get(l.Id) is { Enabled: true } info ? scanner.NextScanUtc(info) : null,
                 });
         });
 
         g.MapPost("/libraries", async (LibraryRequest req, AppDbContext db, LibraryCatalog catalog) =>
         {
             if (await Validate(req, db, null) is { } problem) return problem;
-            var lib = new MediaLibrary { Name = req.Name.Trim(), Path = req.Path.Trim(), Tags = MediaLibrary.NormalizeTags(req.Tags), Enabled = req.Enabled };
+            var lib = new MediaLibrary { Name = req.Name.Trim(), Path = req.Path.Trim(), Tags = MediaLibrary.NormalizeTags(req.Tags), Enabled = req.Enabled, ScanIntervalMinutes = req.ScanIntervalMinutes };
             lib.SetKinds(req.AllKinds);
             db.Libraries.Add(lib);
             await db.SaveChangesAsync();
@@ -203,6 +210,7 @@ public static class AdminEndpoints
             lib.Path = req.Path.Trim();
             lib.Tags = MediaLibrary.NormalizeTags(req.Tags);
             lib.Enabled = req.Enabled;
+            lib.ScanIntervalMinutes = req.ScanIntervalMinutes;
             await db.SaveChangesAsync();
             await catalog.ReloadAsync();
             return Results.Ok();
@@ -268,7 +276,9 @@ public static class AdminEndpoints
             scanner.RequestScan(id);
             return Results.Accepted();
         });
-        g.MapGet("/scan", (LibraryScanner scanner) => new { scanner.IsScanning, scanner.LastScanUtc, scanner.LastResult, scanner.Progress });
+        // defaultIntervalMinutes: the server's (ScanIntervalMinutes in appsettings.json), for a library without its own
+        g.MapGet("/scan", (LibraryScanner scanner) => new { scanner.IsScanning, scanner.LastScanUtc, scanner.LastResult, scanner.Progress,
+            defaultIntervalMinutes = scanner.DefaultIntervalMinutes });
 
         g.MapGet("/sessions", async (StreamSessionManager sessions, UserManager<AppUser> users) =>
         {
@@ -281,6 +291,8 @@ public static class AdminEndpoints
         });
     }
 
+    private const int MaxScanIntervalMinutes = 7 * 24 * 60;
+
     private static async Task<IResult?> Validate(LibraryRequest req, AppDbContext db, int? id)
     {
         var name = req.Name?.Trim() ?? "";
@@ -291,6 +303,8 @@ public static class AdminEndpoints
             return Results.BadRequest(new { error = "The folder must be a full path, e.g. /mnt/media/Shows or \\\\server\\share\\Shows." });
         if (req.AllKinds.Count == 0) return Results.BadRequest(new { error = "Tick what the folder holds: shows, movies, music or games." });
         if (!req.AllKinds.All(Enum.IsDefined)) return Results.BadRequest(new { error = "Unknown library kind." });
+        if (req.ScanIntervalMinutes is < 0 or > MaxScanIntervalMinutes)
+            return Results.BadRequest(new { error = "Rescan it at least once a week (10080 minutes), or 0 for only when asked." });
         return null;
     }
 

@@ -1258,8 +1258,12 @@ async function playView(fileId) {
 
 // ── Admin ────────────────────────────────────────────────────────────────────
 
-// Add or edit a library, in place of the "Add a library" button
-function libraryForm(lib) {
+// "every 30 minutes", "every 6 hours", "every day"
+const everyText = minutes => minutes % 1440 === 0 ? (minutes === 1440 ? 'every day' : `every ${minutes / 1440} days`)
+  : minutes % 60 === 0 ? (minutes === 60 ? 'every hour' : `every ${minutes / 60} hours`) : `every ${minutes} minutes`;
+
+// Add or edit a library, in place of the "Add a library" button. defaultMinutes: the server's rescan interval
+function libraryForm(lib, defaultMinutes) {
   const name = h('input', { value: lib?.name ?? '', maxlength: 100, required: true });
   // What the folder holds: any of them; a scan files each file under the one it is
   const had = lib?.kinds ?? ['Shows'];
@@ -1268,6 +1272,14 @@ function libraryForm(lib) {
   const path = h('input', { value: lib?.path ?? '', size: 50, placeholder: '/mnt/media/Shows or \\\\files.example.lan\\Media\\Shows', required: true });
   const tags = h('input', { value: lib?.tags ?? '', size: 40, placeholder: 'e.g. Cartoons, Kids' });
   const enabled = h('input', { type: 'checkbox', checked: lib?.enabled ?? true });
+  // How often it's rescanned for new and changed files: the server's setting, or its own
+  const own = lib?.scanIntervalMinutes ?? null;
+  const choices = [15, 30, 60, 120, 360, 720, 1440, 10080];
+  if (own > 0 && !choices.includes(own)) choices.push(own);
+  const interval = h('select', {},
+    h('option', { value: '' }, `Server default (${defaultMinutes > 0 ? everyText(defaultMinutes) : 'only when asked'})`),
+    choices.sort((a, b) => a - b).map(m => h('option', { value: m, selected: own === m }, everyText(m)[0].toUpperCase() + everyText(m).slice(1))),
+    h('option', { value: 0, selected: own === 0 }, 'Only when asked (and when the server starts)'));
   const msg = h('p', { class: 'muted' });
   const check = async () => {
     msg.className = 'muted'; msg.textContent = 'Checking…';
@@ -1279,7 +1291,8 @@ function libraryForm(lib) {
   const save = async e => {
     e.preventDefault();
     try {
-      const body = { name: name.value, kinds: kinds(), path: path.value, tags: tags.value, enabled: enabled.checked };
+      const body = { name: name.value, kinds: kinds(), path: path.value, tags: tags.value, enabled: enabled.checked,
+        scanIntervalMinutes: interval.value === '' ? null : +interval.value };
       if (lib) await api(`/api/admin/libraries/${lib.id}`, { method: 'PUT', body });
       else await api('/api/admin/libraries', { method: 'POST', body });
       await loadState();   // a library of a new kind brings its tab, the last of a kind takes it away
@@ -1294,6 +1307,7 @@ function libraryForm(lib) {
       h('p', { class: 'muted' }, 'Tick all it has: each file is filed once. With both Shows and Movies, a video named like an episode (S01E02, 1x02) or in a season folder is an episode, the rest are movies.')),
     h('label', {}, 'Folder', h('span', { class: 'row' }, path, h('button', { type: 'button', class: 'secondary', onclick: check }, 'Check folder'))),
     h('label', {}, 'Tags', tags),
+    h('label', {}, 'Look for new files', interval),
     h('label', { class: 'row' }, enabled, 'Enabled'),
     lib && lib.path ? h('p', { class: 'muted' }, 'Changing the folder rescans it from scratch. Changing what it holds files it again, keeping everyone\'s place.') : null,
     msg,
@@ -1421,8 +1435,16 @@ async function adminView() {
   // File counts and scan status, refreshed every 3 s while this page is open (in place, so an open form isn't lost)
   const cells = new Map();
   const statusText = l => !l.enabled ? 'Disabled'
-    : l.status ? `${{ ok: '✓', warning: '⚠', scanning: '…', unavailable: '✗', error: '✗' }[l.status.state] ?? ''} ${l.status.message}`
-    : 'Waiting for the first scan';
+    : (l.status ? `${{ ok: '✓', warning: '⚠', scanning: '…', unavailable: '✗', error: '✗' }[l.status.state] ?? ''} ${l.status.message}`
+      : 'Waiting for the first scan') + nextText(l);
+  // When its interval rescans it next: a time today, else a day and time
+  const nextText = l => {
+    if (!l.nextScanUtc || ['scanning', 'queued'].includes(l.status?.state)) return '';
+    const at = new Date(l.nextScanUtc);
+    const today = at.toDateString() === new Date().toDateString();
+    return ` · next ${today ? at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : at.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
+  };
   const fillRow = l => {
     const c = cells.get(l.id);
     if (!c) return;
@@ -1455,7 +1477,7 @@ async function adminView() {
         h('td', {}, l.name, l.enabled ? null : ' (disabled)'), h('td', {}, l.kinds.join(', ')), h('td', {}, h('code', {}, l.path)),
         h('td', {}, l.tags ?? ''), files, status,
         h('td', { class: 'row' },
-          h('button', { class: 'secondary', onclick: () => libraryForm(l) }, 'Edit'),
+          h('button', { class: 'secondary', onclick: () => libraryForm(l, scan.defaultIntervalMinutes) }, 'Edit'),
           // This library only: its row says when it's waiting, scanning and done
           h('button', { class: 'secondary', disabled: !l.enabled, title: l.enabled ? `Scan ${l.name} now` : 'Switched off', onclick: async () => {
             try {
@@ -1470,7 +1492,7 @@ async function adminView() {
           } }, 'Remove')))))
       : h('p', {}, 'No libraries yet.'),
     h('div', { class: 'row' }, h('button', { class: 'secondary', onclick: async () => { await api('/api/admin/scan', { method: 'POST' }); scanMsg.textContent = 'Scan requested…'; } }, 'Scan now'), scanMsg),
-    h('div', { id: 'library-form' }, h('button', { onclick: () => libraryForm(null) }, 'Add a library')),
+    h('div', { id: 'library-form' }, h('button', { onclick: () => libraryForm(null, scan.defaultIntervalMinutes) }, 'Add a library')),
     libraries.some(l => l.kinds.includes('Games')) ? [h('h2', {}, 'Games'), adminGamesSection()] : null,
     h('h2', {}, 'Categories'),
     h('p', { class: 'muted' }, 'The categories made from lists (Make category on a list\'s page), as a spreadsheet file: export them to keep or edit, ' +

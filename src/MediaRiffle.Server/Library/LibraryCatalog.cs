@@ -5,9 +5,9 @@ using Microsoft.Extensions.Options;
 
 namespace MediaRiffle.Server.Library;
 
-/// <summary>A library as the rest of the app sees it.</summary>
 /// <summary>A library as the rest of the server sees it: its kinds (one at least) in their order.</summary>
-public sealed record LibraryInfo(int Id, string Name, IReadOnlyList<LibraryKind> Kinds, string Path, IReadOnlyList<string> Tags, bool Enabled)
+public sealed record LibraryInfo(int Id, string Name, IReadOnlyList<LibraryKind> Kinds, string Path, IReadOnlyList<string> Tags, bool Enabled,
+    int? ScanIntervalMinutes = null)
 {
     public bool Has(LibraryKind kind) => Kinds.Contains(kind);
 }
@@ -50,7 +50,7 @@ public sealed class LibraryCatalog(IServiceScopeFactory scopes, IOptions<MediaRi
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var rows = await db.Libraries.OrderBy(l => l.Name).ToListAsync();
-        _all = rows.Select(l => new LibraryInfo(l.Id, l.Name, l.KindList, l.Path, l.TagList, l.Enabled)).ToList();
+        _all = rows.Select(l => new LibraryInfo(l.Id, l.Name, l.KindList, l.Path, l.TagList, l.Enabled, l.ScanIntervalMinutes)).ToList();
         if (raiseChanged) Changed?.Invoke(this, EventArgs.Empty);
     }
 

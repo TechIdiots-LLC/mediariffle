@@ -353,7 +353,8 @@ public static class LibraryEndpoints
         {
             var newest = x.First();
             return new AddedShow(x.Key, titles[x.Key], $"/api/images/show/{x.Key}?v={ImageService.Version}",
-                new AddedEpisode(newest.Id, newest.Title), x.Count(f => f.AddedUtc >= newest.AddedUtc.AddDays(-14)), newest.AddedUtc);
+                new AddedEpisode(newest.Id, newest.Title), x.Count(f => f.AddedUtc >= newest.AddedUtc.AddDays(-14)),
+                DateTime.SpecifyKind(newest.AddedUtc, DateTimeKind.Utc));   // SQLite gives it back unmarked; sent with its Z
         }).ToList();
     }
 
