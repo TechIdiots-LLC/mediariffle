@@ -15,10 +15,15 @@ public sealed class AppUser : IdentityUser
     /// <summary>The order of the home page's sections, hidden ones marked (see Media.HomeLayout); null for the default.</summary>
     public string? HomeLayout { get; set; }
     /// <summary>
-    /// The language to turn subtitles on in when a video starts and has a track in it (a SubtitleLanguages id: "en"), or
+    /// The language to turn subtitles on in when a video starts and has a track in it (a Media.Languages id: "en"), or
     /// null for off.
     /// </summary>
     public string? SubtitleLanguage { get; set; }
+    /// <summary>
+    /// The language to start a video in when it has an audio track in it and its default is another (a Media.Languages
+    /// id: "en"), or null for each file's own default.
+    /// </summary>
+    public string? AudioLanguage { get; set; }
     /// <summary>
     /// An authenticator app is set up (its key is Identity's authenticator key). Not Identity's TwoFactorEnabled, which
     /// would make every sign-in ask for a code: two-step verification guards Admin, not signing in.

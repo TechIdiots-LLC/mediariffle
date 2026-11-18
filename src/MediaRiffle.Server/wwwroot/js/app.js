@@ -345,6 +345,8 @@ async function profileView() {
       passwordSection(),
       h('h2', {}, 'Video quality'),
       qualitySection(account),
+      h('h2', {}, 'Audio'),
+      audioSection(account),
       h('h2', {}, 'Subtitles'),
       subtitleSection(account),
       h('h2', {}, 'Switch user PIN'),
@@ -463,6 +465,23 @@ function qualitySection(account) {
       catch (e) { msg.textContent = e.message; }
     }), msg),
     note);
+}
+
+// Profile → Audio: the language a video starts in when it has a track in it and its default is another
+function audioSection(account) {
+  const msg = h('span', { class: 'error' });
+  return h('div', {},
+    h('label', { class: 'row' }, 'Start in ', h('select', { onchange: async e => {
+      msg.textContent = '';
+      try {
+        const r = await api('/api/auth/audio-language', { method: 'PUT', body: { language: e.target.value } });
+        account.audioLanguage = r.audioLanguage;
+      } catch (err) { msg.textContent = err.message; }
+    } },
+      h('option', { value: '' }, 'each video\'s own language'),
+      (account.subtitleLanguages ?? []).map(l => h('option', { value: l.id, selected: account.audioLanguage === l.id }, l.label))), msg),
+    h('p', { class: 'muted' }, 'When a video\'s default audio is in another language and it has a track in this one (not a commentary ' +
+      'or audio description), it starts with that track. Choosing audio in the player overrides this for that video.'));
 }
 
 // Profile → Subtitles: the language to turn on by itself when a video has a track in it

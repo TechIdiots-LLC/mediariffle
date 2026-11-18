@@ -17,7 +17,7 @@ public sealed record LoginRequest(string UserName, string Password, bool Remembe
 public sealed record SetupRequest(string UserName, string Password);
 public sealed record RegisterRequest(string Invite, string UserName, string Password);
 public sealed record PreferencesRequest(string? Quality);
-public sealed record SubtitlePreferenceRequest(string? Language);
+public sealed record LanguagePreferenceRequest(string? Language);
 public sealed record HomeLayoutRequest(string? Tab, List<string>? Sections);
 
 /// <summary>
@@ -132,15 +132,27 @@ public static class AuthEndpoints
         }).RequireAuthorization();
 
         // The language subtitles come on in by themselves, when a video has a track in it; empty for off
-        g.MapPut("/subtitle-language", async (SubtitlePreferenceRequest req, ClaimsPrincipal principal, UserManager<AppUser> users) =>
+        g.MapPut("/subtitle-language", async (LanguagePreferenceRequest req, ClaimsPrincipal principal, UserManager<AppUser> users) =>
         {
             var user = await users.GetUserAsync(principal);
             if (user is null) return Results.Unauthorized();
-            var language = Media.SubtitleLanguages.Normalize(req.Language);
+            var language = Media.Languages.Normalize(req.Language);
             if (!string.IsNullOrWhiteSpace(req.Language) && language is null) return Results.BadRequest(new { error = "Unknown language." });
             user.SubtitleLanguage = language;
             await users.UpdateAsync(user);
             return Results.Ok(new { subtitleLanguage = language });
+        }).RequireAuthorization();
+
+        // The language a video starts in, when it has an audio track in it and its default is another; empty for the file's own
+        g.MapPut("/audio-language", async (LanguagePreferenceRequest req, ClaimsPrincipal principal, UserManager<AppUser> users) =>
+        {
+            var user = await users.GetUserAsync(principal);
+            if (user is null) return Results.Unauthorized();
+            var language = Media.Languages.Normalize(req.Language);
+            if (!string.IsNullOrWhiteSpace(req.Language) && language is null) return Results.BadRequest(new { error = "Unknown language." });
+            user.AudioLanguage = language;
+            await users.UpdateAsync(user);
+            return Results.Ok(new { audioLanguage = language });
         }).RequireAuthorization();
 
         g.MapGet("/account", async (ClaimsPrincipal principal, UserManager<AppUser> users) =>
@@ -152,7 +164,7 @@ public static class AuthEndpoints
             {
                 name = user.UserName, google = google?.ProviderDisplayName, pin = user.SwitchPinHash is not null,
                 avatar = Avatars.Of(user),
-                subtitleLanguage = user.SubtitleLanguage, subtitleLanguages = Media.SubtitleLanguages.All.Select(l => new { id = l.Id, label = l.Label }),
+                audioLanguage = user.AudioLanguage, subtitleLanguage = user.SubtitleLanguage, subtitleLanguages =Media.Languages.All.Select(l => new { id = l.Id, label = l.Label }),
                 preferredQuality = user.PreferredQuality ?? "auto", maxQuality = user.MaxQuality, maxQualityLabel = Media.Quality.Level(user.MaxQuality)?.Label,
             });
         }).RequireAuthorization();

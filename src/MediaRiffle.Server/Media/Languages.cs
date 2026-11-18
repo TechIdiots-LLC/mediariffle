@@ -1,11 +1,11 @@
 namespace MediaRiffle.Server.Media;
 
 /// <summary>
-/// The language a user wants subtitles in by default (Profile → Subtitles), and which track of a file that is. Files
-/// name a track's language in whichever way their muxer did ("eng", "en", sometimes "English"), so each language
+/// The languages a user may want by default (Profile → Audio, Profile → Subtitles), and which track of a file that is.
+/// Files name a track's language in whichever way their muxer did ("eng", "en", sometimes "English"), so each language
 /// here lists the spellings that mean it.
 /// </summary>
-public static class SubtitleLanguages
+public static class Languages
 {
     public sealed record Language(string Id, string Label, string[] Names);
 
@@ -35,7 +35,7 @@ public static class SubtitleLanguages
     /// track (only the foreign lines of a film) or a commentary; text before PGS, and subtitles for the hearing
     /// impaired only when there are no others.
     /// </summary>
-    public static string? Pick(IEnumerable<ProbeStream> subtitles, string? languageId)
+    public static string? PickSubtitle(IEnumerable<ProbeStream> subtitles, string? languageId)
     {
         var language = All.FirstOrDefault(l => l.Id == languageId);
         if (language is null) return null;
@@ -46,6 +46,26 @@ public static class SubtitleLanguages
             .ThenBy(s => s.Index)
             .FirstOrDefault();
         return track is null ? null : $"s{track.Index}";
+    }
+
+    /// <summary>
+    /// The audio track (its stream index) to start with for <paramref name="languageId"/>, or null to keep the file's
+    /// default: no language chosen, none in it, or the default already in it. Not a commentary or an audio description
+    /// (narration for the blind); the one with the most channels.
+    /// </summary>
+    public static int? PickAudio(IEnumerable<ProbeStream> tracks, string? languageId)
+    {
+        var language = All.FirstOrDefault(l => l.Id == languageId);
+        if (language is null) return null;
+        var audio = tracks.ToList();
+        var main = audio.FirstOrDefault(a => a.IsDefault) ?? audio.FirstOrDefault();
+        if (main is not null && Matches(language, main)) return null;
+        var track = audio
+            .Where(a => Matches(language, a) && !Has(a.Title, "commentary") && !Has(a.Title, "description") && !Has(a.Title, "descriptive"))
+            .OrderByDescending(a => a.Channels)
+            .ThenBy(a => a.Index)
+            .FirstOrDefault();
+        return track?.Index;
     }
 
     private static bool Matches(Language language, ProbeStream s) =>

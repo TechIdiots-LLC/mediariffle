@@ -218,7 +218,9 @@ public static class LibraryEndpoints
                 preferredQuality = account?.PreferredQuality ?? "auto",
                 autoCap = Quality.Lower(account?.MaxQuality, Quality.PreferenceCap(account?.PreferredQuality)),
                 // The subtitle track to turn on from the start (Profile → Subtitles), if the file has one in that language
-                defaultSubtitle = SubtitleLanguages.Pick(probe.Subtitles, account?.SubtitleLanguage),
+                defaultSubtitle = Languages.PickSubtitle(probe.Subtitles, account?.SubtitleLanguage),
+                // The audio track to start with (Profile → Audio), when the file's default is in another language
+                defaultAudio = Languages.PickAudio(probe.Audio, account?.AudioLanguage),
                 f.ShowId, f.MovieId,
                 f.Container, f.VideoCodec, f.Width, f.Height, f.ProbeError,
                 bitrateKbps = probe.BitRateKbps,

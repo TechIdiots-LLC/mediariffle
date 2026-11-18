@@ -2,6 +2,9 @@
 
 ## master
 ### ✨ Features and improvements
+- **Audio in your language**: Profile → Audio picks a language videos start in. When a video's default audio is in
+  another language and it has a track in yours (not a commentary or audio description), it starts with that track; a
+  dual-audio release that defaults to Hindi starts in English. Choosing audio in the player still overrides it.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

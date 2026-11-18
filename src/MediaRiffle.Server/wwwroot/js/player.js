@@ -125,7 +125,9 @@ export class Player {
   constructor(details) {
     this.details = details;              // GET /api/files/{id}
     this.fileId = details.summary.id;
-    this.audio = details.audio.find(a => a.isDefault)?.index ?? details.audio[0]?.index ?? null;
+    // Profile → Audio's language when the server found a track in it and the default is another, else the default
+    this.audio = details.audio.find(a => a.index === details.defaultAudio)?.index
+      ?? details.audio.find(a => a.isDefault)?.index ?? details.audio[0]?.index ?? null;
     this.subtitle = null;                // "s3" / "x0" or null
     this.session = null;
     this.hls = null;

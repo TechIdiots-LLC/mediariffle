@@ -65,6 +65,9 @@ namespace MediaRiffle.Server.Data.Migrations
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("AudioLanguage")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("AuthenticatorEnabled")
                         .HasColumnType("INTEGER");
 
