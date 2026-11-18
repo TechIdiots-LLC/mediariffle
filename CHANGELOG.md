@@ -7,6 +7,8 @@
 ### 🐞 Bug fixes
 - **"Loading…" stuck over a playing video**: it now goes as soon as the video is moving, even when the browser doesn't
   say it has recovered from a stall.
+- **Two languages playing at once** after changing the audio track: the old stream could keep playing beside the new
+  one, and a second change made quickly could be lost (the menu saying one language, the sound another).
 - _...Add new stuff here..._
 
 ## 0.19.0

@@ -661,6 +661,8 @@ export class Player {
       // Where this one has got to, on the new stream's clock
       video.currentTime = Math.max(0, this.position() - (s.startSeconds ?? 0));
       await new Promise(r => { video.addEventListener('seeked', r, { once: true }); setTimeout(r, 1500); });
+      // Something newer came during the seek (another track picked): that one takes over, not this
+      if (this.pending !== token || this.session !== old.session || this.video !== old.video) { drop(); return; }
     } catch {
       const superseded = this.pending !== token || this.session !== old.session;
       drop();
@@ -677,16 +679,19 @@ export class Player {
     video.volume = old.video.volume;
     video.muted = old.video.muted;
     video.playbackRate = old.video.playbackRate;
-    video.classList.remove('standby');
-    try { await video.play(); } catch { /* blocked: the Play button still works */ }
+    // The old one stops before the new one plays: play() resolves only once it's playing, and waiting for that left
+    // both playing (two languages at once) whenever the new one stalled first
     old.video.pause();
     old.hls?.destroy();
     old.video.removeAttribute('src');
     old.video.load();
     old.video.remove();
     api(`/api/play/${old.session.sessionId}`, { method: 'DELETE' }).catch(() => {});
+    video.classList.remove('standby');
+    const playing = video.play().catch(() => { /* blocked: the Play button still works */ });
     this.setTextTrack();
     this.setPgs();
+    await playing;
   }
 
   // Resolves true once `video` has the next few seconds after `at()` (where the playing stream is, on the file's
