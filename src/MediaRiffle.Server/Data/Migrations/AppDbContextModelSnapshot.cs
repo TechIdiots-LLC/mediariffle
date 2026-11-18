@@ -496,6 +496,9 @@ namespace MediaRiffle.Server.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime>("AddedUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("AlbumId")
                         .HasColumnType("INTEGER");
 

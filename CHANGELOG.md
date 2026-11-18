@@ -5,6 +5,9 @@
 - **Audio in your language**: Profile → Audio picks a language videos start in. When a video's default audio is in
   another language and it has a track in yours (not a commentary or audio description), it starts with that track; a
   dual-audio release that defaults to Hindi starts in English. Choosing audio in the player still overrides it.
+- **Recently added** on the Shows and Movies tabs: what came into the libraries last, newest first. A show is there
+  once, with how many new episodes came, so a season added at once doesn't fill the row. Files from before count from
+  when they were first scanned (or the file's own time, for what the first scan found); Customize moves or hides it.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

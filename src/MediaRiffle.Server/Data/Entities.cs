@@ -232,6 +232,11 @@ public sealed class MediaFile
     /// <summary>Set when ffprobe couldn't read the file; it is listed but not playable.</summary>
     public string? ProbeError { get; set; }
     public DateTime ScannedUtc { get; set; }
+    /// <summary>
+    /// When it came into the library, for Recently added: when a scan first found it, or (found by the library's first
+    /// scan, when everything is new at once) the file's own time.
+    /// </summary>
+    public DateTime AddedUtc { get; set; }
     /// <summary>The file was gone at the last scan.</summary>
     public bool Missing { get; set; }
 }

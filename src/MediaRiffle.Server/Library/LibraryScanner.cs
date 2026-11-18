@@ -215,7 +215,9 @@ public sealed partial class LibraryScanner : BackgroundService
         {
             var (json, error) = probes[rel];
             var isNew = !known.TryGetValue(rel, out var file);
-            file ??= new MediaFile { LibraryId = lib.Id, RelativePath = rel };
+            // Recently added: found now, unless this is the library's first scan, where the file's own time says more
+            file ??= new MediaFile { LibraryId = lib.Id, RelativePath = rel,
+                AddedUtc = known.Count == 0 && info.LastWriteTimeUtc < DateTime.UtcNow ? info.LastWriteTimeUtc : DateTime.UtcNow };
             file.Size = info.Length;
             file.ModifiedUtc = info.LastWriteTimeUtc;
             file.ScannedUtc = DateTime.UtcNow;

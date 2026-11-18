@@ -10,8 +10,8 @@ public static class HomeLayout
     /// <summary>Each tab's sections, in the order a user who never changed it sees them.</summary>
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> Tabs = new Dictionary<string, IReadOnlyList<string>>
     {
-        ["shows"] = ["lists", "favorites", "categories", "libraries", "continue"],
-        ["movies"] = ["lists", "favorites", "categories", "libraries", "continue"],
+        ["shows"] = ["lists", "favorites", "categories", "libraries", "continue", "added"],
+        ["movies"] = ["lists", "favorites", "categories", "libraries", "continue", "added"],
         ["music"] = ["lists", "favorites", "categories", "libraries"],
         ["games"] = ["continue", "lists", "favorites", "categories", "systems", "libraries"],
     };

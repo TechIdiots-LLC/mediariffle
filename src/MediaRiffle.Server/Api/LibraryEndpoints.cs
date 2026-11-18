@@ -282,6 +282,16 @@ public static class LibraryEndpoints
             });
         });
 
+        // Recently added, newest first (leaving out what the user hid): `tab` shows (the default) or movies
+        g.MapGet("/added", async (string? tab, ClaimsPrincipal me, UserManager<AppUser> users, LibraryCatalog catalog, AppDbContext db) =>
+        {
+            var enabled = catalog.Enabled.Select(l => l.Id).ToHashSet();
+            var userId = users.GetUserId(me)!;
+            return tab == Tabs.Movies
+                ? Results.Ok(new { movies = await AddedMovies(db, userId, enabled) })
+                : Results.Ok(new { shows = await AddedShows(db, userId, enabled) });
+        });
+
         g.MapGet("/images/file/{id:int}", async (int id, AppDbContext db, LibraryFiles files, ImageService images, HttpContext ctx) =>
         {
             var f = await db.MediaFiles.FirstOrDefaultAsync(x => x.Id == id);
@@ -319,6 +329,46 @@ public static class LibraryEndpoints
 
     private static Task<List<object>> MoviesIn(AppDbContext db, string userId, ICollection<int> libraries) =>
         MovieTiles(db, userId, db.Movies.Where(m => libraries.Contains(m.LibraryId)));
+
+    public sealed record AddedEpisode(int Id, string Title);
+    public sealed record AddedShow(int Id, string Title, string Image, AddedEpisode Episode, int Count, DateTime Added);
+    public sealed record AddedMovie(int Id, string Title, int? Year, int Parts, string Image);
+
+    private const int AddedCount = 20;
+
+    /// <summary>
+    /// The shows with the newest episodes, newest first: each with its newest episode and how many came with it (in the two
+    /// weeks up to it), so a season added at once is one show, not a row of its episodes.
+    /// </summary>
+    public static async Task<List<AddedShow>> AddedShows(AppDbContext db, string userId, IReadOnlySet<int> libraries)
+    {
+        var files = await HiddenEndpoints.NotHidden(db, userId,
+                db.MediaFiles.Where(f => f.Kind == MediaKind.Episode && f.ShowId != null && libraries.Contains(f.LibraryId)))
+            .OrderByDescending(f => f.AddedUtc).Take(500)
+            .Select(f => new { f.Id, f.Title, ShowId = f.ShowId!.Value, f.AddedUtc }).ToListAsync();
+        var groups = files.GroupBy(f => f.ShowId).Take(AddedCount).ToList();
+        var ids = groups.Select(x => x.Key).ToList();
+        var titles = await db.Shows.Where(s => ids.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Title);
+        return groups.Where(x => titles.ContainsKey(x.Key)).Select(x =>
+        {
+            var newest = x.First();
+            return new AddedShow(x.Key, titles[x.Key], $"/api/images/show/{x.Key}?v={ImageService.Version}",
+                new AddedEpisode(newest.Id, newest.Title), x.Count(f => f.AddedUtc >= newest.AddedUtc.AddDays(-14)), newest.AddedUtc);
+        }).ToList();
+    }
+
+    /// <summary>The newest movies, newest first (a movie in parts by its newest part).</summary>
+    public static async Task<List<AddedMovie>> AddedMovies(AppDbContext db, string userId, IReadOnlySet<int> libraries)
+    {
+        var movieIds = (await HiddenEndpoints.NotHidden(db, userId,
+                db.MediaFiles.Where(f => f.Kind == MediaKind.Movie && f.MovieId != null && libraries.Contains(f.LibraryId)))
+            .OrderByDescending(f => f.AddedUtc).Take(500).Select(f => f.MovieId!.Value).ToListAsync())
+            .Distinct().Take(AddedCount).ToList();
+        var movies = await db.Movies.Where(m => movieIds.Contains(m.Id))
+            .Select(m => new AddedMovie(m.Id, m.Title, m.Year, m.Parts.Count, $"/api/images/movie/{m.Id}?v={ImageService.Version}"))
+            .ToDictionaryAsync(m => m.Id);
+        return movieIds.Where(movies.ContainsKey).Select(id => movies[id]).ToList();
+    }
 
     /// <summary>Shows as the browsing pages list them, by title, with whether this user hid them.</summary>
     internal static async Task<List<object>> ShowTiles(AppDbContext db, string userId, IQueryable<Show> shows) =>

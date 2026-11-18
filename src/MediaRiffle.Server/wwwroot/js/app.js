@@ -766,15 +766,15 @@ function homeView() {
 }
 
 // A top tab: the user's lists, favorites and the categories with something of this tab's in them, its libraries,
-// (Shows, Movies) Continue watching and (Games) Continue playing and the systems, each in the order the user set for this tab
+// (Shows, Movies) Continue watching and Recently added, (Games) Continue playing and the systems, each in the order the user set for this tab
 async function tabView(tab) {
   // A tab whose libraries are gone or switched off (an old link, a bookmark): the start page instead
   if (!(state.tabs ?? []).includes(tab)) { forward('#/'); return; }
   try { localStorage.setItem(TAB_KEY, tab); } catch { }
   const music = tab === 'music', games = tab === 'games', shows = tab === 'shows', movies = tab === 'movies';
-  const [allLibraries, recent, tags, lists, favorites, systems] = await Promise.all([api('/api/libraries'),
+  const [allLibraries, recent, tags, lists, favorites, systems, added] = await Promise.all([api('/api/libraries'),
     shows || movies ? api(`/api/continue?tab=${tab}`) : games ? api('/api/games/continue') : [], api('/api/tags'), api('/api/lists'),
-    api(`/api/lists/${FAVORITES}`), games ? api('/api/games/systems') : []]);
+    api(`/api/lists/${FAVORITES}`), games ? api('/api/games/systems') : [], shows || movies ? api(`/api/added?tab=${tab}`) : {}]);
   const libraries = allLibraries.filter(l => libraryTabs(l).includes(tab));
   const myLists = lists.filter(l => !isFavorites(l.tag) && l[tab] > 0);
   const myTags = tags.filter(t => t[tab] > 0 || t.libraryTabs?.includes(tab));
@@ -816,6 +816,13 @@ async function tabView(tab) {
         h('div', { class: 'sub' }, r.show ? r.file.title : `${formatTime(r.file.position)} of ${formatTime(r.file.duration)}`));
       return tile;
     })) : null },
+    // Newest first, one row that scrolls sideways: a show for each (with how many episodes came), or the movies
+    added: shows ? { title: 'Recently added', body: added.shows?.length ? h('div', { class: 'strip' }, added.shows.map(s =>
+        h('a', { class: 'tile', href: `#/show/${s.id}`, title: `Added ${new Date(s.added).toLocaleDateString()}` },
+          art(s.image), h('div', { class: 'name' }, s.title),
+          h('div', { class: 'sub' }, s.count > 1 ? `${s.count} new episodes` : s.episode.title)))) : null }
+      : movies ? { title: 'Recently added', body: added.movies?.length ? h('div', { class: 'strip' }, movieTiles(added.movies)) : null }
+      : undefined,
   };
 
   for (const id of Object.keys(sections)) if (!sections[id]) delete sections[id];

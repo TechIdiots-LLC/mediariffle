@@ -15,11 +15,11 @@ public class HomeLayoutTests
 
     [Fact]
     public void KeepsTheOrderAndHiddenMarks_AndAddsMissingSectionsAtTheEnd() =>
-        Assert.Equal(["continue", "-libraries", "lists", "favorites", "categories"], HomeLayout.Normalize("shows", ["continue", "-libraries", "lists"]));
+        Assert.Equal(["continue", "-libraries", "lists", "favorites", "categories", "added"], HomeLayout.Normalize("shows", ["continue", "-libraries", "lists"]));
 
     [Fact]
     public void DropsUnknownAndRepeatedSections() =>
-        Assert.Equal(["categories", "lists", "favorites", "libraries", "continue"],
+        Assert.Equal(["categories", "lists", "favorites", "libraries", "continue", "added"],
             HomeLayout.Normalize("shows", ["categories", "bogus", "CATEGORIES", "-categories", "", null!]));
 
     [Fact]
@@ -28,7 +28,7 @@ public class HomeLayoutTests
 
     [Fact]
     public void HidingTheDefaultOrderIsStillALayout() =>
-        Assert.Equal("shows:lists,favorites,categories,-libraries,continue",
+        Assert.Equal("shows:lists,favorites,categories,-libraries,continue,added",
             HomeLayout.With(null, "shows", ["lists", "favorites", "categories", "-libraries", "continue"]));
 
     [Fact]
@@ -36,8 +36,8 @@ public class HomeLayoutTests
     {
         var stored = HomeLayout.With(null, "shows", ["continue"]);
         stored = HomeLayout.With(stored, "music", ["-lists"]);
-        Assert.Equal("shows:continue,lists,favorites,categories,libraries;music:-lists,favorites,categories,libraries", stored);
-        Assert.Equal(["continue", "lists", "favorites", "categories", "libraries"], HomeLayout.Of(stored)["shows"]);
+        Assert.Equal("shows:continue,lists,favorites,categories,libraries,added;music:-lists,favorites,categories,libraries", stored);
+        Assert.Equal(["continue", "lists", "favorites", "categories", "libraries", "added"], HomeLayout.Of(stored)["shows"]);
         // Back to the default, a tab is no longer stored
         Assert.Equal("music:-lists,favorites,categories,libraries", HomeLayout.With(stored, "shows", null));
     }
@@ -46,7 +46,7 @@ public class HomeLayoutTests
     public void TheHomePageLayoutFromBeforeTheTabsCountsForEveryTab()
     {
         var old = "continue,-libraries,lists,favorites,categories";
-        Assert.Equal(["continue", "-libraries", "lists", "favorites", "categories"], HomeLayout.Of(old)["shows"]);
+        Assert.Equal(["continue", "-libraries", "lists", "favorites", "categories", "added"], HomeLayout.Of(old)["shows"]);
         Assert.Equal(["-libraries", "lists", "favorites", "categories"], HomeLayout.Of(old)["music"]);
     }
 
@@ -54,12 +54,12 @@ public class HomeLayoutTests
     public void AVideosLayoutFromBeforeShowsAndMoviesCountsForBoth()
     {
         var stored = "videos:continue,-libraries,lists,favorites,categories;music:-lists";
-        Assert.Equal(["continue", "-libraries", "lists", "favorites", "categories"], HomeLayout.Of(stored)["shows"]);
-        Assert.Equal(["continue", "-libraries", "lists", "favorites", "categories"], HomeLayout.Of(stored)["movies"]);
+        Assert.Equal(["continue", "-libraries", "lists", "favorites", "categories", "added"], HomeLayout.Of(stored)["shows"]);
+        Assert.Equal(["continue", "-libraries", "lists", "favorites", "categories", "added"], HomeLayout.Of(stored)["movies"]);
         // Shows changed since: that one's its own, Movies keeps the Videos one, and Videos is no longer stored
         var changed = HomeLayout.With(stored, "shows", ["lists"]);
-        Assert.Equal(["lists", "favorites", "categories", "libraries", "continue"], HomeLayout.Of(changed)["shows"]);
-        Assert.Equal(["continue", "-libraries", "lists", "favorites", "categories"], HomeLayout.Of(changed)["movies"]);
+        Assert.Equal(["lists", "favorites", "categories", "libraries", "continue", "added"], HomeLayout.Of(changed)["shows"]);
+        Assert.Equal(["continue", "-libraries", "lists", "favorites", "categories", "added"], HomeLayout.Of(changed)["movies"]);
         Assert.DoesNotContain("videos", changed);
     }
 }
