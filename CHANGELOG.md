@@ -5,6 +5,8 @@
 - **Episodes play on**: an episode started from its show's page, or from Continue watching, goes on to the next one
   when it ends, as Play all does, through to the show's last episode (it doesn't start over). Stop after this, or
   Cancel in the countdown, stays on the one playing.
+- **Rescan every 5 or 10 minutes**: Look for new files (Admin → Libraries → Edit) offers them too, for a folder that
+  gets new files often.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

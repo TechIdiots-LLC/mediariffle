@@ -1285,7 +1285,7 @@ function libraryForm(lib, defaultMinutes) {
   const enabled = h('input', { type: 'checkbox', checked: lib?.enabled ?? true });
   // How often it's rescanned for new and changed files: the server's setting, or its own
   const own = lib?.scanIntervalMinutes ?? null;
-  const choices = [15, 30, 60, 120, 360, 720, 1440, 10080];
+  const choices = [5, 10, 15, 30, 60, 120, 360, 720, 1440, 10080];
   if (own > 0 && !choices.includes(own)) choices.push(own);
   const interval = h('select', {},
     h('option', { value: '' }, `Server default (${defaultMinutes > 0 ? everyText(defaultMinutes) : 'only when asked'})`),
