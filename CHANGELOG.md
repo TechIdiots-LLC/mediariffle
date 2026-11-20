@@ -2,16 +2,21 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.21.0
+### ✨ Features and improvements
 - **Recently added** on the Shows and Movies tabs: what came into the libraries last, newest first. A show is there
   once, with how many new episodes came, so a season added at once doesn't fill the row. Files from before count from
   when they were first scanned (or the file's own time, for what the first scan found); Customize moves or hides it.
 - **How often each library is rescanned**: Admin → Libraries → Edit → Look for new files, from every 15 minutes to
   once a week, only when asked, or the server's default (ScanIntervalMinutes, an hour unless changed). Each library's
   status says when it's next scanned.
-- _...Add new stuff here..._
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
 
 ## 0.20.0
 ### ✨ Features and improvements
