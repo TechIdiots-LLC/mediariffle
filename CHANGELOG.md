@@ -2,12 +2,6 @@
 
 ## master
 ### ✨ Features and improvements
-- **Recently added** on the Shows and Movies tabs: what came into the libraries last, newest first. A show is there
-  once, with how many new episodes came, so a season added at once doesn't fill the row. Files from before count from
-  when they were first scanned (or the file's own time, for what the first scan found); Customize moves or hides it.
-- **How often each library is rescanned**: Admin → Libraries → Edit → Look for new files, from every 15 minutes to
-  once a week, only when asked, or the server's default (ScanIntervalMinutes, an hour unless changed). Each library's
-  status says when it's next scanned.
 - **Episodes play on**: an episode started from its show's page, or from Continue watching, goes on to the next one
   when it ends, as Play all does, through to the show's last episode (it doesn't start over). Stop after this, or
   Cancel in the countdown, stays on the one playing.
@@ -15,6 +9,17 @@
 
 ### 🐞 Bug fixes
 - _...Add new stuff here..._
+
+## 0.21.0
+### ✨ Features and improvements
+- **Recently added** on the Shows and Movies tabs: what came into the libraries last, newest first. A show is there
+  once, with how many new episodes came, so a season added at once doesn't fill the row. Files from before count from
+  when they were first scanned (or the file's own time, for what the first scan found); Customize moves or hides it.
+- **How often each library is rescanned**: Admin → Libraries → Edit → Look for new files, from every 15 minutes to
+  once a week, only when asked, or the server's default (ScanIntervalMinutes, an hour unless changed). Each library's
+  status says when it's next scanned.
+
+### 🐞 Bug fixes
 
 ## 0.20.0
 ### ✨ Features and improvements
