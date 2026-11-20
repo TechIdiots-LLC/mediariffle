@@ -8,6 +8,9 @@
 - **How often each library is rescanned**: Admin → Libraries → Edit → Look for new files, from every 15 minutes to
   once a week, only when asked, or the server's default (ScanIntervalMinutes, an hour unless changed). Each library's
   status says when it's next scanned.
+- **Episodes play on**: an episode started from its show's page, or from Continue watching, goes on to the next one
+  when it ends, as Play all does, through to the show's last episode (it doesn't start over). Stop after this, or
+  Cancel in the countdown, stays on the one playing.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

@@ -278,6 +278,7 @@ public static class LibraryEndpoints
                 {
                     file = FileSummary(f, progress),
                     show = f.ShowId is { } sid ? showNames.GetValueOrDefault(sid) : null,
+                    showId = f.ShowId,
                 };
             });
         });

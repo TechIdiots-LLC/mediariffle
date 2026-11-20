@@ -677,6 +677,11 @@ async function logout() {
 
 // ── Browsing ─────────────────────────────────────────────────────────────────
 
+// An episode opened by itself: it and the rest of its show after it, in order, as Play all (stopping after the last)
+function playFrom(showId, showTitle, fileId) {
+  startQueue({ show: showId }, false, showTitle, fileId).catch(() => { clearQueue(); location.hash = `#/play/${fileId}`; });
+}
+
 function playButtons(what, label, disabled = false) {
   const go = shuffle => startQueue(what, shuffle, label).catch(e => alert(e.message));
   return h('span', { class: 'row' },
@@ -805,7 +810,10 @@ async function tabView(tab) {
     continue: games ? { title: 'Continue playing', body: recent.length ? h('div', { class: 'strip' }, continueTiles(recent)) : null }
       : !shows && !movies ? undefined : { title: 'Continue watching', body: recent.length ? h('div', { class: 'strip' }, recent.map(r => {
       // ×: off this list (not hidden: the place is kept, and watching it again brings it back)
-      const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}`, onclick: () => { clearQueue(); sessionStorage.setItem(RESUME_KEY, String(r.file.id)); } },
+      const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}`, onclick: ev => {
+        sessionStorage.setItem(RESUME_KEY, String(r.file.id));
+        if (r.showId) { ev.preventDefault(); playFrom(r.showId, r.show, r.file.id); } else clearQueue();
+      } },
         art(r.file.image, r.file.duration ? r.file.position / r.file.duration : 0),
         h('button', { class: 'tile-x', title: 'Remove from Continue watching', 'aria-label': 'Remove from Continue watching',
           onclick: async e => {
@@ -1117,7 +1125,8 @@ async function listView(tag, tab) {
 
 // An episode or movie part. A hidden one (on its own, or with its whole show or movie: `off`) is greyed out and
 // can't be played from here; `onHide` adds the Hide/Unhide button for the episode itself.
-function episodeRow(e, { off = false, onHide = null } = {}) {
+// `play`: what opening it does instead of playing it alone (a show's episode plays on through the show)
+function episodeRow(e, { off = false, onHide = null, play = null } = {}) {
   const done = e.finished;
   const disabled = off || e.hidden;
   const content = [
@@ -1129,7 +1138,8 @@ function episodeRow(e, { off = false, onHide = null } = {}) {
     h('span', { class: 'play' }, disabled ? '' : '▶')];
   return h('div', { class: 'episode' + (done ? ' watched' : '') + (disabled ? ' hidden' : '') },
     disabled ? h('div', { class: 'episode-main' }, content)
-      : h('a', { class: 'episode-main', href: `#/play/${e.id}`, onclick: () => clearQueue() }, content),
+      : h('a', { class: 'episode-main', href: `#/play/${e.id}`,
+        onclick: ev => { if (play) { ev.preventDefault(); play(e.id); } else clearQueue(); } }, content),
     onHide && !off ? hideButton('file', e.id, e.hidden, onHide, 'episode') : null);
 }
 
@@ -1149,7 +1159,8 @@ async function showView(id) {
       mount(tabs, show.seasons.filter(s => s.series === season.series).map(s => h('button', { 'data-id': s.id, onclick: () => pick(s) }, seasonLabel(s))));
     }
     for (const b of tabs.children) b.classList.toggle('active', b.dataset.id === String(season.id));
-    mount(list, season.episodes.map(e => episodeRow(e, { off: show.hidden, onHide: hidden => { e.hidden = hidden; pick(current); } })));
+    mount(list, season.episodes.map(e => episodeRow(e, { off: show.hidden, onHide: hidden => { e.hidden = hidden; pick(current); },
+      play: fileId => playFrom(id, show.title, fileId) })));
   };
   // A series opens on its first season with something unwatched
   const firstOf = name => {

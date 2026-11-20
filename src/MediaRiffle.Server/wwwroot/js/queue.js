@@ -24,12 +24,15 @@ export function clearQueue() { saveQueue(null); }
 export const pageFor = item => `#/${item.audio ? 'listen' : 'play'}/${item.id}`;
 
 // `what`: { tag } | { list } | { library } | { show } | { album } | { artist }. `startId` starts at that item instead
-// of the first (a track picked on an album page, with the rest of the album after it).
+// of the first (a track picked on an album page, an episode on a show's page, with the rest after it). One that
+// isn't in the queue (hidden) plays by itself.
 export async function startQueue(what, shuffle, label, startId = null) {
   const params = new URLSearchParams({ ...what, shuffle: String(!!shuffle) });
   const items = await api(`/api/queue?${params}`);
+  const found = items.findIndex(x => x.id === startId);
+  if (startId !== null && found < 0) { clearQueue(); location.hash = `#/play/${startId}`; return; }
   if (!items.length) throw new Error('Nothing to play here yet.');
-  const index = Math.max(0, items.findIndex(x => x.id === startId));
+  const index = Math.max(0, found);
   saveQueue({ label: (shuffle ? 'Shuffle: ' : '') + label, items, index });
   if (items[index].audio && audioHandler) audioHandler(index);
   else location.hash = pageFor(items[index]);
