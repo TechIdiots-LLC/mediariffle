@@ -233,8 +233,9 @@ public sealed class Ffmpeg(IOptions<MediaRiffleOptions> options, ILogger<Ffmpeg>
                 if (!await MadeAsync(encodes, sample)) continue;   // this ffmpeg can't make one: not tried
                 if (!await WorksAsync(PlaybackPlanner.GpuTestArguments(codec, sample, t, toneMap: false))) continue;
                 codecs.Add(codec);
-                // HDR on the GPU: VA-API decodes and scales, libplacebo tone-maps the copy (the only GPU tone mapping used)
-                if (codec == "hevc10" && t.Encoder == VideoEncoder.Vaapi && t.ToneMapHdr && t.UseLibplacebo)
+                // HDR on the GPU: VA-API or CUDA decodes and scales, libplacebo tone-maps the copy (the only GPU tone
+                // mapping used)
+                if (codec == "hevc10" && t.Encoder is (VideoEncoder.Vaapi or VideoEncoder.Nvenc) && t.ToneMapHdr && t.UseLibplacebo)
                     toneMap = await WorksAsync(PlaybackPlanner.GpuTestArguments(codec, sample, t, toneMap: true), TimeSpan.FromSeconds(120));
             }
             Gpu = new PlaybackPlanner.GpuDecoding(codecs, toneMap);

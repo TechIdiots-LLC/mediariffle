@@ -41,12 +41,14 @@ public class GpuDecodingTests
         Assert.False(PlaybackPlanner.DecodesOnGpu(sdr10, null, Intel, new() { Encoder = VideoEncoder.Qsv, HardwareDecoding = false }));
         Assert.False(PlaybackPlanner.DecodesOnGpu(Video("vp9", "yuv420p"), null, Intel, O(VideoEncoder.Qsv)));
         Assert.False(PlaybackPlanner.DecodesOnGpu(sdr10, Subtitle, Intel, O(VideoEncoder.Qsv)));
-        // HDR: only VA-API with libplacebo on its frames (Quick Sync's own tone mapping is too dark)
+        // HDR: VA-API or NVENC, with libplacebo on a copy of their frames (Quick Sync's own tone mapping is too dark)
         Assert.True(PlaybackPlanner.DecodesOnGpu(hdr10, null, Intel, O(VideoEncoder.Vaapi)));
+        Assert.True(PlaybackPlanner.DecodesOnGpu(hdr10, null, Intel, O(VideoEncoder.Nvenc)));
         Assert.False(PlaybackPlanner.DecodesOnGpu(hdr10, null, Intel with { ToneMap = false }, O(VideoEncoder.Vaapi)));
+        Assert.False(PlaybackPlanner.DecodesOnGpu(hdr10, null, Intel with { ToneMap = false }, O(VideoEncoder.Nvenc)));
         Assert.False(PlaybackPlanner.DecodesOnGpu(hdr10, null, Intel, O(VideoEncoder.Qsv)));
-        Assert.False(PlaybackPlanner.DecodesOnGpu(hdr10, null, Intel, O(VideoEncoder.Nvenc)));
         Assert.False(PlaybackPlanner.DecodesOnGpu(hdr10, null, Intel, new() { Encoder = VideoEncoder.Vaapi, UseLibplacebo = false }));
+        Assert.False(PlaybackPlanner.DecodesOnGpu(hdr10, null, Intel, new() { Encoder = VideoEncoder.Nvenc, ToneMapHdr = false }));
         // Dolby Vision 5 too, as libplacebo applies its metadata there
         Assert.True(PlaybackPlanner.DecodesOnGpu(Video("hevc", "yuv420p10le", dv: 5, dvCompat: 0), null, Intel, O(VideoEncoder.Vaapi)));
         Assert.False(PlaybackPlanner.DecodesOnGpu(Video("hevc", "yuv420p10le", dv: 5, dvCompat: 0), null, Intel, O(VideoEncoder.Qsv)));
@@ -93,6 +95,34 @@ public class GpuDecodingTests
         var sdr = PlaybackPlanner.SegmentArguments(Plan(Video("h264", "yuv420p", 1080), gpu: true), Quality.Level("720")!, "/m/a.mkv", 0, O(VideoEncoder.Vaapi));
         Assert.Equal("scale_vaapi=w=1280:h=720:format=nv12", sdr[sdr.IndexOf("-vf") + 1]);
         Assert.DoesNotContain("-init_hw_device", sdr);
+    }
+
+    [Fact]
+    public void NvencScalesOnTheGpuThenToneMapsTheCopyWithLibplacebo()
+    {
+        var hdr10 = Video("hevc", "yuv420p10le", transfer: "smpte2084");
+        var args = PlaybackPlanner.SegmentArguments(Plan(hdr10, gpu: true), Quality.Level("1080")!, "/m/a.mkv", 0, O(VideoEncoder.Nvenc));
+        int input = args.IndexOf("-i");
+        Assert.Equal("cuda", args[args.IndexOf("-hwaccel") + 1]);
+        Assert.True(args.IndexOf("-hwaccel") < input);
+        Assert.Equal("cuda", args[args.IndexOf("-hwaccel_output_format") + 1]);
+        Assert.DoesNotContain("-init_hw_device", args);   // libplacebo makes its own Vulkan device
+        var vf = args[args.IndexOf("-vf") + 1];
+        // Scaled on the GPU still 10-bit, only those frames copied back, libplacebo, then NVENC takes them as they are
+        Assert.StartsWith("scale_cuda=w=1920:h=1080:format=p010,hwdownload,format=p010le,libplacebo=", vf);
+        Assert.Contains("tonemapping=bt.2390", vf);
+        Assert.Contains("apply_dolbyvision=1", vf);
+        Assert.EndsWith(":format=nv12", vf);
+        Assert.DoesNotContain("hwupload", vf);
+        Assert.Equal("h264_nvenc", args[args.LastIndexOf("-c:v") + 1]);
+        Assert.Equal("bt709", args[args.IndexOf("-color_trc") + 1]);
+        // SDR stays all on the GPU
+        var sdr = PlaybackPlanner.SegmentArguments(Plan(Video("hevc", "yuv420p10le"), gpu: true), Quality.Level("1080")!, "/m/a.mkv", 0, O(VideoEncoder.Nvenc));
+        Assert.Equal("scale_cuda=w=1920:h=1080:format=nv12", sdr[sdr.IndexOf("-vf") + 1]);
+        Assert.DoesNotContain("-color_trc", sdr);
+        // The startup check puts HDR through the same filters
+        var check = PlaybackPlanner.GpuTestArguments("hevc10", "/tmp/hevc10.mkv", O(VideoEncoder.Nvenc), toneMap: true);
+        Assert.StartsWith("scale_cuda=w=160:h=90:format=p010,hwdownload", check[check.IndexOf("-vf") + 1]);
     }
 
     [Fact]

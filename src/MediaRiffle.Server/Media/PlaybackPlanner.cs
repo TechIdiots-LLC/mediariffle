@@ -242,8 +242,8 @@ public static class PlaybackPlanner
 
     // ── Decoding on the GPU ──
     //
-    // With a GPU encoder, the video can be decoded on that GPU and scaled and tone-mapped there too (VA-API's
-    // scale_vaapi and tonemap_vaapi, Quick Sync's vpp_qsv, CUDA's scale_cuda), so the picture never comes back to the
+    // With a GPU encoder, the video can be decoded on that GPU and scaled there too (VA-API's scale_vaapi, Quick Sync's
+    // vpp_qsv, CUDA's scale_cuda; HDR's tone mapping on a copy, see GpuFilter), so the picture never comes back to the
     // CPU: copying 4K frames back costs about what decoding them in software does. What the GPU decodes is found out
     // at start (Ffmpeg.CheckGpuDecodingAsync), by putting a tiny sample of each codec through this same pipeline.
 
@@ -268,14 +268,14 @@ public static class PlaybackPlanner
     /// <summary>
     /// Whether this video is decoded on the GPU: the encoder's GPU decodes its kind, and nothing needs the picture on
     /// the CPU. An image subtitle burned in does; so does HDR (Dolby Vision 5 included) unless the GPU path can tone-map
-    /// it with libplacebo, which is VA-API's (see <see cref="GpuFilter"/>; on Quick Sync's integrated GPUs the copy back
-    /// costs what it saves). Quick Sync's and VA-API's own tone mapping isn't used: it comes out much darker than
-    /// libplacebo's.
+    /// it with libplacebo, which VA-API's and NVENC's can (see <see cref="GpuFilter"/>; on Quick Sync's integrated GPUs
+    /// the copy back costs what it saves). Quick Sync's and VA-API's own tone mapping isn't used: it comes out much
+    /// darker than libplacebo's.
     /// </summary>
     public static bool DecodesOnGpu(ProbeStream v, ProbeStream? burn, GpuDecoding gpu, TranscodingOptions o) =>
         o.HardwareDecoding && o.Encoder != VideoEncoder.Libx264 && burn is null &&
         GpuCodec(v) is { } codec && gpu.Codecs.Contains(codec) &&
-        (!v.IsHdr || (gpu.ToneMap && o.Encoder == VideoEncoder.Vaapi && o.ToneMapHdr && o.UseLibplacebo));
+        (!v.IsHdr || (gpu.ToneMap && o.Encoder is (VideoEncoder.Vaapi or VideoEncoder.Nvenc) && o.ToneMapHdr && o.UseLibplacebo));
 
     /// <summary>The input options that decode on the encoder's GPU and keep the frames there (before -i).</summary>
     public static List<string> GpuDecoder(ProbeStream v, TranscodingOptions o) => GpuDecoder(GpuCodec(v) ?? "h264", o, v.IsHdr);
@@ -297,24 +297,28 @@ public static class PlaybackPlanner
 
     /// <summary>
     /// The filters for frames on the GPU: scaled to <paramref name="size"/> (exactly: vpp_qsv takes no -2) as 8-bit.
-    /// HDR (VA-API only, see <see cref="DecodesOnGpu"/>): scaled on the GPU still 10-bit, then only those frames (a
-    /// quarter of 4K's at 1080p) copied back, tone-mapped by libplacebo on its own Vulkan device (Dolby Vision's metadata
-    /// applied) and uploaded again for the encoder. Mapping VA-API's 10-bit frames straight into Vulkan instead fails on
-    /// Intel Arc with Ubuntu 24.04's Mesa (VK_ERROR_DEVICE_LOST); this way an Arc A380 converted 4K HDR at 1.7x.
+    /// HDR (VA-API and NVENC, see <see cref="DecodesOnGpu"/>): scaled on the GPU still 10-bit, then only those frames (a
+    /// quarter of 4K's at 1080p) copied back and tone-mapped by libplacebo on its own Vulkan device (Dolby Vision's
+    /// metadata applied); VA-API's are uploaded again for its encoder, while NVENC takes them as they are. Mapping
+    /// VA-API's 10-bit frames straight into Vulkan instead fails on Intel Arc with Ubuntu 24.04's Mesa
+    /// (VK_ERROR_DEVICE_LOST); this way an Arc A380 converted 4K HDR at 1.7x.
     /// </summary>
     public static string GpuFilter(TranscodingOptions o, (int Width, int Height) size, bool hdr)
     {
         var (w, h) = size;
         return o.Encoder switch
         {
-            VideoEncoder.Vaapi when hdr => $"scale_vaapi=w={w}:h={h}:format=p010,hwdownload,format=p010le," +
-                "libplacebo=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=bt.2390:" +
-                "apply_dolbyvision=1:format=nv12,hwupload",
+            VideoEncoder.Vaapi when hdr => $"scale_vaapi=w={w}:h={h}:format=p010,hwdownload,format=p010le,{GpuCopyToSdr},hwupload",
             VideoEncoder.Vaapi => $"scale_vaapi=w={w}:h={h}:format=nv12",
             VideoEncoder.Qsv => $"vpp_qsv=w={w}:h={h}:format=nv12",
+            VideoEncoder.Nvenc when hdr => $"scale_cuda=w={w}:h={h}:format=p010,hwdownload,format=p010le,{GpuCopyToSdr}",
             _ => $"scale_cuda=w={w}:h={h}:format=nv12",
         };
     }
+
+    /// <summary>libplacebo's HDR (and Dolby Vision) to SDR BT.709 for the frames copied back from the GPU, as NV12.</summary>
+    private const string GpuCopyToSdr = "libplacebo=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:" +
+                                        "tonemapping=bt.2390:apply_dolbyvision=1:format=nv12";
 
     /// <summary>
     /// How Ffmpeg.CheckGpuDecodingAsync makes its tiny sample of each kind of video: alternative ffmpeg arguments
