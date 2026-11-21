@@ -2,6 +2,11 @@
 
 ## master
 ### ✨ Features and improvements
+- **HDR on an NVIDIA GPU**: with the `Nvenc` encoder, HDR (Dolby Vision 5 included) is now decoded and scaled on the
+  card too, and only the scaled frames come back for libplacebo to tone-map, as with `Vaapi`; before, it was all
+  decoded on the CPU. The package has `/usr/lib/mediariffle/install-nvidia-libs`, which installs the Proxmox node's
+  NVIDIA driver version's libraries in the container, and docs/proxmox.md sets up the node and the container for an
+  NVIDIA card.
 - **Episodes play on**: an episode started from its show's page, or from Continue watching, goes on to the next one
   when it ends, as Play all does, through to the show's last episode (it doesn't start over). Stop after this, or
   Cancel in the countdown, stays on the one playing.

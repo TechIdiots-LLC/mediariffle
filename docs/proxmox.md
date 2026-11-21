@@ -134,8 +134,74 @@ pct exec 120 -- vainfo --display drm --device /dev/dri/renderD128 | grep -E 'HEV
 `Decoded on the GPU (Vaapi): H.264, HEVC, HEVC 10-bit, AV1, VP9, MPEG-2; HDR tone-mapped there too (libplacebo)`: video
 is decoded, scaled, tone-mapped and encoded on the GPU (see Decoding on the GPU in
 [configuration.md](configuration.md)). Older Intel GPUs encode with the `intel-media-va-driver-non-free` package
-(Ubuntu's multiverse) when `vainfo` lists no `EncSlice`. NVIDIA needs its driver in the container too, which this
-template doesn't include.
+(Ubuntu's multiverse) when `vainfo` lists no `EncSlice`.
+
+### An NVIDIA GPU
+
+With an NVIDIA card (an RTX 5060 Ti, say), MediaRiffle decodes, scales and encodes on it with CUDA and NVENC, and HDR
+is tone-mapped by libplacebo on the card's Vulkan, as with VA-API. NVIDIA's driver goes on the Proxmox node, and the
+same version's libraries in the container: the two must match exactly.
+
+1. **On the node, install NVIDIA's driver,** with the open kernel modules (RTX 50 cards need them).
+   `curl -s https://download.nvidia.com/XFree86/Linux-x86_64/latest.txt` gives the latest version:
+
+   ```bash
+   apt install proxmox-default-headers proxmox-headers-$(uname -r) build-essential dkms pkg-config
+   printf 'blacklist nouveau\noptions nouveau modeset=0\n' > /etc/modprobe.d/blacklist-nouveau.conf
+   update-initramfs -u -k all && reboot
+   ver=595.58.03
+   wget https://download.nvidia.com/XFree86/Linux-x86_64/$ver/NVIDIA-Linux-x86_64-$ver.run
+   sh NVIDIA-Linux-x86_64-$ver.run --dkms -m=kernel-open
+   nvidia-smi
+   ```
+
+   DKMS builds the module again for each new Proxmox kernel. With Secure Boot on, the installer has to sign it (it
+   asks); turning Secure Boot off is simpler.
+
+2. **Have the node make the card's device nodes as it starts.** The driver makes them only when something first uses
+   the card, and a container can't start while a device it's given is missing:
+
+   ```bash
+   printf 'nvidia\nnvidia_uvm\n' > /etc/modules-load.d/nvidia.conf
+   cat > /etc/udev/rules.d/70-nvidia.rules <<'EOF'
+   KERNEL=="nvidia", RUN+="/bin/bash -c '/usr/bin/nvidia-smi -L && /bin/chmod 666 /dev/nvidia*'"
+   KERNEL=="nvidia_uvm", RUN+="/bin/bash -c '/usr/bin/nvidia-modprobe -c0 -u && /bin/chmod 0666 /dev/nvidia-uvm*'"
+   EOF
+   reboot
+   ls -l /dev/nvidia*      # nvidia0, nvidiactl, nvidia-uvm, nvidia-uvm-tools
+   ```
+
+3. **Pass them in,** in place of the Intel GPU's render node (which is gone with the card, and would stop the
+   container starting):
+
+   ```bash
+   pct set 120 -delete dev0
+   pct set 120 -dev0 /dev/nvidia0,mode=0666 -dev1 /dev/nvidiactl,mode=0666 \
+       -dev2 /dev/nvidia-uvm,mode=0666 -dev3 /dev/nvidia-uvm-tools,mode=0666
+   pct reboot 120
+   ```
+
+4. **Install the driver's libraries in the container** (it downloads the node's driver version from NVIDIA; no kernel
+   module), and check the card is seen:
+
+   ```bash
+   pct exec 120 -- /usr/lib/mediariffle/install-nvidia-libs
+   pct exec 120 -- runuser -u mediariffle -- nvidia-smi -L
+   ```
+
+5. **Set `"Encoder": "Nvenc"`** under `Transcoding` ([Changing settings](#changing-settings)) and restart MediaRiffle.
+   Its log should then say `Decoded on the GPU (Nvenc): H.264, HEVC, HEVC 10-bit, AV1, …; HDR tone-mapped there too
+   (libplacebo)`, and at start `HDR and Dolby Vision are tone-mapped with libplacebo (Vulkan)`:
+
+   ```bash
+   pct exec 120 -- journalctl -u mediariffle -b --no-pager | grep -Ei 'gpu|libplacebo'
+   ```
+
+   If HDR says `decoded on the CPU` instead, libplacebo can't reach the card's Vulkan: the log's `GPU check` lines (at
+   `Debug` level) give ffmpeg's error.
+
+6. **After upgrading the node's driver,** run `install-nvidia-libs` again. Until then CUDA and NVENC fail (`driver/
+   library version mismatch`), and MediaRiffle decodes and encodes on the CPU after its startup check finds that.
 
 ## Changing settings
 

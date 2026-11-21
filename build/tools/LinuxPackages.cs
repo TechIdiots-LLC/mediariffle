@@ -5,7 +5,8 @@
 //
 // The .deb (an ar archive of debian-binary, control.tar.gz and data.tar.gz): /opt/mediariffle (the program),
 // /lib/systemd/system/mediariffle.service, /etc/mediariffle/appsettings.json (a conffile, so upgrades keep the admin's
-// edits), and Admin → Updates' updater (/usr/lib/mediariffle/mediariffle-update, mediariffle-update.{service,path});
+// edits), Admin → Updates' updater (/usr/lib/mediariffle/mediariffle-update, mediariffle-update.{service,path}) and
+// /usr/lib/mediariffle/install-nvidia-libs;
 // deploy/linux/debian/{preinst,postinst,prerm,postrm} create the service user and data folder, run the service,
 // and carry settings left in the old program folder into the settings file on an upgrade.
 //
@@ -79,6 +80,8 @@ var data = TarGz(tar =>
     AddFile(tar, "lib/systemd/system/mediariffle-update.path", Lf(Path.Combine(deploy, "mediariffle-update.path")), Plain);
     Parents("usr/lib/mediariffle/mediariffle-update");
     AddFile(tar, "usr/lib/mediariffle/mediariffle-update", Lf(Path.Combine(deploy, "mediariffle-update")), Exe);
+    // NVIDIA's driver libraries, the Proxmox node's version, for an NVIDIA card in a container (docs/proxmox.md)
+    AddFile(tar, "usr/lib/mediariffle/install-nvidia-libs", Lf(Path.Combine(deploy, "install-nvidia-libs")), Exe);
     Parents("etc/mediariffle/appsettings.json");
     AddFile(tar, "etc/mediariffle/appsettings.json", Lf(Path.Combine(deploy, "appsettings.json")), Plain);
     // Where Debian keeps a package's license (it's also in /opt/mediariffle, from the publish folder)

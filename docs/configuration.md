@@ -70,7 +70,7 @@ Put your settings in file 2. A complete example:
 | `Transcoding.MaxHeight` | Transcodes are scaled down to this many lines. `1440` adds a 1440p level, `2160` 1440p and 4K (see Quality below); 1080 by default. |
 | `Transcoding.MaxVideoKbps` | Peak video bitrate of a transcode; 10000 by default (1080p's peak). Raise it to `16000` with `MaxHeight` 1440 and about `30000` with 2160, or those levels are held to this. At `14000` or more there is also **1080p High** (14 Mbit/s), a second 1080p level with more bits for a fast connection (a home network), which Auto uses when the connection carries it. |
 | `Transcoding.ToneMapHdr` | HDR video (HDR10, HLG) that has to be converted is tone-mapped to ordinary colours, so it isn't washed out (see Quality below). `true` by default. |
-| `Transcoding.HardwareDecoding` | With a GPU encoder (`Qsv`, `Vaapi`, `Nvenc`), decode on that GPU too and scale (and with `Vaapi`, tone-map HDR) there, for what it was found to decode at start (see Decoding on the GPU below). `true` by default. |
+| `Transcoding.HardwareDecoding` | With a GPU encoder (`Qsv`, `Vaapi`, `Nvenc`), decode on that GPU too and scale (and with `Vaapi` or `Nvenc`, tone-map HDR) there, for what it was found to decode at start (see Decoding on the GPU below). `true` by default. |
 | `Transcoding.UseLibplacebo` | Tone-map HDR with libplacebo when this ffmpeg has it and a Vulkan GPU works: better HDR10, and Dolby Vision applied, which Dolby Vision 5 needs (see HDR below). `true` by default. |
 | `Transcoding.MaxSessions` | Remuxes and transcodes running at once, all users together. Direct play doesn't count. |
 | `Transcoding.MaxSessionsPerUser` | A user starting more stops their oldest. |
@@ -242,18 +242,19 @@ through the GPU and logs what it decodes, e.g. `Decoded on the GPU (Vaapi): H.26
 player's info line says `decoded on the GPU` for a stream that is. Anything else is decoded on the CPU as before, as is
 a stream the GPU fails on (the log says so), and one with an image subtitle burned in.
 
-**HDR** is tone-mapped on the GPU path only with **`Vaapi`** (Linux): the GPU decodes and scales the video still in
-10-bit, only those frames (a quarter of 4K's, at 1080p) come back, libplacebo tone-maps them on Vulkan (Dolby Vision 5
-included, looking as it does on the CPU) and the GPU encodes the result. That needs Mesa's Vulkan driver
-(`mesa-vulkan-drivers`, in the Proxmox template). An Intel Arc A380 converts a 60 Mbit/s 4K HDR disc rip to 1080p this
+**HDR** is tone-mapped on the GPU path with **`Vaapi`** (Linux) and **`Nvenc`**: the GPU decodes and scales the video
+still in 10-bit, only those frames (a quarter of 4K's, at 1080p) come back, libplacebo tone-maps them on Vulkan (Dolby
+Vision 5 included, looking as it does on the CPU) and the GPU encodes the result. That needs a Vulkan driver: Mesa's
+(`mesa-vulkan-drivers`, in the Proxmox template) for Intel and AMD, NVIDIA's own (in its driver) for NVIDIA. An Intel Arc A380 converts a 60 Mbit/s 4K HDR disc rip to 1080p this
 way at 1.7x real time; to 4K it manages only 0.6x, so leave `MaxHeight` at 1080 and play 4K files as they are (Original)
 on devices that can. Quick Sync's and VA-API's own HDR tone mapping isn't used, as it comes out much darker. With
-`Qsv` or `Nvenc`, HDR is decoded on the CPU and tone-mapped as described above (on an integrated GPU, copying frames
-back saves nothing).
+`Qsv`, HDR is decoded on the CPU and tone-mapped as described above (on an integrated GPU, copying frames back saves
+nothing). The startup log says which: `HDR tone-mapped there too (libplacebo)`, or `decoded on the CPU`.
 
 On Linux, Intel GPUs from Broadwell on (including the N100/N150 mini PCs) work with `Vaapi` and the
-`intel-media-va-driver` package; AMD with `mesa-va-drivers`. In a Proxmox container, pass the GPU in first
-([proxmox.md](proxmox.md)). `"HardwareDecoding": false` decodes everything on the CPU.
+`intel-media-va-driver` package; AMD with `mesa-va-drivers`; NVIDIA with `Nvenc` and NVIDIA's driver. In a Proxmox
+container, pass the GPU in first, and for NVIDIA install the node's driver libraries in it
+([proxmox.md](proxmox.md#an-nvidia-gpu)). `"HardwareDecoding": false` decodes everything on the CPU.
 
 ### Subtitles
 
