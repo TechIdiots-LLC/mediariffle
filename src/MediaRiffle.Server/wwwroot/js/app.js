@@ -689,16 +689,32 @@ function playButtons(what, label, disabled = false) {
     h('button', { class: 'secondary', onclick: () => go(true), disabled }, '🔀 Shuffle'));
 }
 
+// An IMDb title search (the library has no IMDb ids), with the year when there is one
+function imdbUrl(title, year) {
+  return `https://www.imdb.com/find/?q=${encodeURIComponent(year ? `${title} ${year}` : title)}&s=tt`;
+}
+
+function imdbLink(title, year) {
+  return h('a', { class: 'imdb-link', href: imdbUrl(title, year), target: '_blank', rel: 'noopener noreferrer',
+    title: `Look up ${title} on IMDb` }, 'IMDb ↗');
+}
+
+// A tile's own IMDb button, over the picture's corner (a link can't sit inside the tile's link)
+function imdbBadge(title, year) {
+  return h('button', { class: 'tile-imdb', title: `Look up ${title} on IMDb`, 'aria-label': `Look up ${title} on IMDb`,
+    onclick: e => { e.preventDefault(); e.stopPropagation(); window.open(imdbUrl(title, year), '_blank', 'noopener'); } }, 'IMDb');
+}
+
 // Hidden shows and movies stay listed, greyed out, so they can be opened and unhidden. The full name shows on hover.
 function showTiles(shows) {
   return shows.map(i => h('a', { class: 'tile' + (i.hidden ? ' hidden' : ''), href: `#/show/${i.id}`, title: i.title },
-    art(i.image), h('div', { class: 'name' }, i.title),
+    art(i.image), imdbBadge(i.title), h('div', { class: 'name' }, i.title),
     h('div', { class: 'sub' }, i.hidden ? 'Hidden' : `${i.episodes} episodes`)));
 }
 
 function movieTiles(movies) {
   return movies.map(i => h('a', { class: 'tile' + (i.hidden ? ' hidden' : ''), href: `#/movie/${i.id}`, title: i.year ? `${i.title} (${i.year})` : i.title },
-    art(i.image), h('div', { class: 'name' }, i.title),
+    art(i.image), imdbBadge(i.title, i.year), h('div', { class: 'name' }, i.title),
     h('div', { class: 'sub' }, [i.hidden ? 'Hidden' : null, i.year, i.parts > 1 ? `${i.parts} parts` : null].filter(Boolean).join(' · '))));
 }
 
@@ -827,7 +843,7 @@ async function tabView(tab) {
     // Newest first, one row that scrolls sideways: a show for each (with how many episodes came), or the movies
     added: shows ? { title: 'Recently added', body: added.shows?.length ? h('div', { class: 'strip' }, added.shows.map(s =>
         h('a', { class: 'tile', href: `#/show/${s.id}`, title: `${s.title} · added ${new Date(s.added).toLocaleDateString()}` },
-          art(s.image), h('div', { class: 'name' }, s.title),
+          art(s.image), imdbBadge(s.title), h('div', { class: 'name' }, s.title),
           h('div', { class: 'sub' }, s.count > 1 ? `${s.count} new episodes` : s.episode.title)))) : null }
       : movies ? { title: 'Recently added', body: added.movies?.length ? h('div', { class: 'strip' }, movieTiles(added.movies)) : null }
       : undefined,
@@ -1172,7 +1188,7 @@ async function showView(id) {
     else mount(tabs, show.seasons.map(s => h('button', { 'data-id': s.id, onclick: () => pick(s) }, s.title)));
     mount(view,
       h('div', { class: 'row' }, h('h1', {}, show.title), playButtons({ show: id }, show.title, show.hidden),
-        hideButton('show', id, show.hidden, hidden => { show.hidden = hidden; draw(); }, 'show')),
+        hideButton('show', id, show.hidden, hidden => { show.hidden = hidden; draw(); }, 'show'), imdbLink(show.title)),
       show.hidden ? h('p', { class: 'muted' }, 'You\'ve hidden this show: it\'s left out of Play all, Shuffle and Continue watching. Only you see this.') : null,
       listsControl('show', id), seriesTabs, tabs, list);
     // Open on the season that was open, else the show's own first season with something unwatched
@@ -1187,7 +1203,7 @@ async function movieView(id) {
   if (movie.parts.length === 1 && !movie.hidden) { forward(`#/play/${movie.parts[0].id}`); return; }
   const draw = () => mount(view,
     h('div', { class: 'row' }, h('h1', {}, movie.title + (movie.year ? ` (${movie.year})` : '')),
-      hideButton('movie', id, movie.hidden, hidden => { movie.hidden = hidden; draw(); }, 'movie')),
+      hideButton('movie', id, movie.hidden, hidden => { movie.hidden = hidden; draw(); }, 'movie'), imdbLink(movie.title, movie.year)),
     movie.hidden ? h('p', { class: 'muted' }, 'You\'ve hidden this movie: it\'s left out of Play all, Shuffle and Continue watching. Only you see this.') : null,
     listsControl('movie', id),
     h('div', { class: 'episodes' }, movie.parts.map(p => episodeRow({ ...p, title: movie.parts.length > 1 ? `Part ${p.partNumber}` : movie.title, episodeNumber: null }, { off: movie.hidden }))));
@@ -1240,7 +1256,9 @@ async function playView(fileId) {
     details.movieId ? hideButton('movie', details.movieId, details.hidden.movie, x => { details.hidden.movie = x; drawHide(); }, 'movie')
       : details.hidden.show ? h('span', { class: 'muted' }, 'You\'ve hidden this show. ', h('a', { href: `#/show/${details.showId}` }, 'Unhide it on its page'))
       : hideButton('file', fileId, details.hidden.file, x => { details.hidden.file = x; drawHide(); }, 'episode'),
-    (details.hidden.movie || details.hidden.file) ? h('span', { class: 'muted' }, 'Hidden: left out of Play all, Shuffle and Continue watching.') : null);
+    (details.hidden.movie || details.hidden.file) ? h('span', { class: 'muted' }, 'Hidden: left out of Play all, Shuffle and Continue watching.') : null,
+    // A one-part movie opens straight here, so its IMDb link is here too (an episode's is its show's)
+    details.movieTitle ? imdbLink(details.movieTitle, details.movieYear) : details.showTitle ? imdbLink(details.showTitle) : null);
   drawHide();
   // Full screen's Hide: this episode (or movie) is hidden, and the next one plays, still full screen
   p.onHide = async () => {

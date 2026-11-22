@@ -14,6 +14,9 @@
   gets new files often.
 - **Long names in full**: show, movie and music names on their tiles take up to two lines instead of one, so the end
   of a long one (which film in a series it is) still shows, and the whole name shows when the mouse is over a tile.
+- **Look it up on IMDb**: show and movie tiles have an IMDb button in the picture's corner (when the mouse is over
+  the tile, or always on a touch screen), and a show's page, a movie's page and the player have an IMDb link. Each
+  opens IMDb's title search for the name (and a movie's year) in a new tab.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes

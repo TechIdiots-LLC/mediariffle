@@ -381,9 +381,15 @@ body.theater .controls { font-size: clamp(14px, 0.9vw, 24px); }
 .tile-x { position: absolute; top: 6px; right: 6px; z-index: 2; width: 30px; height: 30px; padding: 0; border-radius: 50%;
   background: rgba(0, 0, 0, .6); color: #fff; font-size: 18px; line-height: 1; display: grid; place-items: center; }
 .tile-x:hover { background: var(--danger); }
+/* Shows and movies: an IMDb search, in the picture's other corner (shown the same way as the ×) */
+.tile-imdb { position: absolute; top: 6px; left: 6px; z-index: 2; padding: 2px 7px; border-radius: 4px; font-size: 12px; font-weight: 700;
+  background: #f5c518; color: #000; border: 0; line-height: 1.4; }
+.imdb-link { white-space: nowrap; }
 @media (hover: hover) {
   .tile.continue .tile-x { opacity: 0; transition: opacity .15s; }
   .tile.continue:hover .tile-x, .tile.continue .tile-x:focus-visible { opacity: 1; }
+  .tile .tile-imdb { opacity: 0; transition: opacity .15s; }
+  .tile:hover .tile-imdb, .tile .tile-imdb:focus-visible { opacity: 1; }
 }
 
 /* Profile pictures: a circle, a photo or a built-in picture on its colour, in three sizes */

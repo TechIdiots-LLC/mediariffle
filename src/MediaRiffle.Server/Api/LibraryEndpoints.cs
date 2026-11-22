@@ -210,6 +210,7 @@ public static class LibraryEndpoints
             var mine = db.Hidden.Where(x => x.UserId == userId);
             var account = await users.GetUserAsync(me);
             var cap = Quality.Level(account?.MaxQuality);
+            var movie = f.MovieId is { } movieId ? await db.Movies.Where(m => m.Id == movieId).Select(m => new { m.Title, m.Year }).FirstOrDefaultAsync() : null;
             return Results.Ok(new
             {
                 summary = FileSummary(f, progress),
@@ -222,6 +223,10 @@ public static class LibraryEndpoints
                 // The audio track to start with (Profile → Audio), when the file's default is in another language
                 defaultAudio = Languages.PickAudio(probe.Audio, account?.AudioLanguage),
                 f.ShowId, f.MovieId,
+                // For the page's IMDb link
+                showTitle = f.ShowId is { } showId ? await db.Shows.Where(s => s.Id == showId).Select(s => s.Title).FirstOrDefaultAsync() : null,
+                movieTitle = movie?.Title,
+                movieYear = movie?.Year,
                 f.Container, f.VideoCodec, f.Width, f.Height, f.ProbeError,
                 bitrateKbps = probe.BitRateKbps,
                 // The qualities this user may pick, best first; Original only without a cap
