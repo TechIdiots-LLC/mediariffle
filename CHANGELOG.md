@@ -2,6 +2,13 @@
 
 ## master
 ### ✨ Features and improvements
+- _...Add new stuff here..._
+
+### 🐞 Bug fixes
+- _...Add new stuff here..._
+
+## 0.22.0
+### ✨ Features and improvements
 - **HDR on an NVIDIA GPU**: with the `Nvenc` encoder, HDR (Dolby Vision 5 included) is now decoded and scaled on the
   card too, and only the scaled frames come back for libplacebo to tone-map, as with `Vaapi`; before, it was all
   decoded on the CPU. The package has `/usr/lib/mediariffle/install-nvidia-libs`, which installs the Proxmox node's
@@ -17,10 +24,8 @@
 - **Look it up on IMDb**: show and movie tiles have an IMDb button in the picture's corner (when the mouse is over
   the tile, or always on a touch screen), and a show's page, a movie's page and the player have an IMDb link. Each
   opens IMDb's title search for the name (and a movie's year) in a new tab.
-- _...Add new stuff here..._
 
 ### 🐞 Bug fixes
-- _...Add new stuff here..._
 
 ## 0.21.0
 ### ✨ Features and improvements
