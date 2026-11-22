@@ -92,11 +92,13 @@ h2 { font-size: 18px; margin: 24px 0 10px; }
 .strip > * { scroll-snap-align: start; }
 .strip .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 600px) { .strip { grid-auto-columns: 160px; } }
-.tile { display: block; color: var(--text); }
+.tile { display: block; color: var(--text); position: relative; }
 .tile:hover { text-decoration: none; }
 .tile .art { aspect-ratio: 16 / 10; background: var(--border); border-radius: var(--radius); overflow: hidden; position: relative; }
 .tile .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.tile .name { margin-top: 6px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Up to two lines, so the end of a long name (Part 2, the year in a series) still shows; the whole of it on hover */
+.tile .name { margin-top: 6px; font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
 .tile .sub { font-size: 13px; color: var(--muted); }
 .bar { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--accent); }
 

@@ -689,15 +689,15 @@ function playButtons(what, label, disabled = false) {
     h('button', { class: 'secondary', onclick: () => go(true), disabled }, '🔀 Shuffle'));
 }
 
-// Hidden shows and movies stay listed, greyed out, so they can be opened and unhidden
+// Hidden shows and movies stay listed, greyed out, so they can be opened and unhidden. The full name shows on hover.
 function showTiles(shows) {
-  return shows.map(i => h('a', { class: 'tile' + (i.hidden ? ' hidden' : ''), href: `#/show/${i.id}` },
+  return shows.map(i => h('a', { class: 'tile' + (i.hidden ? ' hidden' : ''), href: `#/show/${i.id}`, title: i.title },
     art(i.image), h('div', { class: 'name' }, i.title),
     h('div', { class: 'sub' }, i.hidden ? 'Hidden' : `${i.episodes} episodes`)));
 }
 
 function movieTiles(movies) {
-  return movies.map(i => h('a', { class: 'tile' + (i.hidden ? ' hidden' : ''), href: `#/movie/${i.id}` },
+  return movies.map(i => h('a', { class: 'tile' + (i.hidden ? ' hidden' : ''), href: `#/movie/${i.id}`, title: i.year ? `${i.title} (${i.year})` : i.title },
     art(i.image), h('div', { class: 'name' }, i.title),
     h('div', { class: 'sub' }, [i.hidden ? 'Hidden' : null, i.year, i.parts > 1 ? `${i.parts} parts` : null].filter(Boolean).join(' · '))));
 }
@@ -810,7 +810,7 @@ async function tabView(tab) {
     continue: games ? { title: 'Continue playing', body: recent.length ? h('div', { class: 'strip' }, continueTiles(recent)) : null }
       : !shows && !movies ? undefined : { title: 'Continue watching', body: recent.length ? h('div', { class: 'strip' }, recent.map(r => {
       // ×: off this list (not hidden: the place is kept, and watching it again brings it back)
-      const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}`, onclick: ev => {
+      const tile = h('a', { class: 'tile continue', href: `#/play/${r.file.id}`, title: r.show ? `${r.show} · ${r.file.title}` : r.file.title, onclick: ev => {
         sessionStorage.setItem(RESUME_KEY, String(r.file.id));
         if (r.showId) { ev.preventDefault(); playFrom(r.showId, r.show, r.file.id); } else clearQueue();
       } },
@@ -826,7 +826,7 @@ async function tabView(tab) {
     })) : null },
     // Newest first, one row that scrolls sideways: a show for each (with how many episodes came), or the movies
     added: shows ? { title: 'Recently added', body: added.shows?.length ? h('div', { class: 'strip' }, added.shows.map(s =>
-        h('a', { class: 'tile', href: `#/show/${s.id}`, title: `Added ${new Date(s.added).toLocaleDateString()}` },
+        h('a', { class: 'tile', href: `#/show/${s.id}`, title: `${s.title} · added ${new Date(s.added).toLocaleDateString()}` },
           art(s.image), h('div', { class: 'name' }, s.title),
           h('div', { class: 'sub' }, s.count > 1 ? `${s.count} new episodes` : s.episode.title)))) : null }
       : movies ? { title: 'Recently added', body: added.movies?.length ? h('div', { class: 'strip' }, movieTiles(added.movies)) : null }
@@ -954,13 +954,13 @@ async function tagView(tag, tab) {
 
 // Hidden artists and albums stay listed, greyed out, like hidden shows
 function artistTiles(artists) {
-  return artists.map(a => h('a', { class: 'tile' + (a.hidden ? ' hidden' : ''), href: `#/artist/${a.id}` },
+  return artists.map(a => h('a', { class: 'tile' + (a.hidden ? ' hidden' : ''), href: `#/artist/${a.id}`, title: a.name },
     art(a.image, 0, 'music'), h('div', { class: 'name' }, a.name),
     h('div', { class: 'sub' }, a.hidden ? 'Hidden' : `${a.albums} album${a.albums === 1 ? '' : 's'}`)));
 }
 
 function albumTiles(albums, showArtist = false) {
-  return albums.map(a => h('a', { class: 'tile' + (a.hidden ? ' hidden' : ''), href: `#/album/${a.id}` },
+  return albums.map(a => h('a', { class: 'tile' + (a.hidden ? ' hidden' : ''), href: `#/album/${a.id}`, title: a.title },
     art(a.image, 0, 'music'), h('div', { class: 'name' }, a.title),
     h('div', { class: 'sub' }, [a.hidden ? 'Hidden' : null, showArtist ? a.artist : null, a.year,
       `${a.tracks} track${a.tracks === 1 ? '' : 's'}`].filter(Boolean).join(' · '))));

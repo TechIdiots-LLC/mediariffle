@@ -12,6 +12,8 @@
   Cancel in the countdown, stays on the one playing.
 - **Rescan every 5 or 10 minutes**: Look for new files (Admin → Libraries → Edit) offers them too, for a folder that
   gets new files often.
+- **Long names in full**: show, movie and music names on their tiles take up to two lines instead of one, so the end
+  of a long one (which film in a series it is) still shows, and the whole name shows when the mouse is over a tile.
 - _...Add new stuff here..._
 
 ### 🐞 Bug fixes
